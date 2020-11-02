@@ -27,9 +27,17 @@ var (
 )
 
 type plugin struct {
+<<<<<<< HEAD
 	client             consul.ConsulWatcher
 	resolver           DnsResolver
 	dnsPollingInterval time.Duration
+=======
+	client                          consul.ConsulWatcher
+	resolver                        DnsResolver
+	dnsPollingInterval              time.Duration
+	consulUpstreamDiscoverySettings *v1.Settings_ConsulUpstreamDiscoveryConfiguration
+	settings                        *v1.Settings
+>>>>>>> 4b61bd204 (added rest xds server for endpoints (#3799))
 }
 
 func (p *plugin) Resolve(u *v1.Upstream) (*url.URL, error) {
@@ -83,6 +91,25 @@ func NewPlugin(client consul.ConsulWatcher, resolver DnsResolver, dnsPollingInte
 }
 
 func (p *plugin) Init(params plugins.InitParams) error {
+	p.settings = params.Settings
+	p.consulUpstreamDiscoverySettings = params.Settings.ConsulDiscovery
+	if p.consulUpstreamDiscoverySettings == nil {
+		p.consulUpstreamDiscoverySettings = &v1.Settings_ConsulUpstreamDiscoveryConfiguration{UseTlsTagging: false}
+	}
+	// if automatic TLS discovery is enabled for consul services, make sure we have a specified tag
+	// and a resource location for the validation context's root CA.
+	// The tag has a default value, but the resource name/namespace must be set manually.
+	if p.consulUpstreamDiscoverySettings.UseTlsTagging {
+		rootCa := p.consulUpstreamDiscoverySettings.GetRootCa()
+		if rootCa.GetNamespace() == "" || rootCa.GetName() == "" {
+			return ConsulTlsInputError(rootCa.String())
+		}
+
+		tlsTagName := p.consulUpstreamDiscoverySettings.GetTlsTagName()
+		if tlsTagName == "" {
+			p.consulUpstreamDiscoverySettings.TlsTagName = DefaultTlsTagName
+		}
+	}
 	return nil
 }
 
@@ -93,7 +120,7 @@ func (p *plugin) ProcessUpstream(params plugins.Params, in *v1.Upstream, out *en
 	}
 
 	// consul upstreams use EDS
-	xds.SetEdsOnCluster(out)
+	xds.SetEdsOnCluster(out, p.settings)
 
 	return nil
 }

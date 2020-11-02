@@ -327,6 +327,67 @@ var _ = Describe("Helm Test", func() {
 						"What happened to the clusteringress-proxy deployment?", resourcesTested)
 				})
 
+				It("should set route prefix_rewrite in clusteringress-envoy-config from global.glooStats", func() {
+					prepareMakefile(namespace, helmValues{
+						valuesArgs: []string{
+							"settings.integrations.knative.enabled=true",
+							"settings.integrations.knative.version=0.7.0",
+							"settings.integrations.knative.proxy.stats=true",
+							"global.glooStats.routePrefixRewrite=/stats?format=json"},
+					})
+
+					testManifest.SelectResources(func(resource *unstructured.Unstructured) bool {
+						return resource.GetKind() == "ConfigMap"
+					}).ExpectAll(func(configMap *unstructured.Unstructured) {
+						configMapObject, err := kuberesource.ConvertUnstructured(configMap)
+						Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("ConfigMap %+v should be able to convert from unstructured", configMap))
+						structuredConfigMap, ok := configMapObject.(*v1.ConfigMap)
+						Expect(ok).To(BeTrue(), fmt.Sprintf("ConfigMap %+v should be able to cast to a structured config map", configMap))
+
+						if structuredConfigMap.GetName() == "clusteringress-envoy-config" {
+							expectedPrefixRewrite := "prefix_rewrite: /stats?format=json"
+							Expect(structuredConfigMap.Data["envoy.yaml"]).To(ContainSubstring(expectedPrefixRewrite))
+						}
+					})
+				})
+
+				It("should set route prefix_rewrite in knative proxy configs from global.glooStats", func() {
+					prepareMakefile(namespace, helmValues{
+						valuesArgs: []string{
+							"settings.integrations.knative.enabled=true",
+							"settings.integrations.knative.version=0.8.0",
+							"settings.integrations.knative.proxy.stats=true",
+							"global.glooStats.routePrefixRewrite=/stats?format=json"},
+					})
+
+					testManifest.SelectResources(func(resource *unstructured.Unstructured) bool {
+						return resource.GetKind() == "ConfigMap"
+					}).ExpectAll(func(configMap *unstructured.Unstructured) {
+						configMapObject, err := kuberesource.ConvertUnstructured(configMap)
+						Expect(err).NotTo(HaveOccurred(), fmt.Sprintf("ConfigMap %+v should be able to convert from unstructured", configMap))
+						structuredConfigMap, ok := configMapObject.(*v1.ConfigMap)
+						Expect(ok).To(BeTrue(), fmt.Sprintf("ConfigMap %+v should be able to cast to a structured config map", configMap))
+
+						if structuredConfigMap.GetName() == "knative-internal-proxy-config" ||
+							structuredConfigMap.GetName() == "knative-external-proxy-config" {
+							expectedPrefixRewrite := "prefix_rewrite: /stats?format=json"
+							Expect(structuredConfigMap.Data["envoy.yaml"]).To(ContainSubstring(expectedPrefixRewrite))
+						}
+					})
+				})
+
+				It("should be able to set consul config values", func() {
+					settings := makeUnstructureFromTemplateFile("fixtures/settings/consul_config_values.yaml", namespace)
+					prepareMakefileFromValuesFile("val_consul_test_inputs.yaml")
+					testManifest.ExpectUnstructured(settings.GetKind(), settings.GetNamespace(), settings.GetName()).To(BeEquivalentTo(settings))
+				})
+
+				It("should be able to set consul config upstream discovery values", func() {
+					settings := makeUnstructureFromTemplateFile("fixtures/settings/consul_config_upstream_discovery.yaml", namespace)
+					prepareMakefileFromValuesFile("val_consul_discovery_test_inputs.yaml")
+					testManifest.ExpectUnstructured(settings.GetKind(), settings.GetNamespace(), settings.GetName()).To(BeEquivalentTo(settings))
+				})
+
 				It("should be able to override global defaults", func() {
 					prepareMakefile(namespace, helmValues{
 						valuesArgs: []string{"discovery.deployment.stats.enabled=true", "global.glooStats.enabled=false"},
@@ -1565,39 +1626,7 @@ spec:
 					})
 
 					It("creates settings with the gateway config", func() {
-						settings := makeUnstructured(`
-apiVersion: gloo.solo.io/v1
-kind: Settings
-metadata:
-  labels:
-    app: gloo
-  name: default
-  namespace: ` + namespace + `
-spec:
- discovery:
-   fdsMode: WHITELIST
- gateway:
-   readGatewaysFromAllNamespaces: false
-   validation:
-     alwaysAccept: true
-     allowWarnings: true
-     proxyValidationServerAddr: gloo:9988
- gloo:
-   xdsBindAddr: 0.0.0.0:9977
-   restXdsBindAddr: 0.0.0.0:9976
-   disableKubernetesDestinations: false
-   disableProxyGarbageCollection: false
-   invalidConfigPolicy:
-     invalidRouteResponseBody: Gloo Gateway has invalid configuration. Administrators should run
-       ` + "`" + `glooctl check` + "`" + ` to find and fix config errors.
-     invalidRouteResponseCode: 404
- kubernetesArtifactSource: {}
- kubernetesConfigSource: {}
- kubernetesSecretSource: {}
- refreshRate: 60s
- discoveryNamespace: ` + namespace + `
-`)
-
+						settings := makeUnstructureFromTemplateFile("fixtures/settings/gateway_settings.yaml", namespace)
 						prepareMakefile(namespace, helmValues{
 							valuesArgs: []string{
 								"settings.replaceInvalidRoutes=true",
@@ -1607,34 +1636,7 @@ spec:
 					})
 
 					It("correctly sets the `disableKubernetesDestinations` field in the settings", func() {
-						settings := makeUnstructured(`
-apiVersion: gloo.solo.io/v1
-kind: Settings
-metadata:
-  labels:
-    app: gloo
-  name: default
-  namespace: ` + namespace + `
-spec:
- discovery:
-   fdsMode: WHITELIST
- gateway:
-   readGatewaysFromAllNamespaces: false
-   validation:
-     alwaysAccept: true
-     allowWarnings: true
-     proxyValidationServerAddr: gloo:9988
- gloo:
-   xdsBindAddr: 0.0.0.0:9977
-   restXdsBindAddr: 0.0.0.0:9976
-   disableKubernetesDestinations: true
-   disableProxyGarbageCollection: false
- kubernetesArtifactSource: {}
- kubernetesConfigSource: {}
- kubernetesSecretSource: {}
- refreshRate: 60s
- discoveryNamespace: ` + namespace + `
-`)
+						settings := makeUnstructureFromTemplateFile("fixtures/settings/disable_kubernetes_destinations.yaml", namespace)
 
 						prepareMakefile(namespace, helmValues{
 							valuesArgs: []string{
@@ -1645,30 +1647,7 @@ spec:
 					})
 
 					It("correctly allows setting readGatewaysFromAllNamespaces field in the settings when validation disabled", func() {
-						settings := makeUnstructured(`
-apiVersion: gloo.solo.io/v1
-kind: Settings
-metadata:
-  labels:
-    app: gloo
-  name: default
-  namespace: ` + namespace + `
-spec:
- discovery:
-   fdsMode: WHITELIST
- gateway:
-   readGatewaysFromAllNamespaces: true
- gloo:
-   xdsBindAddr: 0.0.0.0:9977
-   restXdsBindAddr: 0.0.0.0:9976
-   disableKubernetesDestinations: false
-   disableProxyGarbageCollection: false
- kubernetesArtifactSource: {}
- kubernetesConfigSource: {}
- kubernetesSecretSource: {}
- refreshRate: 60s
- discoveryNamespace: ` + namespace + `
-`)
+						settings := makeUnstructureFromTemplateFile("fixtures/settings/read_gateways_from_all_namespaces.yaml", namespace)
 
 						prepareMakefile(namespace, helmValues{
 							valuesArgs: []string{
@@ -1680,41 +1659,7 @@ spec:
 					})
 
 					It("correctly allows setting ratelimit descriptors in the rateLimit field.", func() {
-						settings := makeUnstructured(`
-apiVersion: gloo.solo.io/v1
-kind: Settings
-metadata:
-  labels:
-    app: gloo
-  name: default
-  namespace: ` + namespace + `
-spec:
- discovery:
-   fdsMode: WHITELIST
- gateway:
-   readGatewaysFromAllNamespaces: false
-   validation:
-     alwaysAccept: true
-     allowWarnings: true
-     proxyValidationServerAddr: gloo:9988
- gloo:
-   xdsBindAddr: 0.0.0.0:9977
-   restXdsBindAddr: 0.0.0.0:9976
-   disableKubernetesDestinations: false
-   disableProxyGarbageCollection: false
- kubernetesArtifactSource: {}
- kubernetesConfigSource: {}
- kubernetesSecretSource: {}
- refreshRate: 60s
- discoveryNamespace: ` + namespace + `
- rateLimit:
-   descriptors:
-     - key: generic_key
-       value: "per-second"
-       rateLimit:
-         requestsPerUnit: 2
-         unit: SECOND
-`)
+						settings := makeUnstructureFromTemplateFile("fixtures/settings/ratelimit_descriptors.yaml", namespace)
 
 						prepareMakefile(namespace, helmValues{
 							valuesArgs: []string{
@@ -1728,34 +1673,7 @@ spec:
 					})
 
 					It("correctly sets the `disableProxyGarbageCollection` field in the settings", func() {
-						settings := makeUnstructured(`
-apiVersion: gloo.solo.io/v1
-kind: Settings
-metadata:
-  labels:
-    app: gloo
-  name: default
-  namespace: ` + namespace + `
-spec:
- discovery:
-   fdsMode: WHITELIST
- gateway:
-   readGatewaysFromAllNamespaces: false
-   validation:
-     alwaysAccept: true
-     allowWarnings: true
-     proxyValidationServerAddr: gloo:9988
- gloo:
-   xdsBindAddr: 0.0.0.0:9977
-   restXdsBindAddr: 0.0.0.0:9976
-   disableKubernetesDestinations: false
-   disableProxyGarbageCollection: true
- kubernetesArtifactSource: {}
- kubernetesConfigSource: {}
- kubernetesSecretSource: {}
- refreshRate: 60s
- discoveryNamespace: ` + namespace + `
-`)
+						settings := makeUnstructureFromTemplateFile("fixtures/settings/disable_proxy_garbage_collection.yaml", namespace)
 
 						prepareMakefile(namespace, helmValues{
 							valuesArgs: []string{
@@ -1765,37 +1683,19 @@ spec:
 						testManifest.ExpectUnstructured(settings.GetKind(), settings.GetNamespace(), settings.GetName()).To(BeEquivalentTo(settings))
 					})
 
+					It("correctly sets the `gloo.enableRestEds` to false in the settings", func() {
+						settings := makeUnstructureFromTemplateFile("fixtures/settings/disable_rest_eds.yaml", namespace)
+
+						prepareMakefile(namespace, helmValues{
+							valuesArgs: []string{
+								"settings.enableRestEds=false",
+							},
+						})
+						testManifest.ExpectUnstructured(settings.GetKind(), settings.GetNamespace(), settings.GetName()).To(BeEquivalentTo(settings))
+					})
+
 					It("enable default credentials", func() {
-						settings := makeUnstructured(`
-apiVersion: gloo.solo.io/v1
-kind: Settings
-metadata:
-  labels:
-    app: gloo
-  name: default
-  namespace: ` + namespace + `
-spec:
-  discovery:
-    fdsMode: WHITELIST
-  gateway:
-    readGatewaysFromAllNamespaces: false
-    validation:
-      alwaysAccept: true
-      allowWarnings: true
-      proxyValidationServerAddr: gloo:9988
-  gloo:
-    xdsBindAddr: 0.0.0.0:9977
-    restXdsBindAddr: 0.0.0.0:9976
-    disableKubernetesDestinations: false
-    disableProxyGarbageCollection: false
-    awsOptions:
-      enableCredentialsDiscovey: true
-  kubernetesArtifactSource: {}
-  kubernetesConfigSource: {}
-  kubernetesSecretSource: {}
-  refreshRate: 60s
-  discoveryNamespace: ` + namespace + `
-`)
+						settings := makeUnstructureFromTemplateFile("fixtures/settings/enable_default_credentials.yaml", namespace)
 
 						prepareMakefile(namespace, helmValues{
 							valuesArgs: []string{
@@ -1874,38 +1774,7 @@ spec:
 					})
 
 					It("enable sts discovery", func() {
-						settings := makeUnstructured(`
-apiVersion: gloo.solo.io/v1
-kind: Settings
-metadata:
-  labels:
-    app: gloo
-  name: default
-  namespace: ` + namespace + `
-spec:
-  discovery:
-    fdsMode: WHITELIST
-  gateway:
-    readGatewaysFromAllNamespaces: false
-    validation:
-      alwaysAccept: true
-      allowWarnings: true
-      proxyValidationServerAddr: gloo:9988
-  gloo:
-    xdsBindAddr: 0.0.0.0:9977
-    restXdsBindAddr: 0.0.0.0:9976
-    disableKubernetesDestinations: false
-    disableProxyGarbageCollection: false
-    awsOptions:
-      serviceAccountCredentials:
-        cluster: aws_sts_cluster
-        uri: sts.us-east-2.amazonaws.com
-  kubernetesArtifactSource: {}
-  kubernetesConfigSource: {}
-  kubernetesSecretSource: {}
-  refreshRate: 60s
-  discoveryNamespace: ` + namespace + `
-`)
+						settings := makeUnstructureFromTemplateFile("fixtures/settings/sts_discovery.yaml", namespace)
 
 						prepareMakefile(namespace, helmValues{
 							valuesArgs: []string{
