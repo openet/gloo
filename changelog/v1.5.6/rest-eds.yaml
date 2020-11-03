@@ -11,7 +11,7 @@ changelog:
     issueLink: https://github.com/solo-io/gloo/issues/3219
     description: Fix EDS so modifying health checks on Upstream no longer results in 503s
     resolvesIssue: true
-  - type: NEW_FEATURE
+  - type: FIX
     issueLink: https://github.com/solo-io/gloo/issues/3805
     description: >-
       Allow toggling of EDS to rest XDS to avoid the envoy issue described in the following issue: https://github.com/envoyproxy/envoy/issues/13070.
