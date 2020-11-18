@@ -95,3 +95,8 @@ spec:
             secretName: {{ .Values.gateway.validation.secretName }}
 {{- end}}
 {{- end }}
+
+{{- with .Values.gateway.deployment.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+{{- end }}
