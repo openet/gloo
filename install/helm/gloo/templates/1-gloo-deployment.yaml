@@ -172,3 +172,7 @@ spec:
           periodSeconds: 2
           failureThreshold: 10
 {{- end }}
+{{- with .Values.gloo.deployment.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+{{- end }}

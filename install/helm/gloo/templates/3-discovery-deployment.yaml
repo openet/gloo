@@ -69,4 +69,9 @@ spec:
       # Pod security context
       securityContext:
         fsGroup: {{ printf "%.0f" (float64 .Values.discovery.deployment.fsGroup) }}
+{{- with .Values.discovery.deployment.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+{{- end }}
+
 {{- end }}
