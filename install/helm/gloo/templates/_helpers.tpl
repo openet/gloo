@@ -1,8 +1,4 @@
 {{/* vim: set filetype=mustache: */}}
-{{/*
-Expand the name of the chart.
-*/}}
-
 
 {{- define "gloo.roleKind" -}}
 {{- if .Values.global.glooRbac.namespaced -}}
@@ -37,5 +33,12 @@ Get the wasm version of the image.
 {{ .registry }}/{{ .repository }}:{{ regexReplaceAll "([0-9]+\\.[0-9]+\\.[0-9]+)" .tag "${1}-wasm" }}
 {{- else -}}
 {{ .registry }}/{{ .repository }}:wasm-{{ .tag }}
+{{- end -}}
+{{- end -}}
+
+{{- define "gloo.pullSecret" -}}
+{{- if .pullSecret -}}
+imagePullSecrets:
+- name: {{ .pullSecret }}
 {{- end -}}
 {{- end -}}
