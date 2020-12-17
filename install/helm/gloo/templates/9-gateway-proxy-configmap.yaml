@@ -334,7 +334,10 @@ data:
     dynamic_resources:
       ads_config:
         api_type: GRPC
-        rate_limit_settings: {}
+        {{- with $spec.rate_limit_settings }}
+        rate_limit_settings:
+          {{ toYaml . | indent 10 }}
+        {{- end }}
         grpc_services:
         - envoy_grpc: {cluster_name: gloo.{{ $.Release.Namespace }}.svc.{{ $.Values.k8s.clusterName}}:{{ $.Values.gloo.deployment.xdsPort }}}
       cds_config:
