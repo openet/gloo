@@ -334,7 +334,7 @@ data:
     dynamic_resources:
       ads_config:
         api_type: GRPC
-        {{- with $spec.rateLimitSettings }}
+        {{- with $spec.dynamicResources.adsConfig.rateLimitSettings }}
         rate_limit_settings:
         {{- range $key, $value := . }}
           {{ $key }}: {{ $value }}

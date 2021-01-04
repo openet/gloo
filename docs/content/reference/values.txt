@@ -425,8 +425,8 @@
 |gatewayProxies.gatewayProxy.antiAffinity|bool|false|configure anti affinity such that pods are preferably not co-located|
 |gatewayProxies.gatewayProxy.tracing.provider|string|||
 |gatewayProxies.gatewayProxy.tracing.cluster|string|||
-|gatewayProxies.gatewayProxy.rateLimitSettings.max_tokens|int|||
-|gatewayProxies.gatewayProxy.rateLimitSettings.fill_rate|double|||
+|gatewayProxies.gatewayProxy.dynamicResources.adsConfig.rateLimitSettings.max_tokens|int||Maximum number of tokens to be used for rate limiting discovery request calls. If not set, a default value of 100 will be used.|
+|gatewayProxies.gatewayProxy.dynamicResources.adsConfig.rateLimitSettings.fill_rate|double||Rate at which tokens will be filled per second. If not set, a default fill rate of 10 tokens per second will be used.|
 |gatewayProxies.gatewayProxy.gatewaySettings.disableGeneratedGateways|bool|false|set to true to disable the gateway generation for a gateway proxy|
 |gatewayProxies.gatewayProxy.gatewaySettings.ipv4Only|bool|false|set to true if your network allows ipv4 addresses only. Sets the Gateway spec's bindAddress to 0.0.0.0 instead of ::|
 |gatewayProxies.gatewayProxy.gatewaySettings.useProxyProto|bool|false|use proxy protocol|
