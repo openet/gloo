@@ -1,0 +1,96 @@
+listeners:
+  - bindAddress: '::'
+    bindPort: 8080
+    httpListener:
+      virtualHosts:
+        - domains:
+            - '*'
+          metadata:
+            sources:
+              - kind: '*v1.VirtualService'
+                name: default
+                namespace: gloo-system
+                observedGeneration: 0
+          name: gloo-system.default
+          routes:
+            - matchers:
+              - prefix: /SccTestService/v1
+              routeAction:
+                single:
+                  upstream:
+                    name: scctest
+                    namespace: gloo-system
+              metadata:
+                sources:
+                  - kind: '*v1.VirtualService'
+                    name: default
+                    namespace: gloo-system
+                    observedGeneration: 0
+            - matchers:
+                - exact: /petstore
+              metadata:
+                sources:
+                  - kind: '*v1.VirtualService'
+                    name: default
+                    namespace: gloo-system
+                    observedGeneration: 0
+              options:
+                prefixRewrite: /api/pets
+              routeAction:
+                single:
+                  upstream:
+                    name: petstore
+                    namespace: gloo-system
+            - matchers:
+                - prefix: /petstore/findPets
+              metadata:
+                sources:
+                  - kind: '*v1.VirtualService'
+                    name: default
+                    namespace: gloo-system
+                    observedGeneration: 0
+              routeAction:
+                single:
+                  destinationSpec:
+                    rest:
+                      functionName: findPets
+                      parameters: {}
+                  upstream:
+                    name: petstore
+                    namespace: gloo-system
+            - matchers:
+                - prefix: /petstore/findWithId
+              metadata:
+                sources:
+                  - kind: '*v1.VirtualService'
+                    name: default
+                    namespace: gloo-system
+                    observedGeneration: 0
+              routeAction:
+                single:
+                  destinationSpec:
+                    rest:
+                      functionName: findPetById
+                      parameters:
+                        headers:
+                          :path: /petstore/findWithId/{id}
+                  upstream:
+                    name: petstore
+                    namespace: gloo-system
+    metadata:
+      sources:
+        - kind: '*v1.Gateway'
+          name: gateway-proxy
+          namespace: gloo-system
+          observedGeneration: 0
+    name: listener-::-8080
+    useProxyProto: false
+metadata:
+  labels:
+    created_by: gateway
+  name: gateway-proxy
+  namespace: gloo-system
+  resourceVersion: "3"
+status:
+  reportedBy: gloo
+  state: Accepted

@@ -1,7 +1,7 @@
 metadata:
   name: petstore
   namespace: gloo-system
-  resourceVersion: "3"
+  resourceVersion: "4"
 static:
   hosts:
   - addr: petstore
@@ -13,8 +13,7 @@ static:
       transformations:
         addPet:
           body:
-            text: '{"id": {{ default(id, "") }},"name": "{{ default(name, "")}}","tag":
-              "{{ default(tag, "")}}"}'
+            text: '{"id": {{ default(id, "") }},"name": "{{ default(name, "")}}","tag": "{{ default(tag, "")}}"}'
           headers:
             :method:
               text: POST
@@ -52,3 +51,6 @@ static:
               text: "0"
             content-type: {}
             transfer-encoding: {}
+status:
+  reportedBy: gloo
+  state: Accepted

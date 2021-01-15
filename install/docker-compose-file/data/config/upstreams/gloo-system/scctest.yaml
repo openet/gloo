@@ -1,0 +1,11 @@
+metadata:
+  name: scctest
+  namespace: gloo-system
+  resourceVersion: "4"
+static:
+  hosts:
+  - addr: scctest
+    port: 8080
+status:
+  reportedBy: gloo
+  state: Accepted

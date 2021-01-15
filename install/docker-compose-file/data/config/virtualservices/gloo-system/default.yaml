@@ -46,3 +46,10 @@ virtualHost:
         upstream:
           name: petstore
           namespace: gloo-system
+  - matchers:
+    - prefix: /SccTestService/v1
+    routeAction:
+      single:
+        upstream:
+          name: scctest
+          namespace: gloo-system
