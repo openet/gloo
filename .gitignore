@@ -29,3 +29,6 @@ old_docs_temp_dir/
 .vscode/launch.json
 .vscode/settings.json
 
+## IntelliJ
+*.iml
+.idea

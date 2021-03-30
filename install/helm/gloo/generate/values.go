@@ -244,6 +244,7 @@ type GatewayProxy struct {
 	LoopBackAddress                string                       `json:"loopBackAddress,omitempty" desc:"Name on which to bind the loop-back interface for this instance of Envoy. Defaults to 127.0.0.1, but other common values may be localhost or ::1"`
 	Failover                       Failover                     `json:"failover" desc:"(Enterprise Only): Failover configuration"`
 	Disabled                       bool                         `json:"disabled,omitempty" desc:"Skips creation of this gateway proxy. Used to turn off gateway proxies created by preceding configurations"`
+	HorizontalPodAutoscaler        *HorizontalPodAutoscaler     `json:"horizontalPodAutoscaler,omitempty" desc:"HorizontalPodAutoscaler for the GatewayProxy. Used only when Kind is set to Deployment. Resources must be set on the gateway-proxy deployment for HorizontalPodAutoscalers to function correctly"`
 }
 
 type GatewayProxyGatewaySettings struct {
@@ -261,6 +262,15 @@ type GatewayProxyKind struct {
 }
 type GatewayProxyDeployment struct {
 	*DeploymentSpecSansResources
+}
+
+type HorizontalPodAutoscaler struct {
+	ApiVersion                        string                   `json:"apiVersion,omitempty" desc:"accepts autoscaling/v1 or autoscaling/v2beta2."`
+	MinReplicas                       int32                    `json:"minReplicas,omitempty" desc:"minReplicas is the lower limit for the number of replicas to which the autoscaler can scale down."`
+	MaxReplicas                       int32                    `json:"maxReplicas,omitempty" desc:"maxReplicas is the upper limit for the number of replicas to which the autoscaler can scale up. It cannot be less that minReplicas."`
+	TargetCPUUtilizationPercentage    int32                    `json:"targetCPUUtilizationPercentage,omitempty" desc:"target average CPU utilization (represented as a percentage of requested CPU) over all the pods. Used only with apiVersion autoscaling/v1"`
+	Metrics                           []map[string]interface{} `json:"metrics,omitempty" desc:"metrics contains the specifications for which to use to calculate the desired replica count (the maximum replica count across all metrics will be used). Used only with apiVersion autoscaling/v2beta2"`
+	Behavior                          map[string]interface{}   `json:"behavior,omitempty" desc:"behavior configures the scaling behavior of the target in both Up and Down directions (scaleUp and scaleDown fields respectively). Used only with apiVersion autoscaling/v2beta2"`
 }
 
 type DaemonSetSpec struct {
@@ -401,9 +411,11 @@ type Stats struct {
 }
 
 type Mtls struct {
-	Enabled      bool                  `json:"enabled" desc:"Enables internal mtls authentication"`
-	Sds          SdsContainer          `json:"sds,omitempty"`
-	EnvoySidecar EnvoySidecarContainer `json:"envoy,omitempty"`
+	Enabled               bool                  `json:"enabled" desc:"Enables internal mtls authentication"`
+	Sds                   SdsContainer          `json:"sds,omitempty"`
+	EnvoySidecar          EnvoySidecarContainer `json:"envoy,omitempty"`
+	EnvoySidecarResources *ResourceRequirements `json:"envoySidecarResources,omitempty" desc:"Sets default resource requirements for all envoy sidecar containers."`
+	SdsResources          *ResourceRequirements `json:"sdsResources,omitempty" desc:"Sets default resource requirements for all sds containers."`
 }
 
 type SdsContainer struct {
