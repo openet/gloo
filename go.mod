@@ -1,4 +1,4 @@
-module github.com/solo-io/gloo
+module github.com/openet/gloo
 
 go 1.14
 

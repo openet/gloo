@@ -137,7 +137,7 @@ func (p *plugin) ProcessUpstream(params plugins.Params, in *v1.Upstream, out *en
 		}
 
 		// fix issue where ipv6 addr cannot bind
-		out.DnsLookupFamily = envoyapi.Cluster_V4_ONLY
+		out.DnsLookupFamily = envoyapi.Cluster_AUTO
 	}
 
 	return nil
