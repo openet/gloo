@@ -166,6 +166,7 @@ global:
     enabled: true
   glooMtls:
     enabled: false
+    ipv4Only: true
     sds:
       image:
         repository: sds

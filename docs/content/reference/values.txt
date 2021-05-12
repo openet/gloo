@@ -46,22 +46,6 @@
 |settings.integrations.knative.requireIngressClass|bool||only serve traffic for Knative Ingress objects with the annotation 'networking.knative.dev/ingress.class: gloo.ingress.networking.knative.dev'.|
 |settings.integrations.knative.extraKnativeInternalLabels.NAME|string||Optional extra key-value pairs to add to the spec.template.metadata.labels data of the knative internal deployment.|
 |settings.integrations.knative.extraKnativeExternalLabels.NAME|string||Optional extra key-value pairs to add to the spec.template.metadata.labels data of the knative external deployment.|
-|settings.integrations.consul.datacenter|string||Datacenter to use. If not provided, the default agent datacenter is used.|
-|settings.integrations.consul.username|string||Username to use for HTTP Basic Authentication.|
-|settings.integrations.consul.password|string||Password to use for HTTP Basic Authentication.|
-|settings.integrations.consul.token|string||Token is used to provide a per-request ACL token which overrides the agent's default token.|
-|settings.integrations.consul.caFile|string||caFile is the optional path to the CA certificate used for Consul communication, defaults to the system bundle if not specified.|
-|settings.integrations.consul.caPath|string||caPath is the optional path to a directory of CA certificates to use for Consul communication, defaults to the system bundle if not specified.|
-|settings.integrations.consul.certFile|string||CertFile is the optional path to the certificate for Consul communication. If this is set then you need to also set KeyFile.|
-|settings.integrations.consul.keyFile|string||KeyFile is the optional path to the private key for Consul communication. If this is set then you need to also set CertFile.|
-|settings.integrations.consul.insecureSkipVerify|bool||InsecureSkipVerify if set to true will disable TLS host verification.|
-|settings.integrations.consul.waitTime.seconds|int32||The value of this duration in seconds.|
-|settings.integrations.consul.waitTime.nanos|int32||The value of this duration in nanoseconds.|
-|settings.integrations.consul.serviceDiscovery.dataCenters[]|string||Use this parameter to restrict the data centers that will be considered when discovering and routing to services. If not provided, Gloo will use all available data centers.|
-|settings.integrations.consul.httpAddress|string||The address of the Consul HTTP server. Used by service discovery and key-value storage (if-enabled). Defaults to the value of the standard CONSUL_HTTP_ADDR env if set, otherwise to 127.0.0.1:8500.|
-|settings.integrations.consul.dnsAddress|string||The address of the DNS server used to resolve hostnames in the Consul service address. Used by service discovery (required when Consul service instances are stored as DNS names). Defaults to 127.0.0.1:8600. (the default Consul DNS server)|
-|settings.integrations.consul.dnsPollingInterval.seconds|int32||The value of this duration in seconds.|
-|settings.integrations.consul.dnsPollingInterval.nanos|int32||The value of this duration in nanoseconds.|
 |settings.create|bool|true|create a Settings CRD which provides bootstrap configuration to Gloo controllers|
 |settings.extensions|interface|||
 |settings.singleNamespace|bool|false|Enable to use install namespace as WatchNamespace and WriteNamespace|
@@ -113,7 +97,6 @@
 |gloo.deployment.resources.limits.cpu|string||amount of CPUs|
 |gloo.deployment.resources.requests.memory|string||amount of memory|
 |gloo.deployment.resources.requests.cpu|string||amount of CPUs|
-|gloo.deployment.nodeSelector.NAME|string||label selector for nodes|
 |gloo.serviceAccount.extraAnnotations.NAME|string||extra annotations to add to the service account|
 |gloo.serviceAccount.disableAutomount|bool|false|disable automunting the service account to the gateway proxy. not mounting the token hardens the proxy container, but may interfere with service mesh integrations|
 |discovery.deployment.image.tag|string|<release_version, ex: 1.2.3>|tag for the container|
@@ -150,7 +133,6 @@
 |discovery.deployment.resources.limits.cpu|string||amount of CPUs|
 |discovery.deployment.resources.requests.memory|string||amount of memory|
 |discovery.deployment.resources.requests.cpu|string||amount of CPUs|
-|discovery.deployment.nodeSelector.NAME|string||label selector for nodes|
 |discovery.fdsMode|string|WHITELIST|mode for function discovery (blacklist or whitelist). See more info in the settings docs|
 |discovery.enabled|bool|true|enable Discovery features|
 |discovery.serviceAccount.extraAnnotations.NAME|string||extra annotations to add to the service account|
@@ -195,7 +177,6 @@
 |gateway.deployment.resources.limits.cpu|string||amount of CPUs|
 |gateway.deployment.resources.requests.memory|string||amount of memory|
 |gateway.deployment.resources.requests.cpu|string||amount of CPUs|
-|gateway.deployment.nodeSelector.NAME|string||label selector for nodes|
 |gateway.certGenJob.image.tag|string|<release_version, ex: 1.2.3>|tag for the container|
 |gateway.certGenJob.image.repository|string|certgen|image name (repository) for the container.|
 |gateway.certGenJob.image.registry|string||image prefix/registry e.g. (quay.io/solo-io)|
@@ -207,7 +188,6 @@
 |gateway.certGenJob.ttlSecondsAfterFinished|int|60|Clean up the finished job after this many seconds. Defaults to 60|
 |gateway.certGenJob.floatingUserId|bool|false|set to true to allow the cluster to dynamically assign a user ID|
 |gateway.certGenJob.runAsUser|float64||Explicitly set the user ID for the container to run as. Default is 10101|
-|gateway.certGenJob.nodeSelector.NAME|string||label selector for nodes|
 |gateway.updateValues|bool|false|if true, will use a provided helm helper 'gloo.updatevalues' to update values during template render - useful for plugins/extensions|
 |gateway.proxyServiceAccount.extraAnnotations.NAME|string||extra annotations to add to the service account|
 |gateway.proxyServiceAccount.disableAutomount|bool|false|disable automunting the service account to the gateway proxy. not mounting the token hardens the proxy container, but may interfere with service mesh integrations|
@@ -431,8 +411,6 @@
 |gatewayProxies.gatewayProxy.antiAffinity|bool|false|configure anti affinity such that pods are preferably not co-located|
 |gatewayProxies.gatewayProxy.tracing.provider|string|||
 |gatewayProxies.gatewayProxy.tracing.cluster|string|||
-|gatewayProxies.gatewayProxy.xdsConfig.rateLimitSettings.max_tokens|int||Maximum number of tokens to be used for rate limiting discovery request calls. If not set, a default value of 100 will be used.|
-|gatewayProxies.gatewayProxy.xdsConfig.rateLimitSettings.fill_rate|double||Rate at which tokens will be filled per second. If not set, a default fill rate of 10 tokens per second will be used.|
 |gatewayProxies.gatewayProxy.gatewaySettings.disableGeneratedGateways|bool|false|set to true to disable the gateway generation for a gateway proxy|
 |gatewayProxies.gatewayProxy.gatewaySettings.ipv4Only|bool|false|set to true if your network allows ipv4 addresses only. Sets the Gateway spec's bindAddress to 0.0.0.0 instead of ::|
 |gatewayProxies.gatewayProxy.gatewaySettings.useProxyProto|bool|false|use proxy protocol|
@@ -621,5 +599,6 @@
 |global.glooMtls.sdsResources.limits.cpu|string||amount of CPUs|
 |global.glooMtls.sdsResources.requests.memory|string||amount of memory|
 |global.glooMtls.sdsResources.requests.cpu|string||amount of CPUs|
+|global.glooMtls.ipv4Only|bool|true|This field if set false will bind the IPv6 address '::' on envoy-sidecar-config.|
 |global.istioSDS.enabled|bool|false||
 |global.istioSDS.customSidecars[]|interface||Override the default Istio sidecar in gateway-proxy with a custom container. Ignored if IstioSDS.enabled is false|
