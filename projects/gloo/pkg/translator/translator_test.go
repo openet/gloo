@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/aws"
+
 	envoycore_sk "github.com/solo-io/solo-kit/pkg/api/external/envoy/api/v2/core"
 
 	envoycore "github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
@@ -319,7 +321,7 @@ var _ = Describe("Translator", func() {
 
 			Expect(err).To(BeNil())
 			Expect(errs.Validate()).To(HaveOccurred())
-			Expect(errs.Validate().Error()).To(ContainSubstring("HttpListener Error: ProcessingError. Reason: auth config not found:"))
+			Expect(errs.Validate().Error()).To(ContainSubstring("VirtualHost Error: ProcessingError. Reason: auth config not found:"))
 		})
 	})
 
@@ -532,6 +534,30 @@ var _ = Describe("Translator", func() {
 
 				Expect(fooRoute).To(Equal(barRoute))
 			})
+		})
+	})
+
+	Context("non route_routeaction routes", func() {
+		BeforeEach(func() {
+			redirectRoute := &v1.Route{
+				Action: &v1.Route_RedirectAction{
+					RedirectAction: &v1.RedirectAction{
+						ResponseCode: 400,
+					},
+				},
+			}
+			directResponseRoute := &v1.Route{
+				Action: &v1.Route_DirectResponseAction{
+					DirectResponseAction: &v1.DirectResponseAction{
+						Status: 400,
+					},
+				},
+			}
+			routes = []*v1.Route{redirectRoute, directResponseRoute}
+		})
+
+		It("reports no errors with a redirect route or direct response route", func() {
+			translate()
 		})
 	})
 
@@ -932,6 +958,57 @@ var _ = Describe("Translator", func() {
 
 	})
 
+	Context("when handling cluster_header HTTP header name", func() {
+		Context("with valid http header", func() {
+			BeforeEach(func() {
+				routes = []*v1.Route{{
+					Name:     "testRouteClusterHeader",
+					Matchers: []*matchers.Matcher{matcher},
+					Action: &v1.Route_RouteAction{
+						RouteAction: &v1.RouteAction{
+							Destination: &v1.RouteAction_ClusterHeader{
+								ClusterHeader: "test-cluster",
+							},
+						},
+					},
+				}}
+			})
+
+			It("should translate valid HTTP header name", func() {
+				translate()
+				route := routeConfiguration.VirtualHosts[0].Routes[0].GetRoute()
+				Expect(route).ToNot(BeNil())
+				cluster := route.GetClusterHeader()
+				Expect(cluster).ToNot(BeNil())
+				Expect(cluster).To(Equal("test-cluster"))
+			})
+		})
+
+		Context("with invalid http header", func() {
+			BeforeEach(func() {
+				routes = []*v1.Route{{
+					Name:     "testRouteClusterHeader",
+					Matchers: []*matchers.Matcher{matcher},
+					Action: &v1.Route_RouteAction{
+						RouteAction: &v1.RouteAction{
+							Destination: &v1.RouteAction_ClusterHeader{
+								ClusterHeader: "invalid:-cluster",
+							},
+						},
+					},
+				}}
+			})
+
+			It("should warn about invalid http header name", func() {
+				_, _, report, _ := translator.Translate(params, proxy)
+				routeReportWarning := report.GetListenerReports()[0].GetHttpListenerReport().GetVirtualHostReports()[0].GetRouteReports()[0].GetWarnings()[0]
+				reason := routeReportWarning.GetReason()
+				Expect(reason).To(Equal("invalid:-cluster is an invalid HTTP header name"))
+			})
+		})
+
+	})
+
 	Context("when handling upstream groups", func() {
 
 		var (
@@ -1039,6 +1116,40 @@ var _ = Describe("Translator", func() {
 			Expect(clusters.Clusters).To(HaveLen(2))
 			Expect(clusters.Clusters[0].Name).To(Equal(UpstreamToClusterName(upstream.Metadata.Ref())))
 			Expect(clusters.Clusters[1].Name).To(Equal(UpstreamToClusterName(upstream2.Metadata.Ref())))
+		})
+	})
+
+	Context("when handling missing upstream groups", func() {
+		BeforeEach(func() {
+			metadata := core.Metadata{
+				Name:      "missing",
+				Namespace: "gloo-system",
+			}
+			ref := metadata.Ref()
+
+			routes = []*v1.Route{{
+				Matchers: []*matchers.Matcher{matcher},
+				Action: &v1.Route_RouteAction{
+					RouteAction: &v1.RouteAction{
+						Destination: &v1.RouteAction_UpstreamGroup{
+							UpstreamGroup: &ref,
+						},
+					},
+				},
+			}}
+		})
+
+		It("should set a ClusterSpecifier on the referring route", func() {
+			snap, _, _, err := translator.Translate(params, proxy)
+			Expect(err).NotTo(HaveOccurred())
+
+			routes := snap.GetResources(xds.RouteType)
+			routesProto := routes.Items["http-listener-routes"]
+
+			routeConfig := routesProto.ResourceProto().(*envoyapi.RouteConfiguration)
+			clusterSpecifier := routeConfig.VirtualHosts[0].Routes[0].GetRoute().GetClusterSpecifier()
+			clusterRouteAction := clusterSpecifier.(*envoyrouteapi.RouteAction_Cluster)
+			Expect(clusterRouteAction.Cluster).To(Equal(""))
 		})
 	})
 
@@ -1555,6 +1666,159 @@ var _ = Describe("Translator", func() {
 			Expect(metadata.Fields[tag(dev)]).To(Equal(falseValue))
 			Expect(metadata.Fields[tag(prod)]).To(Equal(trueValue))
 		})
+	})
+
+	Context("when translating a route that points to an AWS lambda", func() {
+
+		createLambdaUpstream := func(namespace, name, region string, lambdaFuncs []*aws.LambdaFunctionSpec) *v1.Upstream {
+			return &v1.Upstream{
+				Metadata: core.Metadata{
+					Name:      name,
+					Namespace: namespace,
+				},
+				DiscoveryMetadata: nil,
+				UpstreamType: &v1.Upstream_Aws{
+					Aws: &aws.UpstreamSpec{
+						SecretRef: &core.ResourceRef{
+							Name:      "my-aws-secret",
+							Namespace: "my-namespace",
+						},
+						Region:          region,
+						LambdaFunctions: lambdaFuncs,
+					},
+				},
+			}
+		}
+
+		BeforeEach(func() {
+			params.Snapshot.Upstreams = append(params.Snapshot.Upstreams,
+				createLambdaUpstream("my-namespace", "lambda-upstream-1", "us-east-1",
+					[]*aws.LambdaFunctionSpec{
+						{
+							LogicalName: "usEast1Lambda1",
+						},
+						{
+							LogicalName: "usEast1Lambda2",
+						},
+					}),
+				createLambdaUpstream("my-namespace", "lambda-upstream-2", "us-east-2",
+					[]*aws.LambdaFunctionSpec{
+						{
+							LogicalName: "usEast2Lambda1",
+						},
+						{
+							LogicalName: "usEast2Lambda2",
+						},
+					}))
+
+			secret := &v1.Secret{
+				Metadata: core.Metadata{
+					Name:      "my-aws-secret",
+					Namespace: "my-namespace",
+				},
+				Kind: &v1.Secret_Aws{
+					Aws: &v1.AwsSecret{
+						AccessKey: "a",
+						SecretKey: "a",
+					},
+				},
+			}
+
+			params.Snapshot.Secrets = v1.SecretList{secret}
+		})
+
+		It("has no errors when pointing to a valid lambda", func() {
+			validLambdaRoute := &v1.Route{Action: &v1.Route_RouteAction{
+				RouteAction: &v1.RouteAction{
+					Destination: &v1.RouteAction_Single{
+						Single: &v1.Destination{
+							DestinationType: &v1.Destination_Upstream{
+								Upstream: &core.ResourceRef{
+									Name:      "lambda-upstream-1",
+									Namespace: "my-namespace",
+								},
+							},
+							DestinationSpec: &v1.DestinationSpec{
+								DestinationType: &v1.DestinationSpec_Aws{
+									Aws: &aws.DestinationSpec{
+										LogicalName: "usEast1Lambda1",
+									},
+								},
+							},
+						},
+					},
+				}}}
+
+			routes := proxy.GetListeners()[0].GetHttpListener().GetVirtualHosts()[0].GetRoutes()
+			proxy.GetListeners()[0].GetHttpListener().GetVirtualHosts()[0].Routes = append(routes, validLambdaRoute)
+
+			translate()
+		})
+
+		It("reports error when pointing to a lambda function that doesn't exist", func() {
+			invalidLambdaRoute := &v1.Route{Action: &v1.Route_RouteAction{
+				RouteAction: &v1.RouteAction{
+					Destination: &v1.RouteAction_Single{
+						Single: &v1.Destination{
+							DestinationType: &v1.Destination_Upstream{
+								Upstream: &core.ResourceRef{
+									Name:      "lambda-upstream-1",
+									Namespace: "my-namespace",
+								},
+							},
+							DestinationSpec: &v1.DestinationSpec{
+								DestinationType: &v1.DestinationSpec_Aws{
+									Aws: &aws.DestinationSpec{
+										LogicalName: "nonexistentLambdaFunc",
+									},
+								},
+							},
+						},
+					},
+				}}}
+
+			routes := proxy.GetListeners()[0].GetHttpListener().GetVirtualHosts()[0].GetRoutes()
+			proxy.GetListeners()[0].GetHttpListener().GetVirtualHosts()[0].Routes = append(routes, invalidLambdaRoute)
+			_, resourceReport, _, _ := translator.Translate(params, proxy)
+			Expect(resourceReport.Validate()).To(HaveOccurred())
+			Expect(resourceReport.Validate().Error()).To(ContainSubstring("a route references nonexistentLambdaFunc AWS lambda which does not exist on the route's upstream"))
+		})
+
+		It("reports error when route has Multi Cluster destination and points to at least one lambda function that doesn't exist", func() {
+			invalidLambdaRoute := &v1.Route{Action: &v1.Route_RouteAction{
+				RouteAction: &v1.RouteAction{
+					Destination: &v1.RouteAction_Multi{
+						Multi: &v1.MultiDestination{
+							Destinations: []*v1.WeightedDestination{
+								{
+									Destination: &v1.Destination{
+										DestinationType: &v1.Destination_Upstream{
+											Upstream: &core.ResourceRef{
+												Name:      "aws-lambda-upstream",
+												Namespace: "my-namespace",
+											},
+										},
+										DestinationSpec: &v1.DestinationSpec{
+											DestinationType: &v1.DestinationSpec_Aws{
+												Aws: &aws.DestinationSpec{
+													LogicalName: "nonexistentLambdaFunc",
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				}}}
+
+			routes := proxy.GetListeners()[0].GetHttpListener().GetVirtualHosts()[0].GetRoutes()
+			proxy.GetListeners()[0].GetHttpListener().GetVirtualHosts()[0].Routes = append(routes, invalidLambdaRoute)
+			_, resourceReport, _, _ := translator.Translate(params, proxy)
+			Expect(resourceReport.Validate()).To(HaveOccurred())
+			Expect(resourceReport.Validate().Error()).To(ContainSubstring("a route references nonexistentLambdaFunc AWS lambda which does not exist on the route's upstream"))
+		})
+
 	})
 
 	Context("Route plugin", func() {

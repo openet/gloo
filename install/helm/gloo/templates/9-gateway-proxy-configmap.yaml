@@ -4,6 +4,7 @@
 {{- if .Values.gateway.enabled }}
 {{- $global := .Values.global }}
 {{- range $name, $spec := .Values.gatewayProxies }}
+{{- if not $spec.disabled }}
 {{- $statsConfig := coalesce $spec.stats $global.glooStats }}
 ---
 # config_map
@@ -25,6 +26,10 @@ data:
         static_layer:
           overload:
             global_downstream_max_connections: {{ $spec.globalDownstreamMaxConnections }}
+          {{- if $spec.pathWithEscapedSlashesAction }}
+          http_connection_manager:
+            path_with_escaped_slashes_action: {{ $spec.pathWithEscapedSlashesAction }}
+          {{- end }}
       - name: admin_layer
         admin_layer: {}
     node:
@@ -33,12 +38,6 @@ data:
       metadata:
         # role's value is the key for the in-memory xds cache (projects/gloo/pkg/xds/envoy.go)
         role: "{{ `{{.PodNamespace}}` }}~{{ $name | kebabcase }}"
-    stats_sinks:
-      - name: envoy.stat_sinks.metrics_service
-        typed_config:
-          "@type": type.googleapis.com/envoy.config.metrics.v3.MetricsServiceConfig
-          grpc_service:
-            envoy_grpc: {cluster_name: gloo.{{ $.Release.Namespace }}.svc.{{ $.Values.k8s.clusterName}}:9966}
     static_resources:
 {{- if or $statsConfig.enabled (or $spec.readConfig $spec.extraListenersHelper) }}
       listeners:
@@ -83,13 +82,6 @@ data:
                                 cluster: admin_port_cluster
                     http_filters:
                       - name: envoy.filters.http.router
-{{- if $spec.tracing -}}
-{{- if $spec.tracing.provider }}
-                    tracing:
-                      provider:
-{{ toYaml $spec.tracing.provider | indent 24}}
-{{- end}} # if $spec.tracing.provider
-{{- end}} # if $spec.tracing
 {{- end}} # if $statsConfig.enabled
 {{- if $spec.readConfig }}
         - name: read_config_listener
@@ -134,13 +126,7 @@ data:
                                 cluster: admin_port_cluster
                     http_filters:
                       - name: envoy.filters.http.router
-{{- if $spec.tracing -}}
-{{- if $spec.tracing.provider }}
-                    tracing:
-                      provider:
-{{ toYaml $spec.tracing.provider | indent 24}}
-{{- end}} # if $spec.tracing.provider
-{{- end}} # if $spec.tracing
+
 {{- end}} # if $spec.readConfig
       clusters:
       - name: gloo.{{ $.Release.Namespace }}.svc.{{ $.Values.k8s.clusterName}}:{{ $.Values.gloo.deployment.xdsPort }}
@@ -251,20 +237,6 @@ data:
           tcp_keepalive: {}
         type: STRICT_DNS
         respect_dns_ttl: true
-      - name: gloo.{{ $.Release.Namespace }}.svc.{{ $.Values.k8s.clusterName}}:9966
-        alt_stat_name: metrics_cluster
-        connect_timeout: 5.000s
-        load_assignment:
-            cluster_name: gloo.{{ $.Release.Namespace }}.svc.{{ $.Values.k8s.clusterName}}:9966
-            endpoints:
-            - lb_endpoints:
-              - endpoint:
-                    address:
-                        socket_address:
-                            address: gloo.{{ $.Release.Namespace }}.svc.{{ $.Values.k8s.clusterName}}
-                            port_value: 9966
-        http2_protocol_options: {}
-        type: STRICT_DNS
 {{- if $.Values.accessLogger.enabled }}
       - name: access_log_cluster
         connect_timeout: 5.000s
@@ -331,6 +303,13 @@ data:
                     port_value: 19000
 {{- end}} # if or $statsConfig.enabled ($spec.readConfig)
 
+{{- if $spec.tracing -}}
+{{- if $spec.tracing.provider }}
+    tracing:
+      http:
+{{ toYaml $spec.tracing.provider | indent 8}}
+{{- end}} # if $spec.tracing.provider
+{{- end}} # if $spec.tracing
     dynamic_resources:
       ads_config:
         api_type: GRPC
@@ -348,5 +327,6 @@ data:
           address: {{ $spec.loopBackAddress }}
           port_value: 19000
 {{- else}}{{ toYaml $spec.configMap.data | indent 2}}{{- end}} # if (empty $spec.configMap.data) ## allows full custom
+{{- end }} # - if not $spec.disabled
 {{- end }} # range $name, $spec := .Values.gatewayProxies
 {{- end -}} # if .Values.gateway.enabled

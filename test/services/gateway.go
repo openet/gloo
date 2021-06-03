@@ -116,6 +116,7 @@ func RunGlooGatewayUdsFds(ctx context.Context, runOptions *RunOptions) TestClien
 		WatchNamespaces:    runOptions.NsToWatch,
 		DiscoveryNamespace: runOptions.NsToWrite,
 	}
+
 	ctx = settingsutil.WithSettings(ctx, settings)
 
 	glooOpts := defaultGlooOpts(ctx, runOptions)
@@ -191,6 +192,23 @@ func defaultTestConstructOpts(ctx context.Context, runOptions *RunOptions) trans
 	}
 
 	meta := runOptions.Settings.GetMetadata()
+
+	var validation *translator.ValidationOpts
+	if runOptions.Settings != nil && runOptions.Settings.Gateway != nil && runOptions.Settings.Gateway.Validation != nil {
+		validation = &translator.ValidationOpts{}
+		if runOptions.Settings.Gateway.Validation.ProxyValidationServerAddr != "" {
+			validation.ProxyValidationServerAddress = runOptions.Settings.Gateway.Validation.ProxyValidationServerAddr
+		}
+		if runOptions.Settings.Gateway.Validation.AllowWarnings != nil {
+			validation.AllowWarnings = runOptions.Settings.Gateway.Validation.AllowWarnings.Value
+
+		}
+		if runOptions.Settings.Gateway.Validation.AlwaysAccept != nil {
+			validation.AlwaysAcceptResources = runOptions.Settings.Gateway.Validation.AlwaysAccept.Value
+		}
+
+	}
+
 	return translator.Opts{
 		GlooNamespace:   meta.GetNamespace(),
 		WriteNamespace:  runOptions.NsToWrite,
@@ -203,7 +221,8 @@ func defaultTestConstructOpts(ctx context.Context, runOptions *RunOptions) trans
 			Ctx:         ctx,
 			RefreshRate: time.Minute,
 		},
-		DevMode: false,
+		Validation: validation,
+		DevMode:    false,
 	}
 }
 
@@ -241,6 +260,7 @@ func defaultGlooOpts(ctx context.Context, runOptions *RunOptions) bootstrap.Opts
 	}
 
 	return bootstrap.Opts{
+		Settings:          runOptions.Settings,
 		WriteNamespace:    runOptions.NsToWrite,
 		Upstreams:         f,
 		UpstreamGroups:    f,

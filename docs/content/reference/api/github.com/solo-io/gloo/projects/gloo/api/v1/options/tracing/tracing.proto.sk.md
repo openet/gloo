@@ -14,6 +14,8 @@ weight: 5
 - [ListenerTracingSettings](#listenertracingsettings)
 - [RouteTracingSettings](#routetracingsettings)
 - [TracePercentages](#tracepercentages)
+- [TracingTagEnvironmentVariable](#tracingtagenvironmentvariable)
+- [TracingTagLiteral](#tracingtagliteral)
   
 
 
@@ -36,6 +38,8 @@ See here for additional information about configuring tracing with Gloo: https:/
 "requestHeadersForTags": []string
 "verbose": bool
 "tracePercentages": .tracing.options.gloo.solo.io.TracePercentages
+"environmentVariablesForTags": []tracing.options.gloo.solo.io.TracingTagEnvironmentVariable
+"literalsForTags": []tracing.options.gloo.solo.io.TracingTagLiteral
 
 ```
 
@@ -44,6 +48,8 @@ See here for additional information about configuring tracing with Gloo: https:/
 | `requestHeadersForTags` | `[]string` | Optional. If specified, Envoy will include the headers and header values for any matching request headers. |  |
 | `verbose` | `bool` | Optional. If true, Envoy will include logs for streaming events. Default: false. |  |
 | `tracePercentages` | [.tracing.options.gloo.solo.io.TracePercentages](../tracing.proto.sk/#tracepercentages) | Requests can produce traces by random sampling or when the `x-client-trace-id` header is provided. TracePercentages defines the limits for random, forced, and overall tracing percentages. |  |
+| `environmentVariablesForTags` | [[]tracing.options.gloo.solo.io.TracingTagEnvironmentVariable](../tracing.proto.sk/#tracingtagenvironmentvariable) | Optional. If specified, Envoy will include the environment variables with the given tag as tracing tags. |  |
+| `literalsForTags` | [[]tracing.options.gloo.solo.io.TracingTagLiteral](../tracing.proto.sk/#tracingtagliteral) | Optional. If specified, Envoy will include the literals with the given tag as tracing tags. |  |
 
 
 
@@ -60,6 +66,7 @@ See here for additional information about configuring tracing with Gloo: https:/
 ```yaml
 "routeDescriptor": string
 "tracePercentages": .tracing.options.gloo.solo.io.TracePercentages
+"propagate": .google.protobuf.BoolValue
 
 ```
 
@@ -67,6 +74,7 @@ See here for additional information about configuring tracing with Gloo: https:/
 | ----- | ---- | ----------- |----------- | 
 | `routeDescriptor` | `string` | Optional. If set, will be used to identify the route that produced the trace. Note that this value will be overridden if the "x-envoy-decorator-operation" header is passed. |  |
 | `tracePercentages` | [.tracing.options.gloo.solo.io.TracePercentages](../tracing.proto.sk/#tracepercentages) | Requests can produce traces by random sampling or when the `x-client-trace-id` header is provided. TracePercentages defines the limits for random, forced, and overall tracing percentages. |  |
+| `propagate` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Optional. Default is true, If set to false, the tracing headers will not propagate to the upstream. |  |
 
 
 
@@ -90,6 +98,50 @@ TracePercentages defines the limits for random, forced, and overall tracing perc
 | `clientSamplePercentage` | [.google.protobuf.FloatValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/float-value) | Percentage of requests that should produce traces when the `x-client-trace-id` header is provided. optional, defaults to 100.0 This should be a value between 0.0 and 100.0, with up to 6 significant digits. |  |
 | `randomSamplePercentage` | [.google.protobuf.FloatValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/float-value) | Percentage of requests that should produce traces by random sampling. optional, defaults to 100.0 This should be a value between 0.0 and 100.0, with up to 6 significant digits. |  |
 | `overallSamplePercentage` | [.google.protobuf.FloatValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/float-value) | Overall percentage of requests that should produce traces. optional, defaults to 100.0 This should be a value between 0.0 and 100.0, with up to 6 significant digits. |  |
+
+
+
+
+---
+### TracingTagEnvironmentVariable
+
+ 
+Requests can produce traces with custom tags.
+TracingTagEnvironmentVariable defines an environment variable which gets added as custom tag.
+
+```yaml
+"tag": string
+"name": string
+"defaultValue": string
+
+```
+
+| Field | Type | Description | Default |
+| ----- | ---- | ----------- |----------- | 
+| `tag` | `string` | Used to populate the tag name. |  |
+| `name` | `string` | Environment variable name to obtain the value to populate the tag value. |  |
+| `defaultValue` | `string` | When the environment variable is not found, the tag value will be populated with this default value if specified, otherwise no tag will be populated. |  |
+
+
+
+
+---
+### TracingTagLiteral
+
+ 
+Requests can produce traces with custom tags.
+TracingTagLiteral defines a literal which gets added as custom tag.
+
+```yaml
+"tag": string
+"value": string
+
+```
+
+| Field | Type | Description | Default |
+| ----- | ---- | ----------- |----------- | 
+| `tag` | `string` | Used to populate the tag name. |  |
+| `value` | `string` | Static literal value to populate the tag value. |  |
 
 
 

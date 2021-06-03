@@ -26,6 +26,13 @@ weight: 5
 - [SaltedHashedPassword](#saltedhashedpassword)
 - [OAuth](#oauth)
 - [OAuth2](#oauth2)
+- [RedisOptions](#redisoptions)
+- [UserSession](#usersession)
+- [InternalSession](#internalsession)
+- [RedisSession](#redissession)
+- [CookieOptions](#cookieoptions)
+- [HeaderConfiguration](#headerconfiguration)
+- [JwksOnDemandCacheRefreshPolicy](#jwksondemandcacherefreshpolicy)
 - [OidcAuthorizationCode](#oidcauthorizationcode)
 - [AccessTokenValidation](#accesstokenvalidation)
 - [OauthSecret](#oauthsecret)
@@ -390,6 +397,155 @@ Deprecated: Prefer OAuth2
 
 
 ---
+### RedisOptions
+
+
+
+```yaml
+"host": string
+"db": int
+"poolSize": int
+
+```
+
+| Field | Type | Description | Default |
+| ----- | ---- | ----------- |----------- | 
+| `host` | `string` | address of the redis. can be address:port or unix://path/to/unix.sock. |  |
+| `db` | `int` | db to use. can leave unset for db 0. |  |
+| `poolSize` | `int` | size of the connection pool. can leave unset for default. defaults to 10 connections per every CPU. |  |
+
+
+
+
+---
+### UserSession
+
+
+
+```yaml
+"failOnFetchFailure": bool
+"cookieOptions": .enterprise.gloo.solo.io.UserSession.CookieOptions
+"cookie": .enterprise.gloo.solo.io.UserSession.InternalSession
+"redis": .enterprise.gloo.solo.io.UserSession.RedisSession
+
+```
+
+| Field | Type | Description | Default |
+| ----- | ---- | ----------- |----------- | 
+| `failOnFetchFailure` | `bool` | should we fail auth flow when failing to get a session from redis, or allow it to continue, potentially starting a new auth flow and setting a new session. |  |
+| `cookieOptions` | [.enterprise.gloo.solo.io.UserSession.CookieOptions](../extauth.proto.sk/#cookieoptions) | Set-Cookie options. |  |
+| `cookie` | [.enterprise.gloo.solo.io.UserSession.InternalSession](../extauth.proto.sk/#internalsession) | Set the tokens in the cookie itself. No need for server side state. Only one of `cookie` or `redis` can be set. |  |
+| `redis` | [.enterprise.gloo.solo.io.UserSession.RedisSession](../extauth.proto.sk/#redissession) | Use redis to store the tokens and just store a random id in the cookie. Only one of `redis` or `cookie` can be set. |  |
+
+
+
+
+---
+### InternalSession
+
+
+
+```yaml
+
+```
+
+| Field | Type | Description | Default |
+| ----- | ---- | ----------- |----------- | 
+
+
+
+
+---
+### RedisSession
+
+
+
+```yaml
+"options": .enterprise.gloo.solo.io.RedisOptions
+"keyPrefix": string
+"cookieName": string
+
+```
+
+| Field | Type | Description | Default |
+| ----- | ---- | ----------- |----------- | 
+| `options` | [.enterprise.gloo.solo.io.RedisOptions](../extauth.proto.sk/#redisoptions) | Options to connect to redis. |  |
+| `keyPrefix` | `string` | Key prefix inside redis. |  |
+| `cookieName` | `string` | Cookie name to set and store the session id. If empty the default "__session" is used. |  |
+
+
+
+
+---
+### CookieOptions
+
+
+
+```yaml
+"maxAge": .google.protobuf.UInt32Value
+"notSecure": bool
+"path": .google.protobuf.StringValue
+"domain": string
+
+```
+
+| Field | Type | Description | Default |
+| ----- | ---- | ----------- |----------- | 
+| `maxAge` | [.google.protobuf.UInt32Value](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/u-int-32-value) | Max age for the cookie. Leave unset for a default of 30 days (2592000 seconds). To disable cookie expiry, set explicitly to 0. |  |
+| `notSecure` | `bool` | Use a non-secure cookie. Note - this should only be used for testing and in trusted environments. |  |
+| `path` | [.google.protobuf.StringValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/string-value) | Path of the cookie. If unset, defaults to "/". Set it explicitly to "" to avoid setting a path. |  |
+| `domain` | `string` | Cookie domain. |  |
+
+
+
+
+---
+### HeaderConfiguration
+
+
+
+```yaml
+"idTokenHeader": string
+
+```
+
+| Field | Type | Description | Default |
+| ----- | ---- | ----------- |----------- | 
+| `idTokenHeader` | `string` | If set, the id token will be forward upstream using this header name. |  |
+
+
+
+
+---
+### JwksOnDemandCacheRefreshPolicy
+
+ 
+The json web key set (JWKS) (https://tools.ietf.org/html/rfc7517) is discovered at an interval
+from a remote source. When keys rotate in the remote source, there may be a delay in the
+local source picking up those new keys. Therefore, a user could execute a request with a token
+that has been signed by a key in the remote JWKS, but the local cache doesn't have the key yet.
+The request would fail because the key isn't contained in the local set. Since most IdPs publish key
+keys in their remote JWKS before they are used, this is not an issue most of the time.
+This policy lets you define the behavior for when a user has a token with a key
+not yet in the local cache.
+
+```yaml
+"never": .google.protobuf.Empty
+"always": .google.protobuf.Empty
+"maxIdpReqPerPollingInterval": int
+
+```
+
+| Field | Type | Description | Default |
+| ----- | ---- | ----------- |----------- | 
+| `never` | [.google.protobuf.Empty](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/empty) | Never refresh the local JWKS cache on demand. If a key is not in the cache, it is assumed to be malicious. This is the default policy since we assume that IdPs publish keys before they rotate them, and frequent polling finds the newest keys. Only one of `never`, or `maxIdpReqPerPollingInterval` can be set. |  |
+| `always` | [.google.protobuf.Empty](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/empty) | If a key is not in the cache, fetch the most recent keys from the IdP and update the cache. NOTE: This should only be done in trusted environments, since missing keys will each trigger a request to the IdP. Using this in an environment exposed to the internet will allow malicious agents to execute a DDoS attack by spamming protected endpoints with tokens signed by invalid keys. Only one of `always`, or `maxIdpReqPerPollingInterval` can be set. |  |
+| `maxIdpReqPerPollingInterval` | `int` | If a key is not in the cache, fetch the most recent keys from the IdP and update the cache. This value sets the number of requests to the IdP per polling interval. If that limit is exceeded, we will stop fetching from the IdP for the remainder of the polling interval. Only one of `maxIdpReqPerPollingInterval`, or `always` can be set. |  |
+
+
+
+
+---
 ### OidcAuthorizationCode
 
 
@@ -401,7 +557,12 @@ Deprecated: Prefer OAuth2
 "authEndpointQueryParams": map<string, string>
 "appUrl": string
 "callbackPath": string
+"logoutPath": string
 "scopes": []string
+"session": .enterprise.gloo.solo.io.UserSession
+"headers": .enterprise.gloo.solo.io.HeaderConfiguration
+"discoveryPollInterval": .google.protobuf.Duration
+"jwksCacheRefreshPolicy": .enterprise.gloo.solo.io.JwksOnDemandCacheRefreshPolicy
 
 ```
 
@@ -412,8 +573,13 @@ Deprecated: Prefer OAuth2
 | `issuerUrl` | `string` | The url of the issuer. We will look for OIDC information in issuerUrl+ ".well-known/openid-configuration". |  |
 | `authEndpointQueryParams` | `map<string, string>` | extra query parameters to apply to the Ext-Auth service's authorization request to the identity provider. |  |
 | `appUrl` | `string` | we to redirect after successful auth, if we can't determine the original url this should be your publicly available app url. |  |
-| `callbackPath` | `string` | a callback path relative to app url that will be used for OIDC callbacks. needs to not be used by the application. |  |
+| `callbackPath` | `string` | a callback path relative to app url that will be used for OIDC callbacks. should not be used by the application. |  |
+| `logoutPath` | `string` | a path relative to app url that will be used for logging out from an OIDC session. should not be used by the application. If not provided, logout functionality will be disabled. |  |
 | `scopes` | `[]string` | Scopes to request in addition to openid scope. |  |
+| `session` | [.enterprise.gloo.solo.io.UserSession](../extauth.proto.sk/#usersession) | Configuration related to the user session. |  |
+| `headers` | [.enterprise.gloo.solo.io.HeaderConfiguration](../extauth.proto.sk/#headerconfiguration) | Configures headers added to requests. |  |
+| `discoveryPollInterval` | [.google.protobuf.Duration](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/duration) | The interval at which OIDC configuration is discovered at <issuerUrl>/.well-known/openid-configuration If not specified, the default value is 30 minutes. |  |
+| `jwksCacheRefreshPolicy` | [.enterprise.gloo.solo.io.JwksOnDemandCacheRefreshPolicy](../extauth.proto.sk/#jwksondemandcacherefreshpolicy) | If a user executes a request with a key that is not found in the JWKS, it could be that the keys have rotated on the remote source, and not yet in the local cache. This policy lets you define the behavior for how to refresh the local cache during a request where an invalid key is provided. |  |
 
 
 
@@ -655,7 +821,12 @@ Deprecated, prefer OAuth2Config
 "authEndpointQueryParams": map<string, string>
 "appUrl": string
 "callbackPath": string
+"logoutPath": string
 "scopes": []string
+"session": .enterprise.gloo.solo.io.UserSession
+"headers": .enterprise.gloo.solo.io.HeaderConfiguration
+"discoveryPollInterval": .google.protobuf.Duration
+"jwksCacheRefreshPolicy": .enterprise.gloo.solo.io.JwksOnDemandCacheRefreshPolicy
 
 ```
 
@@ -667,7 +838,12 @@ Deprecated, prefer OAuth2Config
 | `authEndpointQueryParams` | `map<string, string>` | extra query parameters to apply to the Ext-Auth service's authorization request to the identity provider. |  |
 | `appUrl` | `string` | we to redirect after successful auth, if we can't determine the original url this should be your publicly available app url. |  |
 | `callbackPath` | `string` | a callback path relative to app url that will be used for OIDC callbacks. needs to not be used by the application. |  |
+| `logoutPath` | `string` | a path relative to app url that will be used for logging out from an OIDC session. should not be used by the application. If not provided, logout functionality will be disabled. |  |
 | `scopes` | `[]string` | scopes to request in addition to the openid scope. |  |
+| `session` | [.enterprise.gloo.solo.io.UserSession](../extauth.proto.sk/#usersession) |  |  |
+| `headers` | [.enterprise.gloo.solo.io.HeaderConfiguration](../extauth.proto.sk/#headerconfiguration) | Configures headers added to requests. |  |
+| `discoveryPollInterval` | [.google.protobuf.Duration](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/duration) | The interval at which OIDC configuration is discovered at <issuerUrl>/.well-known/openid-configuration If not specified, the default value is 30 minutes. |  |
+| `jwksCacheRefreshPolicy` | [.enterprise.gloo.solo.io.JwksOnDemandCacheRefreshPolicy](../extauth.proto.sk/#jwksondemandcacherefreshpolicy) | If a user executes a request with a key that is not found in the JWKS, it could be that the keys have rotated on the remote source, and not yet in the local cache. This policy lets you define the behavior for how to refresh the local cache during a request where an invalid key is provided. |  |
 
 
 

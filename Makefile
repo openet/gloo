@@ -29,7 +29,7 @@ ifeq ($(VERSION), $(WASM_VERSION))
 	WASM_VERSION = wasm-$(VERSION)
 endif
 
-ENVOY_GLOO_IMAGE ?= quay.io/solo-io/envoy-gloo:1.16.0-rc4
+ENVOY_GLOO_IMAGE ?= quay.io/solo-io/envoy-gloo:1.16.4
 ENVOY_GLOO_WASM_IMAGE ?= quay.io/solo-io/envoy-gloo:1.16.0-wasm-rc1
 
 # The full SHA of the currently checked out commit
@@ -117,6 +117,10 @@ install-go-tools: mod-download
 	GOBIN=$(DEPSGOBIN) go install github.com/golang/mock/mockgen
 	GOBIN=$(DEPSGOBIN) go install github.com/gogo/protobuf/gogoproto
 	GOBIN=$(DEPSGOBIN) go install github.com/onsi/ginkgo/ginkgo
+
+.PHONY: run-tests
+run-tests:
+	$(DEPSGOBIN)/ginkgo -ldflags=$(LDFLAGS) -r -failFast -trace -progress -race -compilers=4 -failOnPending -noColor $(TEST_PKG)
 
 # command to run regression tests with guaranteed access to $(DEPSGOBIN)/ginkgo
 # requires the environment variable KUBE2E_TESTS to be set to the test type you wish to run
@@ -328,7 +332,7 @@ discovery-docker: $(DISCOVERY_OUTPUT_DIR)/discovery-linux-$(GOARCH) $(DISCOVERY_
 		-t $(IMAGE_REPO)/discovery:$(VERSION)
 
 #----------------------------------------------------------------------------------
-# Gloo
+# Gloo Edge
 #----------------------------------------------------------------------------------
 
 GLOO_DIR=projects/gloo
@@ -353,7 +357,7 @@ gloo-docker: $(GLOO_OUTPUT_DIR)/gloo-linux-$(GOARCH) $(GLOO_OUTPUT_DIR)/Dockerfi
 		-t $(IMAGE_REPO)/gloo:$(VERSION)
 
 #----------------------------------------------------------------------------------
-# SDS Server - gRPC server for serving Secret Discovery Service config for Gloo MTLS
+# SDS Server - gRPC server for serving Secret Discovery Service config for Gloo Edge MTLS
 #----------------------------------------------------------------------------------
 
 SDS_DIR=projects/sds
@@ -501,7 +505,7 @@ ifeq ($(RELEASE),"true")
 endif
 
 #----------------------------------------------------------------------------------
-# Build the Gloo Manifests that are published as release assets
+# Build the Gloo Edge Manifests that are published as release assets
 #----------------------------------------------------------------------------------
 
 .PHONY: render-manifests
@@ -630,10 +634,10 @@ push-kind-images: docker
 #
 # The following targets are used to generate the assets on which the kube2e tests rely upon. The following actions are performed:
 #
-#   1. Generate Gloo value files
-#   2. Package the Gloo Helm chart to the _test directory (also generate an index file)
+#   1. Generate Gloo Edge value files
+#   2. Package the Gloo Edge Helm chart to the _test directory (also generate an index file)
 #
-# The Kube2e tests will use the generated Gloo Chart to install Gloo to the GKE test cluster.
+# The Kube2e tests will use the generated Gloo Edge Chart to install Gloo Edge to the GKE test cluster.
 
 .PHONY: build-test-assets
 build-test-assets: build-test-chart $(OUTPUT_DIR)/glooctl-linux-$(GOARCH) \
@@ -662,3 +666,12 @@ update-licenses:
 # use `make print-MAKEFILE_VAR` to print the value of MAKEFILE_VAR
 
 print-%  : ; @echo $($*)
+
+SCAN_BUCKET ?= solo-gloo-security-scans/gloo
+SCAN_DIR ?= $(OUTPUT_DIR)/scans
+
+.PHONY: publish-security-scan
+publish-security-scan:
+ifeq ($(RELEASE),"true")
+	gsutil cp -r $(SCAN_DIR)/$(VERSION)/$(SCAN_FILE) gs://$(SCAN_BUCKET)/$(VERSION)/$(SCAN_FILE)
+endif

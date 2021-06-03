@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	envoyv2 "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v2"
+	"github.com/envoyproxy/go-control-plane/pkg/resource/v2"
 	"github.com/gogo/protobuf/types"
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
@@ -35,8 +37,6 @@ import (
 	sslutils "github.com/solo-io/gloo/projects/gloo/pkg/utils"
 	"github.com/solo-io/gloo/projects/gloo/pkg/validation"
 	"github.com/solo-io/gloo/projects/gloo/pkg/xds"
-	"github.com/solo-io/gloo/projects/metrics/pkg/metricsservice"
-	"github.com/solo-io/gloo/projects/metrics/pkg/runner"
 	"github.com/solo-io/go-utils/contextutils"
 	"github.com/solo-io/go-utils/errutils"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients"
@@ -146,6 +146,7 @@ func NewValidationServer(ctx context.Context, grpcServer *grpc.Server, bindAddr 
 var (
 	DefaultXdsBindAddr        = fmt.Sprintf("0.0.0.0:%v", defaults.GlooXdsPort)
 	DefaultValidationBindAddr = fmt.Sprintf("0.0.0.0:%v", defaults.GlooValidationPort)
+	DefaultRestXdsBindAddr    = fmt.Sprintf("0.0.0.0:%v", defaults.GlooRestXdsPort)
 )
 
 func getAddr(addr string) (*net.TCPAddr, error) {
@@ -312,9 +313,6 @@ type Extensions struct {
 	PluginExtensionsFuncs []func() plugins.Plugin
 	SyncerExtensions      []TranslatorSyncerExtensionFactory
 	XdsCallbacks          xdsserver.Callbacks
-
-	// optional custom handler for envoy usage metrics that get pushed to the gloo pod
-	MetricsHandler metricsservice.MetricsHandler
 }
 
 func GetPluginsWithExtensionsAndRegistry(opts bootstrap.Opts, registryPlugins func(opts bootstrap.Opts) []plugins.Plugin, extensions Extensions) func() []plugins.Plugin {
@@ -424,6 +422,8 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions) error {
 		}
 	}
 	logger := contextutils.LoggerFrom(watchOpts.Ctx)
+
+	startRestXdsServer(opts)
 
 	errs := make(chan error)
 
@@ -579,24 +579,6 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions) error {
 	}
 
 	go func() {
-		var handler metricsservice.MetricsHandler
-
-		if extensions.MetricsHandler == nil {
-			handler, err = metricsservice.NewConfigMapBackedDefaultHandler(opts.WatchOpts.Ctx)
-			if err != nil {
-				contextutils.LoggerFrom(opts.WatchOpts.Ctx).Errorw("Error starting metrics watcher", zap.Error(err))
-				return
-			}
-		} else {
-			handler = extensions.MetricsHandler
-		}
-
-		if err := runner.RunE(opts.WatchOpts.Ctx, handler); err != nil {
-			contextutils.LoggerFrom(opts.WatchOpts.Ctx).Errorw("err in metrics server", zap.Error(err))
-		}
-	}()
-
-	go func() {
 		for {
 			select {
 			case err, ok := <-errs:
@@ -613,6 +595,36 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions) error {
 	}()
 
 	return nil
+}
+
+func startRestXdsServer(opts bootstrap.Opts) {
+	restClient := server.NewHTTPGateway(
+		contextutils.LoggerFrom(opts.WatchOpts.Ctx),
+		opts.ControlPlane.XDSServer,
+		map[string]string{
+			resource.FetchEndpoints: resource.EndpointType,
+		},
+	)
+	restXdsAddr := opts.Settings.GetGloo().GetRestXdsBindAddr()
+	if restXdsAddr == "" {
+		restXdsAddr = DefaultRestXdsBindAddr
+	}
+	srv := &http.Server{
+		Addr:    restXdsAddr,
+		Handler: restClient,
+	}
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			// TODO: Add metrics for rest xds server
+			contextutils.LoggerFrom(opts.WatchOpts.Ctx).Warnf("error while running REST xDS server", zap.Error(err))
+		}
+	}()
+	go func() {
+		<-opts.WatchOpts.Ctx.Done()
+		if err := srv.Close(); err != nil {
+			contextutils.LoggerFrom(opts.WatchOpts.Ctx).Warnf("error while shutting down REST xDS server", zap.Error(err))
+		}
+	}()
 }
 
 func constructOpts(ctx context.Context, clientset *kubernetes.Interface, kubeCache kube.SharedCache, consulClient *consulapi.Client, vaultClient *vaultapi.Client, memCache memory.InMemoryResourceCache, settings *v1.Settings) (bootstrap.Opts, error) {
