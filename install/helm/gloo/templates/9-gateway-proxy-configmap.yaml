@@ -28,6 +28,10 @@ data:
         static_layer:
           overload:
             global_downstream_max_connections: {{ $spec.globalDownstreamMaxConnections }}
+          {{- if $spec.pathWithEscapedSlashesAction }}
+          http_connection_manager:
+            path_with_escaped_slashes_action: {{ $spec.pathWithEscapedSlashesAction }}
+          {{- end }}
       - name: admin_layer
         admin_layer: {}
     node:
@@ -334,6 +338,13 @@ data:
                     port_value: 19000
 {{- end}} # if or $statsConfig.enabled ($spec.readConfig)
 
+{{- if $spec.tracing -}}
+{{- if $spec.tracing.provider }}
+    tracing:
+      http:
+{{ toYaml $spec.tracing.provider | indent 8}}
+{{- end}} # if $spec.tracing.provider
+{{- end}} # if $spec.tracing
     dynamic_resources:
       ads_config:
         api_type: GRPC
@@ -356,6 +367,6 @@ data:
           address: {{ $spec.loopBackAddress }}
           port_value: 19000
 {{- else}}{{ toYaml $spec.configMap.data | indent 2}}{{- end}} # if (empty $spec.configMap.data) ## allows full custom
-{{- end }} {{/* - if not $spec.disabled */}}
+{{- end }} # - if not $spec.disabled
 {{- end }} # range $name, $spec := .Values.gatewayProxies
 {{- end -}} # if .Values.gateway.enabled

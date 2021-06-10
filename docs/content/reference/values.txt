@@ -2,17 +2,18 @@
 |------|----|-----------|-------------|
 |namespace.create|bool|false|create the installation namespace|
 |crds.create|bool|false||
-|settings.watchNamespaces[]|string||whitelist of namespaces for gloo to watch for services and CRDs. Empty list means all namespaces|
-|settings.writeNamespace|string||namespace where intermediary CRDs will be written to, e.g. Upstreams written by Gloo Discovery.|
+|settings.watchNamespaces[]|string||whitelist of namespaces for Gloo Edge to watch for services and CRDs. Empty list means all namespaces|
+|settings.writeNamespace|string||namespace where intermediary CRDs will be written to, e.g. Upstreams written by Gloo Edge Discovery.|
 |settings.integrations.knative.enabled|bool|false|enabled knative components|
-|settings.integrations.knative.version|string|0.10.0|the version of knative installed to the cluster. if using version < 0.8.0, gloo will use Knative's ClusterIngress API for configuration rather than the namespace-scoped Ingress|
+|settings.integrations.knative.version|string|0.10.0|the version of knative installed to the cluster. if using version < 0.8.0, Gloo Edge will use Knative's ClusterIngress API for configuration rather than the namespace-scoped Ingress|
 |settings.integrations.knative.proxy.image.tag|string|<release_version, ex: 1.2.3>|tag for the container|
 |settings.integrations.knative.proxy.image.repository|string|gloo-envoy-wrapper|image name (repository) for the container.|
 |settings.integrations.knative.proxy.image.registry|string||image prefix/registry e.g. (quay.io/solo-io)|
 |settings.integrations.knative.proxy.image.pullPolicy|string||image pull policy for the container|
 |settings.integrations.knative.proxy.image.pullSecret|string||image pull policy for the container |
-|settings.integrations.knative.proxy.httpPort|int|80|HTTP port for the proxy|
-|settings.integrations.knative.proxy.httpsPort|int|443|HTTPS port for the proxy|
+|settings.integrations.knative.proxy.image.extended|bool|false|if true, deploy an extended version of the container with additional debug tools|
+|settings.integrations.knative.proxy.httpPort|int|8080|HTTP port for the proxy|
+|settings.integrations.knative.proxy.httpsPort|int|8443|HTTPS port for the proxy|
 |settings.integrations.knative.proxy.tracing|string||tracing configuration|
 |settings.integrations.knative.proxy.loopBackAddress|string|127.0.0.1|Name on which to bind the loop-back interface for this instance of Envoy. Defaults to 127.0.0.1, but other common values may be localhost or ::1|
 |settings.integrations.knative.proxy.extraClusterIngressProxyLabels.NAME|string||Optional extra key-value pairs to add to the spec.template.metadata.labels data of the cluster ingress proxy deployment.|
@@ -43,6 +44,8 @@
 |settings.integrations.knative.proxy.service.type|string|LoadBalancer|K8s service type|
 |settings.integrations.knative.proxy.service.extraAnnotations.NAME|string||extra annotations to add to the service|
 |settings.integrations.knative.proxy.service.loadBalancerIP|string||IP address of the load balancer|
+|settings.integrations.knative.proxy.service.httpPort|int|80|HTTP port for the knative/ingress proxy service|
+|settings.integrations.knative.proxy.service.httpsPort|int|443|HTTPS port for the knative/ingress proxy service|
 |settings.integrations.knative.requireIngressClass|bool||only serve traffic for Knative Ingress objects with the annotation 'networking.knative.dev/ingress.class: gloo.ingress.networking.knative.dev'.|
 |settings.integrations.knative.extraKnativeInternalLabels.NAME|string||Optional extra key-value pairs to add to the spec.template.metadata.labels data of the knative internal deployment.|
 |settings.integrations.knative.extraKnativeExternalLabels.NAME|string||Optional extra key-value pairs to add to the spec.template.metadata.labels data of the knative external deployment.|
@@ -62,24 +65,26 @@
 |settings.integrations.consul.dnsAddress|string||The address of the DNS server used to resolve hostnames in the Consul service address. Used by service discovery (required when Consul service instances are stored as DNS names). Defaults to 127.0.0.1:8600. (the default Consul DNS server)|
 |settings.integrations.consul.dnsPollingInterval.seconds|int32||The value of this duration in seconds.|
 |settings.integrations.consul.dnsPollingInterval.nanos|int32||The value of this duration in nanoseconds.|
-|settings.create|bool|true|create a Settings CRD which provides bootstrap configuration to Gloo controllers|
+|settings.create|bool|true|create a Settings CRD which provides bootstrap configuration to Gloo Edge controllers|
 |settings.extensions|interface|||
 |settings.singleNamespace|bool|false|Enable to use install namespace as WatchNamespace and WriteNamespace|
-|settings.invalidConfigPolicy.replaceInvalidRoutes|bool|false|Rather than pausing configuration updates, in the event of an invalid Route defined on a virtual service or route table, Gloo will serve the route with a predefined direct response action. This allows valid routes to be updated when other routes are invalid.|
+|settings.invalidConfigPolicy.replaceInvalidRoutes|bool|false|Rather than pausing configuration updates, in the event of an invalid Route defined on a virtual service or route table, Gloo Edge will serve the route with a predefined direct response action. This allows valid routes to be updated when other routes are invalid.|
 |settings.invalidConfigPolicy.invalidRouteResponseCode|int64|404|the response code for the direct response|
 |settings.invalidConfigPolicy.invalidRouteResponseBody|string|Gloo Gateway has invalid configuration. Administrators should run `glooctl check` to find and fix config errors.|the response body for the direct response|
-|settings.linkerd|bool|false|Enable automatic Linkerd integration in Gloo.|
-|settings.disableProxyGarbageCollection|bool|false|Set this option to determine the state of an Envoy listener when the corresponding Gloo Proxy resource has no routes. If false (default), Gloo will propagate the state of the Proxy to Envoy, resetting the listener to a clean slate with no routes. If true, Gloo will keep serving the routes from the last applied valid configuration.|
-|settings.disableKubernetesDestinations|bool|false|Gloo allows you to directly reference a Kubernetes service as a routing destination. To enable this feature, Gloo scans the cluster for Kubernetes services and creates a special type of in-memory Upstream to represent them. If the cluster contains a lot of services and you do not restrict the namespaces Gloo is watching, this can result in significant overhead. If you do not plan on using this feature, you can set this flag to true to turn it off.|
-|settings.aws.enableCredentialsDiscovery|bool|false|Enable AWS credentials discovery in Envoy for lambda requests. If enableServiceAccountCredentials is also set, it will take precedence as only one may be enabled in Gloo |
-|settings.aws.enableServiceAccountCredentials|bool|false|Use ServiceAccount credentials to authenticate lambda requests. If enableCredentialsDiscovery is also set, this will take precedence as only one may be enabled in Gloo|
+|settings.linkerd|bool|false|Enable automatic Linkerd integration in Gloo Edge|
+|settings.disableProxyGarbageCollection|bool|false|Set this option to determine the state of an Envoy listener when the corresponding Proxy resource has no routes. If false (default), Gloo Edge will propagate the state of the Proxy to Envoy, resetting the listener to a clean slate with no routes. If true, Gloo Edge will keep serving the routes from the last applied valid configuration.|
+|settings.disableKubernetesDestinations|bool|false|Gloo Edge allows you to directly reference a Kubernetes service as a routing destination. To enable this feature, Gloo Edge scans the cluster for Kubernetes services and creates a special type of in-memory Upstream to represent them. If the cluster contains a lot of services and you do not restrict the namespaces Gloo Edge is watching, this can result in significant overhead. If you do not plan on using this feature, you can set this flag to true to turn it off.|
+|settings.aws.enableCredentialsDiscovery|bool|false|Enable AWS credentials discovery in Envoy for lambda requests. If enableServiceAccountCredentials is also set, it will take precedence as only one may be enabled in Gloo Edge|
+|settings.aws.enableServiceAccountCredentials|bool|false|Use ServiceAccount credentials to authenticate lambda requests. If enableCredentialsDiscovery is also set, this will take precedence as only one may be enabled in Gloo Edge|
 |settings.aws.stsCredentialsRegion|string||Regional endpoint to use for AWS STS requests. If empty will default to global sts endpoint.|
-|settings.rateLimit|interface||Partial config for GlooE’s rate-limiting service, based on Envoy’s rate-limit service; supports Envoy’s rate-limit service API. (reference here: https://github.com/lyft/ratelimit#configuration) Configure rate-limit descriptors here, which define the limits for requests based on their descriptors. Configure rate-limits (composed of actions, which define how request characteristics get translated into descriptors) on the VirtualHost or its routes.|
+|settings.rateLimit|interface||Partial config for Gloo Edge Enterprise’s rate-limiting service, based on Envoy’s rate-limit service; supports Envoy’s rate-limit service API. (reference here: https://github.com/lyft/ratelimit#configuration) Configure rate-limit descriptors here, which define the limits for requests based on their descriptors. Configure rate-limits (composed of actions, which define how request characteristics get translated into descriptors) on the VirtualHost or its routes.|
+|settings.enableRestEds|bool|false|Whether or not to use rest xds for all EDS by default. Set to true by default in versions > v1.6.0.|
 |gloo.deployment.image.tag|string|<release_version, ex: 1.2.3>|tag for the container|
 |gloo.deployment.image.repository|string|gloo|image name (repository) for the container.|
 |gloo.deployment.image.registry|string||image prefix/registry e.g. (quay.io/solo-io)|
 |gloo.deployment.image.pullPolicy|string||image pull policy for the container|
 |gloo.deployment.image.pullSecret|string||image pull policy for the container |
+|gloo.deployment.image.extended|bool|false|if true, deploy an extended version of the container with additional debug tools|
 |gloo.deployment.xdsPort|int|9977|port where gloo serves xDS API to Envoy|
 |gloo.deployment.restXdsPort|uint32|9976|port where gloo serves REST xDS API to Envoy|
 |gloo.deployment.validationPort|int|9988|port where gloo serves gRPC Proxy Validation to Gateway|
@@ -121,11 +126,12 @@
 |discovery.deployment.image.registry|string||image prefix/registry e.g. (quay.io/solo-io)|
 |discovery.deployment.image.pullPolicy|string||image pull policy for the container|
 |discovery.deployment.image.pullSecret|string||image pull policy for the container |
+|discovery.deployment.image.extended|bool|false|if true, deploy an extended version of the container with additional debug tools|
 |discovery.deployment.stats.enabled|bool||Controls whether or not prometheus stats are enabled|
 |discovery.deployment.floatingUserId|bool|false|set to true to allow the cluster to dynamically assign a user ID|
 |discovery.deployment.runAsUser|float64||Explicitly set the user ID for the container to run as. Default is 10101|
 |discovery.deployment.fsGroup|float64||Explicitly set the group ID for volume ownership. Default is 10101|
-|discovery.deployment.extraDiscoveryLabels.NAME|string||Optional extra key-value pairs to add to the spec.template.metadata.labels data of the gloo discovery deployment.|
+|discovery.deployment.extraDiscoveryLabels.NAME|string||Optional extra key-value pairs to add to the spec.template.metadata.labels data of the gloo edge discovery deployment.|
 |discovery.deployment.replicas|int|1|number of instances to deploy|
 |discovery.deployment.customEnv[].name|string|||
 |discovery.deployment.customEnv[].value|string|||
@@ -155,8 +161,8 @@
 |discovery.enabled|bool|true|enable Discovery features|
 |discovery.serviceAccount.extraAnnotations.NAME|string||extra annotations to add to the service account|
 |discovery.serviceAccount.disableAutomount|bool|false|disable automunting the service account to the gateway proxy. not mounting the token hardens the proxy container, but may interfere with service mesh integrations|
-|gateway.enabled|bool|true|enable Gloo API Gateway features|
-|gateway.validation.enabled|bool|true|enable Gloo API Gateway validation hook (default true)|
+|gateway.enabled|bool|true|enable Gloo Edge API Gateway features|
+|gateway.validation.enabled|bool|true|enable Gloo Edge API Gateway validation hook (default true)|
 |gateway.validation.alwaysAcceptResources|bool|true|unless this is set this to false in order to ensure validation webhook rejects invalid resources. by default, validation webhook will only log and report metrics for invalid resource admission without rejecting them outright.|
 |gateway.validation.allowWarnings|bool|true|set this to false in order to ensure validation webhook rejects resources that would have warning status or rejected status, rather than just rejected.|
 |gateway.validation.secretName|string|gateway-validation-certs|Name of the Kubernetes Secret containing TLS certificates used by the validation webhook server. This secret will be created by the certGen Job if the certGen Job is enabled.|
@@ -167,10 +173,11 @@
 |gateway.deployment.image.registry|string||image prefix/registry e.g. (quay.io/solo-io)|
 |gateway.deployment.image.pullPolicy|string||image pull policy for the container|
 |gateway.deployment.image.pullSecret|string||image pull policy for the container |
+|gateway.deployment.image.extended|bool|false|if true, deploy an extended version of the container with additional debug tools|
 |gateway.deployment.stats.enabled|bool||Controls whether or not prometheus stats are enabled|
 |gateway.deployment.floatingUserId|bool|false|set to true to allow the cluster to dynamically assign a user ID|
 |gateway.deployment.runAsUser|float64||Explicitly set the user ID for the container to run as. Default is 10101|
-|gateway.deployment.extraGatewayLabels.NAME|string||Optional extra key-value pairs to add to the spec.template.metadata.labels data of the gloo gateway deployment.|
+|gateway.deployment.extraGatewayLabels.NAME|string||Optional extra key-value pairs to add to the spec.template.metadata.labels data of the gloo edge gateway deployment.|
 |gateway.deployment.replicas|int|1|number of instances to deploy|
 |gateway.deployment.customEnv[].name|string|||
 |gateway.deployment.customEnv[].value|string|||
@@ -201,6 +208,7 @@
 |gateway.certGenJob.image.registry|string||image prefix/registry e.g. (quay.io/solo-io)|
 |gateway.certGenJob.image.pullPolicy|string||image pull policy for the container|
 |gateway.certGenJob.image.pullSecret|string||image pull policy for the container |
+|gateway.certGenJob.image.extended|bool|false|if true, deploy an extended version of the container with additional debug tools|
 |gateway.certGenJob.restartPolicy|string|OnFailure|restart policy to use when the pod exits|
 |gateway.certGenJob.enabled|bool|true|enable the job that generates the certificates for the validating webhook at install time (default true)|
 |gateway.certGenJob.setTtlAfterFinished|bool|true|Set ttlSecondsAfterFinished (a k8s feature in Alpha) on the job. Defaults to true|
@@ -240,6 +248,7 @@
 |gatewayProxies.NAME.podTemplate.image.registry|string||image prefix/registry e.g. (quay.io/solo-io)|
 |gatewayProxies.NAME.podTemplate.image.pullPolicy|string||image pull policy for the container|
 |gatewayProxies.NAME.podTemplate.image.pullSecret|string||image pull policy for the container |
+|gatewayProxies.NAME.podTemplate.image.extended|bool||if true, deploy an extended version of the container with additional debug tools|
 |gatewayProxies.NAME.podTemplate.httpPort|int||HTTP port for the gateway service target port|
 |gatewayProxies.NAME.podTemplate.httpsPort|int||HTTPS port for the gateway service target port|
 |gatewayProxies.NAME.podTemplate.extraPorts[]|interface||extra ports for the gateway pod|
@@ -282,7 +291,7 @@
 |gatewayProxies.NAME.podTemplate.customReadinessProbe.periodSeconds|int32|||
 |gatewayProxies.NAME.podTemplate.customReadinessProbe.successThreshold|int32|||
 |gatewayProxies.NAME.podTemplate.customReadinessProbe.failureThreshold|int32|||
-|gatewayProxies.NAME.podTemplate.extraGatewayProxyLabels.NAME|string||Optional extra key-value pairs to add to the spec.template.metadata.labels data of the gloo gateway proxy deployment.|
+|gatewayProxies.NAME.podTemplate.extraGatewayProxyLabels.NAME|string||Optional extra key-value pairs to add to the spec.template.metadata.labels data of the gloo edge gateway-proxy deployment.|
 |gatewayProxies.NAME.configMap.data.NAME|string|||
 |gatewayProxies.NAME.globalDownstreamMaxConnections|uint32||the number of concurrent connections needed. limit used to protect against exhausting file descriptors on host machine|
 |gatewayProxies.NAME.service.type|string||gateway [service type](https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types). default is `LoadBalancer`|
@@ -344,6 +353,7 @@
 |gatewayProxies.NAME.horizontalPodAutoscaler.targetCPUUtilizationPercentage|int32||target average CPU utilization (represented as a percentage of requested CPU) over all the pods. Used only with apiVersion autoscaling/v1|
 |gatewayProxies.NAME.horizontalPodAutoscaler.metrics[].NAME|interface||metrics contains the specifications for which to use to calculate the desired replica count (the maximum replica count across all metrics will be used). Used only with apiVersion autoscaling/v2beta2|
 |gatewayProxies.NAME.horizontalPodAutoscaler.behavior.NAME|interface||behavior configures the scaling behavior of the target in both Up and Down directions (scaleUp and scaleDown fields respectively). Used only with apiVersion autoscaling/v2beta2|
+|gatewayProxies.NAME.pathWithEscapedSlashesAction|uint32||Used to configure the Envoy Http Connection Manager's path_with_escaped_slashes_action runtime override setting. Defaults to 0 (IMPLEMENTATION_SPECIFIC_DEFAULT). See other value options here https://www.envoyproxy.io/docs/envoy/v1.16.4/configuration/http/http_conn_man/runtime.html|
 |gatewayProxies.gatewayProxy.kind.deployment.replicas|int|1|number of instances to deploy|
 |gatewayProxies.gatewayProxy.kind.deployment.customEnv[].name|string|||
 |gatewayProxies.gatewayProxy.kind.deployment.customEnv[].value|string|||
@@ -370,6 +380,7 @@
 |gatewayProxies.gatewayProxy.podTemplate.image.registry|string||image prefix/registry e.g. (quay.io/solo-io)|
 |gatewayProxies.gatewayProxy.podTemplate.image.pullPolicy|string||image pull policy for the container|
 |gatewayProxies.gatewayProxy.podTemplate.image.pullSecret|string||image pull policy for the container |
+|gatewayProxies.gatewayProxy.podTemplate.image.extended|bool|false|if true, deploy an extended version of the container with additional debug tools|
 |gatewayProxies.gatewayProxy.podTemplate.httpPort|int|8080|HTTP port for the gateway service target port|
 |gatewayProxies.gatewayProxy.podTemplate.httpsPort|int|8443|HTTPS port for the gateway service target port|
 |gatewayProxies.gatewayProxy.podTemplate.extraPorts[]|interface||extra ports for the gateway pod|
@@ -412,7 +423,7 @@
 |gatewayProxies.gatewayProxy.podTemplate.customReadinessProbe.periodSeconds|int32|0||
 |gatewayProxies.gatewayProxy.podTemplate.customReadinessProbe.successThreshold|int32|0||
 |gatewayProxies.gatewayProxy.podTemplate.customReadinessProbe.failureThreshold|int32|0||
-|gatewayProxies.gatewayProxy.podTemplate.extraGatewayProxyLabels.NAME|string||Optional extra key-value pairs to add to the spec.template.metadata.labels data of the gloo gateway proxy deployment.|
+|gatewayProxies.gatewayProxy.podTemplate.extraGatewayProxyLabels.NAME|string||Optional extra key-value pairs to add to the spec.template.metadata.labels data of the gloo edge gateway-proxy deployment.|
 |gatewayProxies.gatewayProxy.configMap.data.NAME|string|||
 |gatewayProxies.gatewayProxy.globalDownstreamMaxConnections|uint32|250000|the number of concurrent connections needed. limit used to protect against exhausting file descriptors on host machine|
 |gatewayProxies.gatewayProxy.service.type|string|LoadBalancer|gateway [service type](https://kubernetes.io/docs/concepts/services-networking/service/#publishing-services-service-types). default is `LoadBalancer`|
@@ -476,12 +487,14 @@
 |gatewayProxies.gatewayProxy.horizontalPodAutoscaler.targetCPUUtilizationPercentage|int32||target average CPU utilization (represented as a percentage of requested CPU) over all the pods. Used only with apiVersion autoscaling/v1|
 |gatewayProxies.gatewayProxy.horizontalPodAutoscaler.metrics[].NAME|interface||metrics contains the specifications for which to use to calculate the desired replica count (the maximum replica count across all metrics will be used). Used only with apiVersion autoscaling/v2beta2|
 |gatewayProxies.gatewayProxy.horizontalPodAutoscaler.behavior.NAME|interface||behavior configures the scaling behavior of the target in both Up and Down directions (scaleUp and scaleDown fields respectively). Used only with apiVersion autoscaling/v2beta2|
+|gatewayProxies.gatewayProxy.pathWithEscapedSlashesAction|uint32|0|Used to configure the Envoy Http Connection Manager's path_with_escaped_slashes_action runtime override setting. Defaults to 0 (IMPLEMENTATION_SPECIFIC_DEFAULT). See other value options here https://www.envoyproxy.io/docs/envoy/v1.16.4/configuration/http/http_conn_man/runtime.html|
 |ingress.enabled|bool|false||
 |ingress.deployment.image.tag|string|<release_version, ex: 1.2.3>|tag for the container|
 |ingress.deployment.image.repository|string|ingress|image name (repository) for the container.|
 |ingress.deployment.image.registry|string||image prefix/registry e.g. (quay.io/solo-io)|
 |ingress.deployment.image.pullPolicy|string||image pull policy for the container|
 |ingress.deployment.image.pullSecret|string||image pull policy for the container |
+|ingress.deployment.image.extended|bool|false|if true, deploy an extended version of the container with additional debug tools|
 |ingress.deployment.runAsUser|float64||Explicitly set the user ID for the container to run as. Default is 10101|
 |ingress.deployment.floatingUserId|bool|false|set to true to allow the cluster to dynamically assign a user ID|
 |ingress.deployment.extraIngressLabels.NAME|string||Optional extra key-value pairs to add to the spec.template.metadata.labels data of the ingress deployment.|
@@ -510,14 +523,15 @@
 |ingress.deployment.resources.requests.memory|string||amount of memory|
 |ingress.deployment.resources.requests.cpu|string||amount of CPUs|
 |ingress.requireIngressClass|bool||only serve traffic for Ingress objects with the Ingress Class annotation 'kubernetes.io/ingress.class'. By default the annotation value must be set to 'gloo', however this can be overriden via customIngressClass.|
-|ingress.customIngressClass|bool||Only relevant when requireIngressClass is set to true. Setting this value will cause the Gloo Ingress Controller to process only those Ingress objects which have their ingress class set to this value (e.g. 'kubernetes.io/ingress.class=SOMEVALUE').|
+|ingress.customIngressClass|bool||Only relevant when requireIngressClass is set to true. Setting this value will cause the Gloo Edge Ingress Controller to process only those Ingress objects which have their ingress class set to this value (e.g. 'kubernetes.io/ingress.class=SOMEVALUE').|
 |ingressProxy.deployment.image.tag|string|<release_version, ex: 1.2.3>|tag for the container|
 |ingressProxy.deployment.image.repository|string|gloo-envoy-wrapper|image name (repository) for the container.|
 |ingressProxy.deployment.image.registry|string||image prefix/registry e.g. (quay.io/solo-io)|
 |ingressProxy.deployment.image.pullPolicy|string||image pull policy for the container|
 |ingressProxy.deployment.image.pullSecret|string||image pull policy for the container |
-|ingressProxy.deployment.httpPort|int|80|HTTP port for the ingress container|
-|ingressProxy.deployment.httpsPort|int|443|HTTPS port for the ingress container|
+|ingressProxy.deployment.image.extended|bool|false|if true, deploy an extended version of the container with additional debug tools|
+|ingressProxy.deployment.httpPort|int|8080|HTTP port for the ingress container|
+|ingressProxy.deployment.httpsPort|int|8443|HTTPS port for the ingress container|
 |ingressProxy.deployment.extraPorts[]|interface|||
 |ingressProxy.deployment.extraAnnotations.NAME|string|||
 |ingressProxy.deployment.floatingUserId|bool|false|set to true to allow the cluster to dynamically assign a user ID|
@@ -554,19 +568,22 @@
 |ingressProxy.service.type|string|LoadBalancer|K8s service type|
 |ingressProxy.service.extraAnnotations.NAME|string||extra annotations to add to the service|
 |ingressProxy.service.loadBalancerIP|string||IP address of the load balancer|
+|ingressProxy.service.httpPort|int|80|HTTP port for the knative/ingress proxy service|
+|ingressProxy.service.httpsPort|int|443|HTTPS port for the knative/ingress proxy service|
 |k8s.clusterName|string|cluster.local|cluster name to use when referencing services.|
 |accessLogger.image.tag|string|<release_version, ex: 1.2.3>|tag for the container|
 |accessLogger.image.repository|string|access-logger|image name (repository) for the container.|
 |accessLogger.image.registry|string||image prefix/registry e.g. (quay.io/solo-io)|
 |accessLogger.image.pullPolicy|string||image pull policy for the container|
 |accessLogger.image.pullSecret|string||image pull policy for the container |
+|accessLogger.image.extended|bool|false|if true, deploy an extended version of the container with additional debug tools|
 |accessLogger.port|uint|8083||
 |accessLogger.serviceName|string|AccessLog||
 |accessLogger.enabled|bool|false||
 |accessLogger.stats.enabled|bool|true|Controls whether or not prometheus stats are enabled|
 |accessLogger.runAsUser|float64||Explicitly set the user ID for the container to run as. Default is 10101|
 |accessLogger.fsGroup|float64||Explicitly set the group ID for volume ownership. Default is 10101|
-|accessLogger.extraAccessLoggerLabels.NAME|string||Optional extra key-value pairs to add to the spec.template.metadata.labels data of the gloo access logger deployment.|
+|accessLogger.extraAccessLoggerLabels.NAME|string||Optional extra key-value pairs to add to the spec.template.metadata.labels data of the access logger deployment.|
 |accessLogger.replicas|int|1|number of instances to deploy|
 |accessLogger.customEnv[].name|string|||
 |accessLogger.customEnv[].value|string|||
@@ -596,10 +613,11 @@
 |global.image.registry|string|quay.io/solo-io|image prefix/registry e.g. (quay.io/solo-io)|
 |global.image.pullPolicy|string|IfNotPresent|image pull policy for the container|
 |global.image.pullSecret|string||image pull policy for the container |
+|global.image.extended|bool|false|if true, deploy an extended version of the container with additional debug tools|
 |global.extensions|interface|||
 |global.glooRbac.create|bool|true|create rbac rules for the gloo-system service account|
 |global.glooRbac.namespaced|bool|false|use Roles instead of ClusterRoles|
-|global.glooRbac.nameSuffix|string||When nameSuffix is nonempty, append '-$nameSuffix' to the names of Gloo RBAC resources; e.g. when nameSuffix is 'foo', the role 'gloo-resource-reader' will become 'gloo-resource-reader-foo'|
+|global.glooRbac.nameSuffix|string||When nameSuffix is nonempty, append '-$nameSuffix' to the names of Gloo Edge RBAC resources; e.g. when nameSuffix is 'foo', the role 'gloo-resource-reader' will become 'gloo-resource-reader-foo'|
 |global.wasm.enabled|bool|false|switch the gateway-proxy image to one which supports WASM|
 |global.glooStats.enabled|bool|true|Controls whether or not prometheus stats are enabled|
 |global.glooMtls.enabled|bool|false|Enables internal mtls authentication|
@@ -608,11 +626,13 @@
 |global.glooMtls.sds.image.registry|string||image prefix/registry e.g. (quay.io/solo-io)|
 |global.glooMtls.sds.image.pullPolicy|string||image pull policy for the container|
 |global.glooMtls.sds.image.pullSecret|string||image pull policy for the container |
+|global.glooMtls.sds.image.extended|bool|false|if true, deploy an extended version of the container with additional debug tools|
 |global.glooMtls.envoy.image.tag|string|<release_version, ex: 1.2.3>|tag for the container|
 |global.glooMtls.envoy.image.repository|string|gloo-envoy-wrapper|image name (repository) for the container.|
 |global.glooMtls.envoy.image.registry|string||image prefix/registry e.g. (quay.io/solo-io)|
 |global.glooMtls.envoy.image.pullPolicy|string||image pull policy for the container|
 |global.glooMtls.envoy.image.pullSecret|string||image pull policy for the container |
+|global.glooMtls.envoy.image.extended|bool|false|if true, deploy an extended version of the container with additional debug tools|
 |global.glooMtls.envoySidecarResources.limits.memory|string||amount of memory|
 |global.glooMtls.envoySidecarResources.limits.cpu|string||amount of CPUs|
 |global.glooMtls.envoySidecarResources.requests.memory|string||amount of memory|
@@ -621,6 +641,6 @@
 |global.glooMtls.sdsResources.limits.cpu|string||amount of CPUs|
 |global.glooMtls.sdsResources.requests.memory|string||amount of memory|
 |global.glooMtls.sdsResources.requests.cpu|string||amount of CPUs|
+|global.istioSDS.enabled|bool|false|Enables SDS cert-rotator sidecar for istio mTLS cert rotation|
 |global.glooMtls.ipv4Only|bool|true|This field if set false will bind the IPv6 address '::' on envoy-sidecar-config.|
-|global.istioSDS.enabled|bool|false||
 |global.istioSDS.customSidecars[]|interface||Override the default Istio sidecar in gateway-proxy with a custom container. Ignored if IstioSDS.enabled is false|

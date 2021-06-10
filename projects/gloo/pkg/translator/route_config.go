@@ -3,6 +3,7 @@ package translator
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/headers"
 
@@ -337,12 +338,22 @@ func (t *translatorInstance) setRouteAction(params plugins.RouteParams, in *v1.R
 		upstreamGroupRef := dest.UpstreamGroup
 		upstreamGroup, err := params.Snapshot.UpstreamGroups.Find(upstreamGroupRef.Namespace, upstreamGroupRef.Name)
 		if err != nil {
+			// the UpstreamGroup isn't found but set a bogus cluster so route replacement will still work
+			out.ClusterSpecifier = &envoyroute.RouteAction_Cluster{
+				Cluster: "",
+			}
 			return pluginutils.NewUpstreamGroupNotFoundErr(*upstreamGroupRef)
 		}
 		md := &v1.MultiDestination{
 			Destinations: upstreamGroup.Destinations,
 		}
 		return t.setWeightedClusters(params, md, out, routeReport)
+	case *v1.RouteAction_ClusterHeader:
+		// ClusterHeader must use the naming convention {{namespace}}_{{clustername}}
+		out.ClusterSpecifier = &envoyroute.RouteAction_ClusterHeader{
+			ClusterHeader: in.GetClusterHeader(),
+		}
+		return nil
 	}
 	return errors.Errorf("unknown upstream destination type")
 }
@@ -615,6 +626,9 @@ func ValidateRouteDestinations(snap *v1.ApiSnapshot, action *v1.RouteAction) err
 		return validateMultiDestination(upstreams, dest.Multi.Destinations)
 	case *v1.RouteAction_UpstreamGroup:
 		return validateUpstreamGroup(snap, dest.UpstreamGroup)
+	// Cluster Header can not be validated because the cluster name is not provided till runtime
+	case *v1.RouteAction_ClusterHeader:
+		return validateClusterHeader(action.GetClusterHeader())
 	}
 	return errors.Errorf("must specify either 'singleDestination', 'multipleDestinations' or 'upstreamGroup' for action")
 }
@@ -667,6 +681,16 @@ func validateSingleDestination(upstreams v1.UpstreamList, destination *v1.Destin
 	_, err = upstreams.Find(upstreamRef.Strings())
 	if err != nil {
 		return pluginutils.NewUpstreamNotFoundErr(*upstreamRef)
+	}
+	return nil
+}
+
+func validateClusterHeader(header string) error {
+	// check that header name is only ASCII characters
+	for i := 0; i < len(header); i++ {
+		if header[i] > unicode.MaxASCII || header[i] == ':' {
+			return fmt.Errorf("%s is an invalid HTTP header name", header)
+		}
 	}
 	return nil
 }

@@ -29,7 +29,7 @@ ifeq ($(VERSION), $(WASM_VERSION))
 	WASM_VERSION = wasm-$(VERSION)
 endif
 
-ENVOY_GLOO_IMAGE ?= quay.io/solo-io/envoy-gloo:1.16.0-rc4
+ENVOY_GLOO_IMAGE ?= quay.io/solo-io/envoy-gloo:1.16.4
 ENVOY_GLOO_WASM_IMAGE ?= quay.io/solo-io/envoy-gloo:1.16.0-wasm-rc1
 
 # The full SHA of the currently checked out commit
@@ -51,6 +51,7 @@ ifeq ($(ON_DEFAULT_BRANCH), true)
     ASSETS_ONLY_RELEASE = false
 endif
 
+.PHONY: print-git-info
 print-git-info:
 	@echo CHECKED_OUT_SHA: $(CHECKED_OUT_SHA)
 	@echo DEFAULT_BRANCH_NAME: $(DEFAULT_BRANCH_NAME)
@@ -117,6 +118,10 @@ install-go-tools: mod-download
 	GOBIN=$(DEPSGOBIN) go install github.com/gogo/protobuf/gogoproto
 	GOBIN=$(DEPSGOBIN) go install github.com/onsi/ginkgo/ginkgo
 
+.PHONY: run-tests
+run-tests:
+	$(DEPSGOBIN)/ginkgo -ldflags=$(LDFLAGS) -r -failFast -trace -progress -race -compilers=4 -failOnPending -noColor $(TEST_PKG)
+
 # command to run regression tests with guaranteed access to $(DEPSGOBIN)/ginkgo
 # requires the environment variable KUBE2E_TESTS to be set to the test type you wish to run
 .PHONY: run-ci-regression-tests
@@ -127,6 +132,7 @@ run-ci-regression-tests: install-go-tools
 check-format:
 	NOT_FORMATTED=$$(gofmt -l ./projects/ ./pkg/ ./test/) && if [ -n "$$NOT_FORMATTED" ]; then echo These files are not formatted: $$NOT_FORMATTED; exit 1; fi
 
+.PHONY: check-spelling
 check-spelling:
 	./ci/spell.sh check
 #----------------------------------------------------------------------------------
@@ -142,10 +148,6 @@ clean:
 	rm -rf docs/themes
 	rm -rf docs/resources
 	git clean -f -X install
-
-# This is required to run if making changes to proto files then run `make generated-code -B`
-clean-generated-code:
-	rm -rf projects/gloo/pkg/plugins/grpc/*.descriptor.go
 
 #----------------------------------------------------------------------------------
 # Generated Code and Docs
@@ -254,6 +256,7 @@ gateway: $(GATEWAY_OUTPUT_DIR)/gateway-linux-$(GOARCH)
 $(GATEWAY_OUTPUT_DIR)/Dockerfile.gateway: $(GATEWAY_DIR)/cmd/Dockerfile
 	cp $< $@
 
+.PHONY: gateway-docker
 gateway-docker: $(GATEWAY_OUTPUT_DIR)/gateway-linux-$(GOARCH) $(GATEWAY_OUTPUT_DIR)/Dockerfile.gateway
 	docker build $(GATEWAY_OUTPUT_DIR) -f $(GATEWAY_OUTPUT_DIR)/Dockerfile.gateway \
 		--build-arg GOARCH=$(GOARCH) \
@@ -276,6 +279,7 @@ ingress: $(INGRESS_OUTPUT_DIR)/ingress-linux-$(GOARCH)
 $(INGRESS_OUTPUT_DIR)/Dockerfile.ingress: $(INGRESS_DIR)/cmd/Dockerfile
 	cp $< $@
 
+.PHONY: ingress-docker
 ingress-docker: $(INGRESS_OUTPUT_DIR)/ingress-linux-$(GOARCH) $(INGRESS_OUTPUT_DIR)/Dockerfile.ingress
 	docker build $(INGRESS_OUTPUT_DIR) -f $(INGRESS_OUTPUT_DIR)/Dockerfile.ingress \
 		--build-arg GOARCH=$(GOARCH) \
@@ -298,6 +302,7 @@ access-logger: $(ACCESS_LOG_OUTPUT_DIR)/access-logger-linux-$(GOARCH)
 $(ACCESS_LOG_OUTPUT_DIR)/Dockerfile.access-logger: $(ACCESS_LOG_DIR)/cmd/Dockerfile
 	cp $< $@
 
+.PHONY: access-logger-docker
 access-logger-docker: $(ACCESS_LOG_OUTPUT_DIR)/access-logger-linux-$(GOARCH) $(ACCESS_LOG_OUTPUT_DIR)/Dockerfile.access-logger
 	docker build $(ACCESS_LOG_OUTPUT_DIR) -f $(ACCESS_LOG_OUTPUT_DIR)/Dockerfile.access-logger \
 		--build-arg GOARCH=$(GOARCH) \
@@ -320,13 +325,14 @@ discovery: $(DISCOVERY_OUTPUT_DIR)/discovery-linux-$(GOARCH)
 $(DISCOVERY_OUTPUT_DIR)/Dockerfile.discovery: $(DISCOVERY_DIR)/cmd/Dockerfile
 	cp $< $@
 
+.PHONY: discovery-docker
 discovery-docker: $(DISCOVERY_OUTPUT_DIR)/discovery-linux-$(GOARCH) $(DISCOVERY_OUTPUT_DIR)/Dockerfile.discovery
 	docker build $(DISCOVERY_OUTPUT_DIR) -f $(DISCOVERY_OUTPUT_DIR)/Dockerfile.discovery \
 		--build-arg GOARCH=$(GOARCH) \
 		-t $(IMAGE_REPO)/discovery:$(VERSION)
 
 #----------------------------------------------------------------------------------
-# Gloo
+# Gloo Edge
 #----------------------------------------------------------------------------------
 
 GLOO_DIR=projects/gloo
@@ -343,6 +349,7 @@ $(GLOO_OUTPUT_DIR)/Dockerfile.gloo: $(GLOO_DIR)/cmd/Dockerfile
 	cp hack/utils/oss_compliance/third_party_licenses.txt $(GLOO_OUTPUT_DIR)/third_party_licenses.txt
 	cp $< $@
 
+.PHONY: gloo-docker
 gloo-docker: $(GLOO_OUTPUT_DIR)/gloo-linux-$(GOARCH) $(GLOO_OUTPUT_DIR)/Dockerfile.gloo
 	docker build $(GLOO_OUTPUT_DIR) -f $(GLOO_OUTPUT_DIR)/Dockerfile.gloo \
 		--build-arg GOARCH=$(GOARCH) \
@@ -350,7 +357,7 @@ gloo-docker: $(GLOO_OUTPUT_DIR)/gloo-linux-$(GOARCH) $(GLOO_OUTPUT_DIR)/Dockerfi
 		-t $(IMAGE_REPO)/gloo:$(VERSION)
 
 #----------------------------------------------------------------------------------
-# SDS Server - gRPC server for serving Secret Discovery Service config for Gloo MTLS
+# SDS Server - gRPC server for serving Secret Discovery Service config for Gloo Edge MTLS
 #----------------------------------------------------------------------------------
 
 SDS_DIR=projects/sds
@@ -470,11 +477,13 @@ $(OUTPUT_DIR)/.helm-prepared: $(HELM_PREPARED_INPUT)
 	go run $(HELM_DIR)/generate.go --version $(VERSION) --generate-helm-docs
 	touch $@
 
+.PHONY: package-chart
 package-chart: generate-helm-files
 	mkdir -p $(HELM_SYNC_DIR)/charts
 	helm package --destination $(HELM_SYNC_DIR)/charts $(HELM_DIR)
 	helm repo index $(HELM_SYNC_DIR)
 
+.PHONY: push-chart-to-registry
 push-chart-to-registry: generate-helm-files
 	mkdir -p $(HELM_REPOSITORY_CACHE)
 	cp $(DOCKER_CONFIG)/config.json $(HELM_REPOSITORY_CACHE)/config.json
@@ -496,7 +505,7 @@ ifeq ($(RELEASE),"true")
 endif
 
 #----------------------------------------------------------------------------------
-# Build the Gloo Manifests that are published as release assets
+# Build the Gloo Edge Manifests that are published as release assets
 #----------------------------------------------------------------------------------
 
 .PHONY: render-manifests
@@ -551,6 +560,7 @@ $(OUTPUT_DIR)/gloo-enterprise-version:
 upload-github-release-assets: print-git-info build-cli render-manifests
 	GO111MODULE=on go run ci/upload_github_release_assets.go $(ASSETS_ONLY_RELEASE)
 
+
 .PHONY: publish-docs
 publish-docs: generate-helm-files
 	cd docs && make docker-push-docs \
@@ -583,7 +593,9 @@ docker: discovery-docker gateway-docker gloo-docker \
 # This prevents executing the dependent targets if RELEASE is not true, while still enabling `make docker`
 # to be used for local testing.
 # docker-push is intended to be run by CI
+.PHONY: docker-push
 docker-push: $(DOCKER_IMAGES)
+ifeq ($(RELEASE),"true")
 	docker push $(IMAGE_REPO)/gateway:$(VERSION) && \
 	docker push $(IMAGE_REPO)/ingress:$(VERSION) && \
 	docker push $(IMAGE_REPO)/discovery:$(VERSION) && \
@@ -593,9 +605,17 @@ docker-push: $(DOCKER_IMAGES)
 	docker push $(IMAGE_REPO)/certgen:$(VERSION) && \
 	docker push $(IMAGE_REPO)/sds:$(VERSION) && \
 	docker push $(IMAGE_REPO)/access-logger:$(VERSION)
+endif
+
+.PHONY: docker-push-extended
+docker-push-extended:
+ifeq ($(RELEASE),"true")
+	ci/extended-docker/extended-docker.sh
+endif
 
 CLUSTER_NAME ?= kind
 
+.PHONY: push-kind-images
 push-kind-images: docker
 	kind load docker-image $(IMAGE_REPO)/gateway:$(VERSION) --name $(CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REPO)/ingress:$(VERSION) --name $(CLUSTER_NAME)
@@ -614,29 +634,17 @@ push-kind-images: docker
 #
 # The following targets are used to generate the assets on which the kube2e tests rely upon. The following actions are performed:
 #
-#   1. Generate Gloo value files
-#   2. Package the Gloo Helm chart to the _test directory (also generate an index file)
+#   1. Generate Gloo Edge value files
+#   2. Package the Gloo Edge Helm chart to the _test directory (also generate an index file)
 #
-# The Kube2e tests will use the generated Gloo Chart to install Gloo to the GKE test cluster.
+# The Kube2e tests will use the generated Gloo Edge Chart to install Gloo Edge to the GKE test cluster.
 
 .PHONY: build-test-assets
 build-test-assets: build-test-chart $(OUTPUT_DIR)/glooctl-linux-$(GOARCH) \
  	$(OUTPUT_DIR)/glooctl-darwin-$(GOARCH)
 
-.PHONY: build-kind-assets
-build-kind-assets: push-kind-images build-kind-chart $(OUTPUT_DIR)/glooctl-linux-$(GOARCH) \
- 	$(OUTPUT_DIR)/glooctl-darwin-$(GOARCH)
-
 .PHONY: build-test-chart
 build-test-chart:
-	mkdir -p $(TEST_ASSET_DIR)
-	GO111MODULE=on go run $(HELM_DIR)/generate.go --version $(VERSION)
-	helm package --destination $(TEST_ASSET_DIR) $(HELM_DIR)
-	helm repo index $(TEST_ASSET_DIR)
-
-.PHONY: build-kind-chart
-build-kind-chart:
-	rm -rf $(TEST_ASSET_DIR)
 	mkdir -p $(TEST_ASSET_DIR)
 	GO111MODULE=on go run $(HELM_DIR)/generate.go --version $(VERSION)
 	helm package --destination $(TEST_ASSET_DIR) $(HELM_DIR)
@@ -658,3 +666,12 @@ update-licenses:
 # use `make print-MAKEFILE_VAR` to print the value of MAKEFILE_VAR
 
 print-%  : ; @echo $($*)
+
+SCAN_BUCKET ?= solo-gloo-security-scans/gloo
+SCAN_DIR ?= $(OUTPUT_DIR)/scans
+
+.PHONY: publish-security-scan
+publish-security-scan:
+ifeq ($(RELEASE),"true")
+	gsutil cp -r $(SCAN_DIR)/$(VERSION)/$(SCAN_FILE) gs://$(SCAN_BUCKET)/$(VERSION)/$(SCAN_FILE)
+endif

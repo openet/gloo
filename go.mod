@@ -10,12 +10,12 @@ require (
 	github.com/aws/aws-sdk-go v1.34.9
 	github.com/cncf/udpa/go v0.0.0-20200629203442-efcf912fb354
 	github.com/cratonica/2goarray v0.0.0-20190331194516-514510793eaa
-	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/elazarl/goproxy v0.0.0-20190711103511-473e67f1d7d2 // indirect
 	github.com/elazarl/goproxy/ext v0.0.0-20190711103511-473e67f1d7d2 // indirect
 	github.com/envoyproxy/go-control-plane v0.9.6-0.20200529035633-fc42e08917e9
 	github.com/envoyproxy/protoc-gen-validate v0.4.0
 	github.com/fgrosse/zaptest v1.1.0
+	github.com/form3tech-oss/jwt-go v3.2.3+incompatible
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/ghodss/yaml v1.0.1-0.20190212211648-25d852aebe32
 	github.com/go-openapi/loads v0.19.4
@@ -42,6 +42,8 @@ require (
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/keybase/go-ps v0.0.0-20190827175125-91aafc93ba19
 	github.com/mattbaird/jsonpatch v0.0.0-20200820163806-098863c1fc24 // indirect
+	github.com/mattn/go-colorable v0.1.8 // indirect
+	github.com/mgutz/ansi v0.0.0-20200706080929-d51e80ef957d // indirect
 	github.com/mitchellh/hashstructure v1.0.0
 	github.com/mitchellh/reflectwalk v1.0.1
 	github.com/olekukonko/tablewriter v0.0.4
@@ -50,10 +52,10 @@ require (
 	github.com/opencontainers/go-digest v1.0.0-rc1
 	github.com/pkg/browser v0.0.0-20180916011732-0a3d74bf9ce4
 	github.com/prometheus/client_golang v1.2.1
-	github.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4
 	github.com/prometheus/prometheus v2.5.0+incompatible
 	github.com/rotisserie/eris v0.4.0
 	github.com/sergi/go-diff v1.0.0
+	github.com/sirupsen/logrus v1.7.0 // indirect
 	github.com/solo-io/envoy-operator v0.1.4
 	github.com/solo-io/go-list-licenses v0.0.0-20191023220251-171e4740d00f
 	github.com/solo-io/go-utils v0.16.6
@@ -61,7 +63,7 @@ require (
 	github.com/solo-io/reporting-client v0.1.2
 	github.com/solo-io/skv2 v0.8.1
 	github.com/solo-io/solo-apis v0.0.0-20200717214114-6a1daa5a5d05
-	github.com/solo-io/solo-kit v0.13.13
+	github.com/solo-io/solo-kit v0.13.14
 	github.com/solo-io/wasm/tools/wasme/pkg v0.0.0-20200922223809-7fff932e9e9a
 	github.com/spf13/afero v1.2.2
 	github.com/spf13/cobra v1.0.0
@@ -70,13 +72,16 @@ require (
 	go.opencensus.io v0.22.4
 	go.uber.org/multierr v1.5.0
 	go.uber.org/zap v1.15.0
+	golang.org/x/crypto v0.0.0-20201216223049-8b5274cf687f // indirect
 	golang.org/x/mod v0.3.0
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
-	golang.org/x/sync v0.0.0-20200625203802-6e8e738ad208
+	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
+	golang.org/x/sys v0.0.0-20200826173525-f9321e4c35a6 // indirect
 	golang.org/x/tools v0.0.0-20200916195026-c9a70fc28ce3
 	google.golang.org/genproto v0.0.0-20200626011028-ee7919e894b5
 	google.golang.org/grpc v1.29.1
 	gopkg.in/AlecAivazis/survey.v1 v1.8.7
+	gopkg.in/src-d/go-billy.v4 v4.3.0 // indirect
 	gopkg.in/yaml.v2 v2.3.0
 	helm.sh/helm/v3 v3.1.2
 	k8s.io/api v0.18.8
@@ -99,6 +104,11 @@ replace (
 	cloud.google.com/go => cloud.google.com/go v0.52.0 // cloud.google.com/go/iam breaks with v0.53.0+
 	github.com/Azure/go-autorest => github.com/Azure/go-autorest v13.0.0+incompatible
 	github.com/Sirupsen/logrus => github.com/sirupsen/logrus v1.4.2
+
+	// pin to the jwt-go fork to fix CVE.
+	// using the pseudo version of github.com/form3tech-oss/jwt-go@v3.2.3 instead of the version directly,
+	// to avoid error about it being used for two different module paths
+	github.com/dgrijalva/jwt-go => github.com/form3tech-oss/jwt-go v0.0.0-20210511163231-5b2d2b5f6c34
 	github.com/docker/docker => github.com/moby/moby v0.7.3-0.20190826074503-38ab9da00309
 	github.com/golang/mock => github.com/golang/mock v1.4.3
 	github.com/golang/protobuf => github.com/golang/protobuf v1.3.5

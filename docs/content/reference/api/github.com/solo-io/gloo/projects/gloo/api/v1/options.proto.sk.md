@@ -41,6 +41,7 @@ to be usable by Gloo. (plugins currently need to be compiled into Gloo)
 "accessLoggingService": .als.options.gloo.solo.io.AccessLoggingService
 "extensions": .gloo.solo.io.Extensions
 "perConnectionBufferLimitBytes": .google.protobuf.UInt32Value
+"socketOptions": []envoy.api.v2.core.SocketOption
 
 ```
 
@@ -49,6 +50,7 @@ to be usable by Gloo. (plugins currently need to be compiled into Gloo)
 | `accessLoggingService` | [.als.options.gloo.solo.io.AccessLoggingService](../options/als/als.proto.sk/#accessloggingservice) |  |  |
 | `extensions` | [.gloo.solo.io.Extensions](../extensions.proto.sk/#extensions) | Extensions will be passed along from Listeners, Gateways, VirtualServices, Routes, and Route tables to the underlying Proxy, making them useful for controllers, validation tools, etc. which interact with kubernetes yaml. Some sample use cases: * controllers, deployment pipelines, helm charts, etc. which wish to use extensions as a kind of opaque metadata. * In the future, Gloo may support gRPC-based plugins which communicate with the Gloo translator out-of-process. Opaque Extensions enables development of out-of-process plugins without requiring recompiling & redeploying Gloo's API. |  |
 | `perConnectionBufferLimitBytes` | [.google.protobuf.UInt32Value](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/u-int-32-value) | Soft limit on size of the listener's new connection read and write buffers. If unspecified, defaults to 1MiB For more info, check out the [Envoy docs](https://www.envoyproxy.io/docs/envoy/v1.14.1/api-v2/api/v2/listener.proto). |  |
+| `socketOptions` | [[]envoy.api.v2.core.SocketOption](../../../../../../../../envoy/api/v2/core/base.proto.sk/#socketoption) | Additional socket options that may not be present in Envoy source code or precompiled binaries. |  |
 
 
 
@@ -73,6 +75,7 @@ Optional, feature-specific configuration that lives on http listeners
 "proxyLatency": .envoy.config.filter.http.proxylatency.v2.ProxyLatency
 "buffer": .envoy.extensions.filters.http.buffer.v3.Buffer
 "grpcJsonTranscoder": .grpc_json.options.gloo.solo.io.GrpcJsonTranscoder
+"sanitizeClusterHeader": .google.protobuf.BoolValue
 
 ```
 
@@ -91,6 +94,7 @@ Optional, feature-specific configuration that lives on http listeners
 | `proxyLatency` | [.envoy.config.filter.http.proxylatency.v2.ProxyLatency](../../external/envoy/extensions/proxylatency/proxylatency.proto.sk/#proxylatency) | Enterprise-only: Proxy latency. |  |
 | `buffer` | [.envoy.extensions.filters.http.buffer.v3.Buffer](../../external/envoy/extensions/filters/http/buffer/v3/buffer.proto.sk/#buffer) | Buffer can be used to set the maximum request size that the filter will buffer before the connection manager will stop buffering and return a 413 response. |  |
 | `grpcJsonTranscoder` | [.grpc_json.options.gloo.solo.io.GrpcJsonTranscoder](../options/grpc_json/grpc_json.proto.sk/#grpcjsontranscoder) | Exposed envoy config for the gRPC to JSON transcoding filter, envoy.filters.http.grpc_json_transcoder. For more, see https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/http/grpc_json_transcoder/v3/transcoder.proto. |  |
+| `sanitizeClusterHeader` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Enterprise-only: If using the HTTP header specified by cluster_header to direct traffic to a cluster, this option will sanitize that header from downstream traffic. Defaults to false. |  |
 
 
 

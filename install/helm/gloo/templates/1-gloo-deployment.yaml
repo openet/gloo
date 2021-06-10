@@ -181,6 +181,10 @@ spec:
           failureThreshold: 10
 {{- end }}
 {{- with .Values.gloo.deployment.nodeSelector }}
-      nodeSelector:
+nodeSelector:
 {{ toYaml . | indent 8 }}
 {{- end }}
+      {{- if $image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ $image.pullSecret }}
+      {{- end}}
