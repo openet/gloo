@@ -83,6 +83,6 @@ spec:
   {{- end }} # with spec.service.loadBalancerSourceRanges
   {{- end }} # $spec.service.loadBalancerSourceRanges
   {{- end }} # $spec.service.type "LoadBalancer"
-{{- end }}
-{{- end }}
-{{ end }}
+{{- end }} # range $name, $spec := .Values.gatewayProxies
+{{- end }} # if not $spec.disabled
+{{ end }} # if .Values.gateway.enabled

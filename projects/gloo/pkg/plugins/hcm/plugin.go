@@ -101,6 +101,7 @@ func copyCoreHcmSettings(ctx context.Context, cfg *envoyhttp.HttpConnectionManag
 	cfg.DelayedCloseTimeout = gogoutils.DurationStdToProto(hcmSettings.GetDelayedCloseTimeout())
 	cfg.ServerName = hcmSettings.GetServerName()
 	cfg.PreserveExternalRequestId = hcmSettings.GetPreserveExternalRequestId()
+	cfg.ServerHeaderTransformation = envoyhttp.HttpConnectionManager_ServerHeaderTransformation(hcmSettings.GetServerHeaderTransformation())
 
 	if hcmSettings.GetAcceptHttp_10() {
 		cfg.HttpProtocolOptions = &envoycore.Http1ProtocolOptions{
@@ -125,6 +126,20 @@ func copyCoreHcmSettings(ctx context.Context, cfg *envoyhttp.HttpConnectionManag
 			cfg.CommonHttpProtocolOptions = &envoycore.HttpProtocolOptions{}
 		}
 		cfg.CommonHttpProtocolOptions.IdleTimeout = gogoutils.DurationStdToProto(hcmSettings.GetIdleTimeout())
+	}
+
+	if hcmSettings.GetMaxConnectionDuration() != nil {
+		if cfg.GetCommonHttpProtocolOptions() == nil {
+			cfg.CommonHttpProtocolOptions = &envoycore.HttpProtocolOptions{}
+		}
+		cfg.CommonHttpProtocolOptions.MaxConnectionDuration = gogoutils.DurationStdToProto(hcmSettings.GetMaxConnectionDuration())
+	}
+
+	if hcmSettings.GetMaxStreamDuration() != nil {
+		if cfg.GetCommonHttpProtocolOptions() == nil {
+			cfg.CommonHttpProtocolOptions = &envoycore.HttpProtocolOptions{}
+		}
+		cfg.CommonHttpProtocolOptions.MaxStreamDuration = gogoutils.DurationStdToProto(hcmSettings.GetMaxStreamDuration())
 	}
 
 	// allowed upgrades

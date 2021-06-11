@@ -289,6 +289,9 @@ spec:
       tolerations:
 {{ toYaml $spec.podTemplate.tolerations | indent 6}}
       {{- end }}
+      {{- if $image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ $image.pullSecret }}{{end}}
       {{- if $spec.podTemplate.terminationGracePeriodSeconds }}
       terminationGracePeriodSeconds: {{ $spec.podTemplate.terminationGracePeriodSeconds }}
       {{- end }}
