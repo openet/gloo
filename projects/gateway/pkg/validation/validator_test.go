@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"sync"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	k8syamlutil "sigs.k8s.io/yaml"
@@ -22,6 +24,7 @@ import (
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/grpc/validation"
 	validationutils "github.com/solo-io/gloo/projects/gloo/pkg/utils/validation"
 	"github.com/solo-io/gloo/test/samples"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 )
 
@@ -562,8 +565,8 @@ var _ = Describe("Validator", func() {
 				snap := samples.SimpleGatewaySnapshot(us.Metadata.Ref(), ns)
 				err := v.Sync(context.TODO(), snap)
 				Expect(err).NotTo(HaveOccurred())
-				proxyReports, err := v.ValidateList(context.TODO(), toUnstructuredList(snap.VirtualServices[0]), false)
-				Expect(err).NotTo(HaveOccurred())
+				proxyReports, merr := v.ValidateList(context.TODO(), toUnstructuredList(snap.VirtualServices[0]), false)
+				Expect(merr.ErrorOrNil()).NotTo(HaveOccurred())
 				Expect(proxyReports).To(HaveLen(1))
 			})
 
@@ -582,8 +585,8 @@ var _ = Describe("Validator", func() {
 				vs2.Metadata.Name = "vs2"
 				vs2.VirtualHost.Domains = []string{"example.vs2.com"}
 
-				proxyReports, err := v.ValidateList(context.TODO(), toUnstructuredList(vs1, vs2), false)
-				Expect(err).NotTo(HaveOccurred())
+				proxyReports, merr := v.ValidateList(context.TODO(), toUnstructuredList(vs1, vs2), false)
+				Expect(merr.ErrorOrNil()).NotTo(HaveOccurred())
 				Expect(proxyReports).To(HaveLen(2))
 			})
 
@@ -615,16 +618,41 @@ var _ = Describe("Validator", func() {
 				snap := samples.GatewaySnapshotWithDelegates(us.Metadata.Ref(), ns)
 				err := v.Sync(context.TODO(), snap)
 				Expect(err).NotTo(HaveOccurred())
-				proxyReports, err := v.ValidateList(context.TODO(), toUnstructuredList(snap.VirtualServices[0]), false)
-				Expect(err).NotTo(HaveOccurred())
+				proxyReports, merr := v.ValidateList(context.TODO(), toUnstructuredList(snap.VirtualServices[0]), false)
+				Expect(merr.ErrorOrNil()).NotTo(HaveOccurred())
 				Expect(proxyReports).To(HaveLen(1))
 				Expect(proxyReports).To(HaveKey(ContainSubstring("listener-::-8080")))
 
 				// repeat to ensure any hashing doesn't short circuit returning the proxies
-				proxyReports, err = v.ValidateList(context.TODO(), toUnstructuredList(snap.VirtualServices[0]), false)
-				Expect(err).NotTo(HaveOccurred())
+				proxyReports, merr = v.ValidateList(context.TODO(), toUnstructuredList(snap.VirtualServices[0]), false)
+				Expect(merr.ErrorOrNil()).NotTo(HaveOccurred())
 				Expect(proxyReports).To(HaveLen(1))
 				Expect(proxyReports).To(HaveKey(ContainSubstring("listener-::-8080")))
+			})
+		})
+
+		Context("unmarshal errors", func() {
+			It("doesn't mask other errors when there's an unmarshal error in a list", func() {
+
+				vc.validateProxy = acceptProxy
+				us := samples.SimpleUpstream()
+				snap := samples.SimpleGatewaySnapshot(us.Metadata.Ref(), ns)
+				err := v.Sync(context.TODO(), snap)
+				Expect(err).NotTo(HaveOccurred())
+
+				ul := &unstructured.UnstructuredList{}
+				jsonBytes, err := ioutil.ReadFile("fixtures/unmarshal-err.json")
+				Expect(err).ToNot(HaveOccurred())
+				err = ul.UnmarshalJSON(jsonBytes)
+				Expect(err).ToNot(HaveOccurred())
+				proxyReports, merr := v.ValidateList(context.TODO(), ul, false)
+				Expect(merr).To(HaveOccurred())
+				Expect(merr.Errors).To(HaveLen(3))
+				Expect(merr.Errors[0]).To(MatchError(ContainSubstring("route table gloo-system.i-dont-exist-rt missing")))
+				Expect(merr.Errors[1]).To(MatchError(ContainSubstring("virtual service [gloo-system.invalid-vs-2] does not specify a virtual host")))
+				Expect(merr.Errors[2]).To(MatchError(ContainSubstring("parsing resource from crd spec testproxy1-rt in namespace gloo-system into *v1.RouteTable: unknown field \"matcherss\" in v1.Route")))
+				Expect(proxyReports).To(HaveLen(0))
+
 			})
 		})
 
@@ -677,8 +705,8 @@ var _ = Describe("Validator", func() {
 				snap.VirtualServices[1].DeepCopyInto(vs2)
 				vs2.Metadata.Name = "vs2"
 
-				proxyReports, err := v.ValidateList(context.TODO(), toUnstructuredList(vs2), false)
-				Expect(err).NotTo(HaveOccurred())
+				proxyReports, merr := v.ValidateList(context.TODO(), toUnstructuredList(vs2), false)
+				Expect(merr.ErrorOrNil()).NotTo(HaveOccurred())
 				Expect(proxyReports).To(HaveLen(1))
 
 				// create another virtual service to validate, should fail validation as a prior one should
@@ -687,10 +715,10 @@ var _ = Describe("Validator", func() {
 				snap.VirtualServices[1].DeepCopyInto(vs3)
 				vs3.Metadata.Name = "vs3"
 
-				proxyReports, err = v.ValidateList(context.TODO(), toUnstructuredList(vs3), false)
-				Expect(err).To(HaveOccurred())
-				Expect(err.Error()).To(ContainSubstring("could not render proxy"))
-				Expect(err.Error()).To(ContainSubstring("domain conflict: the following"))
+				proxyReports, merr = v.ValidateList(context.TODO(), toUnstructuredList(vs3), false)
+				Expect(merr.ErrorOrNil()).To(HaveOccurred())
+				Expect(merr.ErrorOrNil().Error()).To(ContainSubstring("could not render proxy"))
+				Expect(merr.ErrorOrNil().Error()).To(ContainSubstring("domain conflict: the following"))
 				Expect(proxyReports).To(HaveLen(0))
 			})
 
@@ -708,8 +736,8 @@ var _ = Describe("Validator", func() {
 				snap.VirtualServices[1].DeepCopyInto(vs2)
 				vs2.Metadata.Name = "vs2"
 
-				proxyReports, err := v.ValidateList(context.TODO(), toUnstructuredList(vs2), true)
-				Expect(err).NotTo(HaveOccurred())
+				proxyReports, merr := v.ValidateList(context.TODO(), toUnstructuredList(vs2), true)
+				Expect(merr.ErrorOrNil()).NotTo(HaveOccurred())
 				Expect(proxyReports).To(HaveLen(1))
 
 				// create another virtual service to validate, should pass validation as a prior one should not
@@ -718,11 +746,76 @@ var _ = Describe("Validator", func() {
 				snap.VirtualServices[1].DeepCopyInto(vs3)
 				vs3.Metadata.Name = "vs3"
 
-				proxyReports, err = v.ValidateList(context.TODO(), toUnstructuredList(vs3), true)
-				Expect(err).ToNot(HaveOccurred())
+				proxyReports, merr = v.ValidateList(context.TODO(), toUnstructuredList(vs3), true)
+				Expect(merr.ErrorOrNil()).ToNot(HaveOccurred())
 				Expect(proxyReports).To(HaveLen(1))
 			})
 
+		})
+
+	})
+
+	Context("validating concurrent scenario", func() {
+
+		var (
+			resultMap       sync.Map
+			numberOfWorkers int
+		)
+
+		BeforeEach(func() {
+			resultMap = sync.Map{}
+			numberOfWorkers = 100
+		})
+
+		validateVirtualServiceWorker := func(vsToDuplicate *gatewayv1.VirtualService, name string) error {
+			// duplicate the vs with a different name
+			workerVirtualService := &gatewayv1.VirtualService{}
+			vsToDuplicate.DeepCopyInto(workerVirtualService)
+			workerVirtualService.Metadata.Name = "vs2-" + name
+
+			_, err := v.ValidateVirtualService(context.TODO(), workerVirtualService, false)
+
+			if err != nil {
+				// worker errors are stored in the resultMap
+				resultMap.Store(name, err.Error())
+			}
+
+			return nil
+		}
+
+		It("accepts only 1 vs when multiple are written concurrently", func() {
+			vc.validateProxy = acceptProxy
+			us := samples.SimpleUpstream()
+			snap := samples.SimpleGatewaySnapshot(us.Metadata.Ref(), ns)
+			err := v.Sync(context.TODO(), snap)
+			Expect(err).NotTo(HaveOccurred())
+
+			samples.AddVsToSnap(snap, us.GetMetadata().Ref(), "ns")
+			vsToDuplicate := snap.VirtualServices[1]
+
+			// start workers
+			errorGroup := errgroup.Group{}
+			for i := 0; i < numberOfWorkers; i++ {
+				workerName := fmt.Sprintf("worker #%d", i)
+				errorGroup.Go(func() error {
+					defer GinkgoRecover()
+					return validateVirtualServiceWorker(vsToDuplicate, workerName)
+				})
+			}
+
+			// wait for all workers to complete
+			err = errorGroup.Wait()
+			Expect(err).NotTo(HaveOccurred())
+
+			// aggregate the error messages from all the workers
+			var errMessages []string
+			resultMap.Range(func(name, value interface{}) bool {
+				errMessages = append(errMessages, value.(string))
+				return true // continue
+			})
+
+			// Expect 1 worker to have successfully completed and all others to have failed
+			Expect(len(errMessages)).To(Equal(numberOfWorkers - 1))
 		})
 
 	})

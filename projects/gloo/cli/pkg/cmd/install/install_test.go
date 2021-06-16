@@ -2,13 +2,10 @@ package install_test
 
 import (
 	"fmt"
-	"path/filepath"
 
 	"github.com/solo-io/gloo/pkg/version"
 
 	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/install"
-
-	"github.com/solo-io/go-utils/testutils/exec"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -120,13 +117,13 @@ var _ = Describe("Install", func() {
 	It("should error when not overriding helm chart in dev mode", func() {
 		_, err := testutils.GlooctlOut("install ingress --dry-run")
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("installing gloo in ingress mode: you must provide a Gloo Helm chart URI via the 'file' option when running an unreleased version of glooctl"))
+		Expect(err.Error()).To(ContainSubstring("installing gloo edge in ingress mode: you must provide a Gloo Helm chart URI via the 'file' option when running an unreleased version of glooctl"))
 	})
 
 	It("should error when not providing file with valid extension", func() {
 		_, err := testutils.GlooctlOut("install gateway --file foo --dry-run")
 		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(ContainSubstring("installing gloo in gateway mode: unsupported file extension for Helm chart URI: [foo]. Extension must either be .tgz or .tar.gz"))
+		Expect(err.Error()).To(ContainSubstring("installing gloo edge in gateway mode: unsupported file extension for Helm chart URI: [foo]. Extension must either be .tgz or .tar.gz"))
 	})
 
 	It("should error when not providing valid file", func() {
@@ -138,9 +135,9 @@ var _ = Describe("Install", func() {
 	It("should not error when providing the admin console flag", func() {
 		// This test fetches the corresponding GlooE helm chart, thus it needs the version that gets linked
 		// into the glooctl binary at build time
-		out, err := exec.RunCommandOutput(RootDir, true, filepath.Join("_output", "glooctl"), "install", "gateway", "--dry-run", "--with-admin-console")
+		version.Version = "1.3.2" // pretend we set this using linker on a release build of glooctl
+		_, err := testutils.GlooctlOut("install gateway --dry-run --with-admin-console")
 		Expect(err).NotTo(HaveOccurred())
-		Expect(out).NotTo(BeEmpty())
 	})
 
 	It("should not error when providing a new release-name flag value", func() {

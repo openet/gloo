@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
-	"strings"
 
 	"github.com/solo-io/gloo/projects/gloo/pkg/utils"
 
@@ -122,13 +121,11 @@ func (t *translatorInstance) computeListenerFilters(params plugins.Params, liste
 	}
 
 	// Check that we don't refer to nonexistent auth config
-	for _, vHost := range httpListener.HttpListener.GetVirtualHosts() {
+	for i, vHost := range httpListener.HttpListener.GetVirtualHosts() {
 		acRef := vHost.GetOptions().GetExtauth().GetConfigRef()
 		if acRef != nil {
 			if _, err := params.Snapshot.AuthConfigs.Find(acRef.GetNamespace(), acRef.GetName()); err != nil {
-				validation.AppendHTTPListenerError(
-					httpListenerReport, validationapi.HttpListenerReport_Error_ProcessingError,
-					"auth config not found: "+acRef.String())
+				validation.AppendVirtualHostError(httpListenerReport.VirtualHostReports[i], validationapi.VirtualHostReport_Error_ProcessingError, "auth config not found: "+acRef.String())
 			}
 		}
 	}
@@ -173,8 +170,7 @@ func (t *translatorInstance) computeFilterChainsFromSslConfig(snap *v1.ApiSnapsh
 }
 
 func mergeSslConfigs(sslConfigs []*v1.SslConfig) []*v1.SslConfig {
-	// we can merge ssl config if:
-	// they have the same SslSecrets and VerifySubjectAltName
+	// we can merge ssl config if they look the same except for SNI domains.
 	// combine SNI information.
 	// return merged result
 
@@ -184,30 +180,19 @@ func mergeSslConfigs(sslConfigs []*v1.SslConfig) []*v1.SslConfig {
 
 	for _, sslConfig := range sslConfigs {
 
-		key := ""
-		switch sslCfg := sslConfig.SslSecrets.(type) {
-		case *v1.SslConfig_SecretRef:
-			key = sslCfg.SecretRef.GetName() + "," + sslCfg.SecretRef.GetNamespace()
-		case *v1.SslConfig_SslFiles:
-			key = sslCfg.SslFiles.GetTlsCert() + "," + sslCfg.SslFiles.GetTlsKey() + "," + sslCfg.SslFiles.GetRootCa()
-		default:
-			result = append(result, sslConfig)
-			continue
-		}
+		// make sure ssl configs are only different by sni domains
+		sslConfigCopy := *sslConfig
+		sslConfigCopy.SniDomains = nil
+		hash, _ := sslConfigCopy.Hash(nil)
 
-		tmp := make([]string, len(sslConfig.VerifySubjectAltName))
-		copy(tmp, sslConfig.VerifySubjectAltName)
-		sort.Strings(tmp)
-		key = key + ";" + strings.Join(tmp, ",")
+		key := fmt.Sprintf("%d", hash)
 
 		if matchingCfg, ok := mergedSslSecrets[key]; ok {
-			matchingCfg.SslSecrets = sslConfig.SslSecrets
-			matchingCfg.VerifySubjectAltName = sslConfig.VerifySubjectAltName
 			if len(matchingCfg.SniDomains) == 0 || len(sslConfig.SniDomains) == 0 {
 				// if either of the configs match on everything; then match on everything
 				matchingCfg.SniDomains = nil
 			} else {
-				matchingCfg.SniDomains = append(mergedSslSecrets[key].SniDomains, sslConfig.SniDomains...)
+				matchingCfg.SniDomains = merge(matchingCfg.SniDomains, sslConfig.SniDomains...)
 			}
 		} else {
 			cfgCopy := *sslConfig
@@ -218,6 +203,20 @@ func mergeSslConfigs(sslConfigs []*v1.SslConfig) []*v1.SslConfig {
 	}
 
 	return result
+}
+
+func merge(values []string, newvalues ...string) []string {
+	existing := map[string]bool{}
+	for _, v := range values {
+		existing[v] = true
+	}
+
+	for _, v := range newvalues {
+		if _, ok := existing[v]; !ok {
+			values = append(values, v)
+		}
+	}
+	return values
 }
 
 func validateListenerPorts(proxy *v1.Proxy, listenerReport *validationapi.ListenerReport) {

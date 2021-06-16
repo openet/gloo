@@ -18,6 +18,7 @@ import "google/api/annotations.proto";
 import "google/protobuf/duration.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/wrappers.proto";
+import "google/protobuf/empty.proto";
 
 
 // This is the user-facing auth configuration. When processed by Gloo, certain configuration types (i.a. oauth, opa)
@@ -256,6 +257,88 @@ message OAuth2 {
   }
 }
 
+message RedisOptions {
+  // address of the redis. can be address:port or unix://path/to/unix.sock
+  string host = 1;
+  // db to use. can leave unset for db 0.
+  int32 db = 2;
+  // size of the connection pool. can leave unset for default.
+  // defaults to 10 connections per every CPU
+  int32 pool_size = 3;
+}
+
+message UserSession {
+  message InternalSession{}
+  message RedisSession{
+    // Options to connect to redis
+    RedisOptions options = 1;
+    // Key prefix inside redis
+    string key_prefix = 2;
+    // Cookie name to set and store the session id. If empty the default "__session" is used.
+    string cookie_name = 3;
+  }
+  
+  // should we fail auth flow when failing to get a session from redis, or allow it to continue,
+  // potentially starting a new auth flow and setting a new session.
+  bool fail_on_fetch_failure = 1;
+
+  message CookieOptions {
+    // Max age for the cookie. Leave unset for a default of 30 days (2592000 seconds).
+    // To disable cookie expiry, set explicitly to 0.
+    google.protobuf.UInt32Value max_age = 1;
+    // Use a non-secure cookie. Note - this should only be used for testing and in trusted 
+    // environments.
+    bool not_secure = 2;
+    // Path of the cookie. If unset, defaults to "/". Set it explicitly to "" to avoid setting a 
+    // path.
+    google.protobuf.StringValue path = 3;
+    // Cookie domain
+    string domain = 4;
+  }
+
+  // Set-Cookie options
+  CookieOptions cookie_options = 2;
+  oneof session {
+    // Set the tokens in the cookie itself. No need for server side state.
+    InternalSession cookie = 3;
+    // Use redis to store the tokens and just store a random id in the cookie.
+    RedisSession redis = 4;
+  }
+}
+
+message HeaderConfiguration {
+  // If set, the id token will be forward upstream using this header name.
+  string id_token_header = 1;
+}
+
+// The json web key set (JWKS) (https://tools.ietf.org/html/rfc7517) is discovered at an interval
+// from a remote source. When keys rotate in the remote source, there may be a delay in the
+// local source picking up those new keys. Therefore, a user could execute a request with a token
+// that has been signed by a key in the remote JWKS, but the local cache doesn't have the key yet.
+// The request would fail because the key isn't contained in the local set. Since most IdPs publish key
+// keys in their remote JWKS before they are used, this is not an issue most of the time.
+// This policy lets you define the behavior for when a user has a token with a key
+// not yet in the local cache.
+message JwksOnDemandCacheRefreshPolicy {
+  oneof policy {
+    // Never refresh the local JWKS cache on demand. If a key is not in the cache, it is assumed to be malicious.
+    // This is the default policy since we assume that IdPs publish keys before they rotate them,
+    // and frequent polling finds the newest keys.
+    google.protobuf.Empty never = 1;
+
+    // If a key is not in the cache, fetch the most recent keys from the IdP and update the cache.
+    // NOTE: This should only be done in trusted environments, since missing keys will each trigger
+    // a request to the IdP. Using this in an environment exposed to the internet will allow malicious agents to
+    // execute a DDoS attack by spamming protected endpoints with tokens signed by invalid keys.
+    google.protobuf.Empty always = 2;
+
+    // If a key is not in the cache, fetch the most recent keys from the IdP and update the cache.
+    // This value sets the number of requests to the IdP per polling interval. If that limit is exceeded,
+    // we will stop fetching from the IdP for the remainder of the polling interval.
+    uint32 max_idp_req_per_polling_interval = 3;
+  }
+}
+
 message OidcAuthorizationCode {
   // your client id as registered with the issuer
   string client_id = 1;
@@ -275,11 +358,32 @@ message OidcAuthorizationCode {
   string app_url = 5;
 
   // a callback path relative to app url that will be used for OIDC callbacks.
-  // needs to not be used by the application
+  // should not be used by the application.
   string callback_path = 6;
+
+  // a path relative to app url that will be used for logging out from an OIDC session.
+  // should not be used by the application.
+  // If not provided, logout functionality will be disabled.
+  string logout_path = 9;
 
   // Scopes to request in addition to openid scope.
   repeated string scopes = 7;
+
+  // Configuration related to the user session.
+  UserSession session = 8;
+
+  // Configures headers added to requests.
+  HeaderConfiguration headers = 10;
+
+  // The interval at which OIDC configuration is discovered at <issuerUrl>/.well-known/openid-configuration
+  // If not specified, the default value is 30 minutes.
+  google.protobuf.Duration discovery_poll_interval = 12;
+
+  // If a user executes a request with a key that is not found in the JWKS, it could be
+  // that the keys have rotated on the remote source, and not yet in the local cache.
+  // This policy lets you define the behavior for how to refresh the local cache during a request
+  // where an invalid key is provided
+  JwksOnDemandCacheRefreshPolicy jwks_cache_refresh_policy = 13;
 
   // in the future we may implement this:
   // add optional configuration for validation of the access token received during the OIDC flow
@@ -446,6 +550,7 @@ message ExtAuthConfig {
   }
 
   message OidcAuthorizationCodeConfig {
+    
     // your client id as registered with the issuer
     string client_id = 1;
 
@@ -467,8 +572,28 @@ message ExtAuthConfig {
     // needs to not be used by the application
     string callback_path = 6;
 
+    // a path relative to app url that will be used for logging out from an OIDC session.
+    // should not be used by the application.
+    // If not provided, logout functionality will be disabled.
+    string logout_path = 9;
+
     // scopes to request in addition to the openid scope.
     repeated string scopes = 7;
+
+    UserSession session = 8;
+
+    // Configures headers added to requests.
+    HeaderConfiguration headers = 10;
+
+    // The interval at which OIDC configuration is discovered at <issuerUrl>/.well-known/openid-configuration
+    // If not specified, the default value is 30 minutes.
+    google.protobuf.Duration discovery_poll_interval = 12;
+
+    // If a user executes a request with a key that is not found in the JWKS, it could be
+    // that the keys have rotated on the remote source, and not yet in the local cache.
+    // This policy lets you define the behavior for how to refresh the local cache during a request
+    // where an invalid key is provided
+    JwksOnDemandCacheRefreshPolicy jwks_cache_refresh_policy = 13;
 
     // in the future we may implement this:
     // add optional configuration for validation of the access token received during the OIDC flow
