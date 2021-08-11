@@ -107,7 +107,7 @@ func generateChartYaml(version string) error {
 		return err
 	}
 
-	chart.Version = "1.5.26"
+	chart.Version = "1.5.26-TEST"
 
 	return writeYaml(&chart, chartOutput)
 }
