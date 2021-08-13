@@ -3,6 +3,8 @@ package gogoutils
 import (
 	envoycluster "github.com/envoyproxy/go-control-plane/envoy/api/v2/cluster"
 	envoycore "github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
+	_type "github.com/envoyproxy/go-control-plane/envoy/type"
+	matcher "github.com/envoyproxy/go-control-plane/envoy/type/matcher"
 	"github.com/solo-io/gloo/pkg/utils/protoutils"
 	envoycluster_gloo "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/api/v2/cluster"
 	envoycore_gloo "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/api/v2/core"
@@ -132,17 +134,30 @@ func ToEnvoyHealthCheck(check *envoycore_gloo.HealthCheck, secrets *v1.SecretLis
 		if err != nil {
 			return nil, err
 		}
-		hc.HealthChecker = &envoycore.HealthCheck_HttpHealthCheck_{
-			HttpHealthCheck: &envoycore.HealthCheck_HttpHealthCheck{
-				Host:                   typed.HttpHealthCheck.GetHost(),
-				Path:                   typed.HttpHealthCheck.GetPath(),
-				UseHttp2:               typed.HttpHealthCheck.GetUseHttp2(),
-				ServiceName:            typed.HttpHealthCheck.GetServiceName(),
-				RequestHeadersToAdd:    requestHeadersToAdd,
-				RequestHeadersToRemove: typed.HttpHealthCheck.GetRequestHeadersToRemove(),
-				ExpectedStatuses:       ToEnvoyInt64RangeList(typed.HttpHealthCheck.GetExpectedStatuses()),
-			},
+
+		httpHealthChecker := &envoycore.HealthCheck_HttpHealthCheck{
+			Host:                   typed.HttpHealthCheck.GetHost(),
+			Path:                   typed.HttpHealthCheck.GetPath(),
+			RequestHeadersToAdd:    requestHeadersToAdd,
+			RequestHeadersToRemove: typed.HttpHealthCheck.GetRequestHeadersToRemove(),
+			ExpectedStatuses:       ToEnvoyInt64RangeList(typed.HttpHealthCheck.GetExpectedStatuses()),
 		}
+
+		if typed.HttpHealthCheck.GetUseHttp2() {
+			httpHealthChecker.CodecClientType = _type.CodecClientType_HTTP2
+		}
+		if typed.HttpHealthCheck.GetServiceName() != "" {
+			httpHealthChecker.ServiceNameMatcher = &matcher.StringMatcher{
+				MatchPattern: &matcher.StringMatcher_Prefix{
+					Prefix: typed.HttpHealthCheck.GetServiceName(),
+				},
+			}
+		}
+
+		hc.HealthChecker = &envoycore.HealthCheck_HttpHealthCheck_{
+			HttpHealthCheck: httpHealthChecker,
+		}
+
 	case *envoycore_gloo.HealthCheck_GrpcHealthCheck_:
 		hc.HealthChecker = &envoycore.HealthCheck_GrpcHealthCheck_{
 			GrpcHealthCheck: &envoycore.HealthCheck_GrpcHealthCheck{
