@@ -181,3 +181,5 @@ global:
     ipv4Only: true
   istioSDS:
     enabled: false
+  istioIntegration:
+    disableAutoinjection: true
