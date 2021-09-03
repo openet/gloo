@@ -25,13 +25,14 @@ type Config struct {
 }
 
 type Global struct {
-	Image      *Image      `json:"image,omitempty"`
-	Extensions interface{} `json:"extensions,omitempty"`
-	GlooRbac   *Rbac       `json:"glooRbac,omitempty"`
-	Wasm       Wasm        `json:"wasm,omitempty"`
-	GlooStats  Stats       `json:"glooStats,omitempty" desc:"Config used as the default values for Prometheus stats published from Gloo Edge pods. Can be overridden by individual deployments"`
-	GlooMtls   Mtls        `json:"glooMtls,omitempty" desc:"Config used to enable internal mtls authentication (currently just Gloo Edge to Envoy communication)"`
-	IstioSDS   IstioSDS    `json:"istioSDS,omitempty" desc:"Config used for installing Gloo Edge with Istio SDS cert rotation features to facilitate Istio mTLS"`
+	Image            *Image      `json:"image,omitempty"`
+	Extensions       interface{} `json:"extensions,omitempty"`
+	GlooRbac         *Rbac       `json:"glooRbac,omitempty"`
+	Wasm             Wasm        `json:"wasm,omitempty"`
+	GlooStats        Stats       `json:"glooStats,omitempty" desc:"Config used as the default values for Prometheus stats published from Gloo Edge pods. Can be overridden by individual deployments"`
+	GlooMtls         Mtls        `json:"glooMtls,omitempty" desc:"Config used to enable internal mtls authentication (currently just Gloo Edge to Envoy communication)"`
+	IstioSDS         IstioSDS    `json:"istioSDS,omitempty" desc:"Config used for installing Gloo Edge with Istio SDS cert rotation features to facilitate Istio mTLS"`
+	IstioIntegration IstioIntegration `json:"istioIntegration,omitempty" desc:"Configs user to manage Gloo pod visibility for Istio's' automatic discovery and sidecar injection."`
 }
 
 type Namespace struct {
@@ -435,4 +436,7 @@ type EnvoySidecarContainer struct {
 type IstioSDS struct {
 	Enabled        bool          `json:"enabled,omitempty" desc:"Enables SDS cert-rotator sidecar for istio mTLS cert rotation"`
 	CustomSidecars []interface{} `json:"customSidecars,omitempty" desc:"Override the default Istio sidecar in gateway-proxy with a custom container. Ignored if IstioSDS.enabled is false"`
+}
+type IstioIntegration struct {
+	DisableAutoinjection  bool `json:"disableAutoinjection,omitempty" desc:"Annotate all pods (excluding those whitelisted by other config values) to with an explicit 'do not inject' annotation to prevent Istio from adding sidecars to all pods. It's recommended that this be set to true if Gloo's namespace is marked for Istio discovery, as some pods do not immediately work with an Istio sidecar without extra manual configuration."`
 }
