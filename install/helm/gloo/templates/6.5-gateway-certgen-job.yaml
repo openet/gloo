@@ -49,6 +49,10 @@ spec:
             - "--secret-name={{ .Values.gateway.validation.secretName }}"
             - "--svc-name=gateway"
             - "--validating-webhook-configuration-name=gloo-gateway-validation-webhook-{{ .Release.Namespace }}"
+{{- with .Values.gateway.certGenJob.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+{{- end }}
         {{- with .Values.gateway.certGenJob.resources }}
           resources: {{ toYaml . | nindent 12}}
         {{- end }}

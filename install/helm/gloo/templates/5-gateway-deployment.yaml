@@ -109,6 +109,10 @@ spec:
             secretName: {{ .Values.gateway.validation.secretName }}
 {{- end}} {{/* if .Values.gateway.validation.enabled */}}
 {{- end }} {{/* if .Values.gateway.enabled */}}
+{{- with .Values.gateway.deployment.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+{{- end }}
 {{- end }} {{/* define "gateway.deploymentSpec" */}}
 
 {{/* Render template with yaml overrides */}}
