@@ -609,6 +609,7 @@ type Mtls struct {
 	IstioProxy            IstioProxyContainer   `json:"istioProxy,omitempty" desc:"Istio-proxy container"`
 	EnvoySidecarResources *ResourceRequirements `json:"envoySidecarResources,omitempty" desc:"Sets default resource requirements for all Envoy sidecar containers."`
 	SdsResources          *ResourceRequirements `json:"sdsResources,omitempty" desc:"Sets default resource requirements for all sds containers."`
+	IPv4Only              bool                  `json:"ipv4Only" desc:"This field if set false will bind the IPv6 address on envoy-sidecar-config."`
 }
 
 type SdsContainer struct {
