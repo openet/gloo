@@ -250,6 +250,9 @@ spec:
           periodSeconds: 10
           failureThreshold: 3
 {{- end }}
+{{- with .Values.gloo.deployment.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
 {{- end }}{{/* if not .Values.global.glooMtls.enabled */}}
 {{- end }} {{/* define "gloo.deploymentSpec "*/}}
 
