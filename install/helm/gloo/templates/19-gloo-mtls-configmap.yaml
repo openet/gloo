@@ -1,5 +1,6 @@
 {{- if .Values.global.glooMtls.enabled }}
 ---
+{{- $bindAddr := ternary "0.0.0.0" "::" .Values.global.glooMtls.ipv4Only | quote -}}
 # config_map
 apiVersion: v1
 kind: ConfigMap
