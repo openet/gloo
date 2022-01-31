@@ -26,7 +26,7 @@ data:
     static_resources:
       listeners:
       - name: envoy_xds_mtls_listener
-        address: { socket_address: { address: "0.0.0.0", port_value: {{ .Values.gloo.deployment.xdsPort }} } }
+        address: { socket_address: { address: {{ $bindAddr }}, port_value: {{ .Values.gloo.deployment.xdsPort }} } }
         filter_chains:
         - filters:
           - name: envoy.filters.network.tcp_proxy
