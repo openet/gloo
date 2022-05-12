@@ -4,7 +4,8 @@
 {{- define "gatewayProxy.deploymentSpec" }}
 {{- $name := (index . 1) }}
 {{- $gatewaySpec := (index . 2) }}
-{{- with (first .) }}
+{{- $autoscalingEnabled := .Values.autoscaling.enabled }}
+  {{- with (first .) }}
 {{- $global := .Values.global }}
 {{- $settings := .Values.settings }}
 {{- $isUpgrade := .Values.gateway.upgrade }}
@@ -36,9 +37,11 @@ metadata:
   namespace: {{ .Release.Namespace }}
 spec:
   {{- if $spec.kind.deployment}}
+  {{- if not $autoscalingEnabled }}
   {{- if $spec.kind.deployment.replicas}}
   replicas: {{ $spec.kind.deployment.replicas }}
   {{- end}}
+  {{- end }}
   {{- end}}
   selector:
     matchLabels:
