@@ -35,8 +35,8 @@ metadata:
   name: {{ $name | kebabcase }}
   namespace: {{ .Release.Namespace }}
 spec:
+  {{- if not $spec.horizontalPodAutoscaler.enabled }}
   {{- if $spec.kind.deployment}}
-  {{- if not $spec.horizontalPodAutoscaler }}
   {{- if $spec.kind.deployment.replicas}}
   replicas: {{ $spec.kind.deployment.replicas }}
   {{- end}}
