@@ -4,7 +4,7 @@
 {{- define "gatewayProxy.deploymentSpec" }}
 {{- $name := (index . 1) }}
 {{- $gatewaySpec := (index . 2) }}
-  {{- with (first .) }}
+{{- with (first .) }}
 {{- $global := .Values.global }}
 {{- $settings := .Values.settings }}
 {{- $isUpgrade := .Values.gateway.upgrade }}
