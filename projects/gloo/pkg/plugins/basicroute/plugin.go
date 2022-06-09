@@ -2,10 +2,8 @@ package basicroute
 
 import (
 	envoy_config_route_v3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
-	envoy_type_matcher_v3 "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	"github.com/golang/protobuf/ptypes/wrappers"
 	"github.com/solo-io/gloo/pkg/utils/regexutils"
-	v32 "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/type/matcher/v3"
 	v1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/protocol_upgrade"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/retries"
@@ -14,21 +12,31 @@ import (
 	"github.com/solo-io/solo-kit/pkg/errors"
 )
 
-type Plugin struct{}
+var (
+	_ plugins.RoutePlugin       = new(plugin)
+	_ plugins.VirtualHostPlugin = new(plugin)
+)
 
-var _ plugins.RoutePlugin = NewPlugin()
-var _ plugins.VirtualHostPlugin = NewPlugin()
+const (
+	ExtensionName = "basic_route"
+)
 
 // Handles a RoutePlugin APIs which map directly to basic Envoy config
-func NewPlugin() *Plugin {
-	return &Plugin{}
+type plugin struct{}
+
+func NewPlugin() *plugin {
+	return &plugin{}
 }
 
-func (p *Plugin) Init(params plugins.InitParams) error {
+func (p *plugin) Name() string {
+	return ExtensionName
+}
+
+func (p *plugin) Init(params plugins.InitParams) error {
 	return nil
 }
 
-func (p *Plugin) ProcessVirtualHost(
+func (p *plugin) ProcessVirtualHost(
 	params plugins.VirtualHostParams,
 	in *v1.VirtualHost,
 	out *envoy_config_route_v3.VirtualHost,
@@ -39,10 +47,16 @@ func (p *Plugin) ProcessVirtualHost(
 	return applyRetriesVhost(in, out)
 }
 
-func (p *Plugin) ProcessRoute(params plugins.RouteParams, in *v1.Route, out *envoy_config_route_v3.Route) error {
+func (p *plugin) ProcessRoute(params plugins.RouteParams, in *v1.Route, out *envoy_config_route_v3.Route) error {
+	// This plugin is only available for routeActions. return early if a different action is specified.
+	if _, ok := in.GetAction().(*v1.Route_RouteAction); !ok {
+		return nil
+	}
+
 	if in.GetOptions() == nil {
 		return nil
 	}
+
 	if err := applyPrefixRewrite(in, out); err != nil {
 		return err
 	}
@@ -93,7 +107,11 @@ func applyRegexRewrite(params plugins.RouteParams, in *v1.Route, out *envoy_conf
 		return errors.Errorf("internal error: route %v specified a regex, but output Envoy object "+
 			"had nil route", in.GetAction())
 	}
-	routeAction.Route.RegexRewrite = convertRegexMatchAndSubstitute(params, in.GetOptions().GetRegexRewrite())
+	regexRewrite, err := regexutils.ConvertRegexMatchAndSubstitute(params.Ctx, in.GetOptions().GetRegexRewrite())
+	if err != nil {
+		return err
+	}
+	routeAction.Route.RegexRewrite = regexRewrite
 	return nil
 }
 
@@ -214,24 +232,4 @@ func convertPolicy(policy *retries.RetryPolicy) *envoy_config_route_v3.RetryPoli
 		NumRetries:    &wrappers.UInt32Value{Value: numRetries},
 		PerTryTimeout: policy.GetPerTryTimeout(),
 	}
-}
-
-func convertRegexMatchAndSubstitute(params plugins.RouteParams, in *v32.RegexMatchAndSubstitute) *envoy_type_matcher_v3.RegexMatchAndSubstitute {
-	if in == nil {
-		return nil
-	}
-
-	out := &envoy_type_matcher_v3.RegexMatchAndSubstitute{
-		Pattern:      regexutils.NewRegex(params.Ctx, in.GetPattern().GetRegex()),
-		Substitution: in.GetSubstitution(),
-	}
-	switch inET := in.GetPattern().GetEngineType().(type) {
-	case *v32.RegexMatcher_GoogleRe2:
-		outET := out.GetPattern().GetEngineType().(*envoy_type_matcher_v3.RegexMatcher_GoogleRe2)
-		if inET.GoogleRe2.GetMaxProgramSize() != nil && (outET.GoogleRe2.GetMaxProgramSize() == nil || inET.GoogleRe2.GetMaxProgramSize().GetValue() < outET.GoogleRe2.GetMaxProgramSize().GetValue()) {
-			out.Pattern = regexutils.NewRegexWithProgramSize(in.GetPattern().GetRegex(), &inET.GoogleRe2.GetMaxProgramSize().Value)
-		}
-	}
-
-	return out
 }

@@ -143,6 +143,15 @@ spec:
                     type: object
                   connectTimeout:
                     type: string
+                  http1ProtocolOptions:
+                    properties:
+                      enableTrailers:
+                        type: boolean
+                      preserveCaseHeaderKeyFormat:
+                        type: boolean
+                      properCaseHeaderKeyFormat:
+                        type: boolean
+                    type: object
                   maxRequestsPerConnection:
                     format: int32
                     type: integer
@@ -166,6 +175,9 @@ spec:
                 properties:
                   connectEnabled:
                     type: boolean
+                  consistencyMode:
+                    type: string
+                    x-kubernetes-int-or-string: true
                   dataCenters:
                     items:
                       type: string
@@ -770,6 +782,11 @@ spec:
                   updateMergeWindow:
                     type: string
                 type: object
+              maxConcurrentStreams:
+                maximum: 4294967295
+                minimum: 0
+                nullable: true
+                type: integer
               namespacedStatuses:
                 properties:
                   statuses:

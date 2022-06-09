@@ -21,25 +21,38 @@ import (
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
 )
 
-type plugin struct {
-}
+var (
+	_ plugins.Plugin            = new(plugin)
+	_ plugins.HttpFilterPlugin  = new(plugin)
+	_ plugins.RoutePlugin       = new(plugin)
+	_ plugins.VirtualHostPlugin = new(plugin)
+)
 
-var _ plugins.Plugin = new(plugin)
-var _ plugins.HttpFilterPlugin = new(plugin)
-var _ plugins.RoutePlugin = new(plugin)
-var _ plugins.VirtualHostPlugin = new(plugin)
+const (
+	ExtensionName = "cors"
+)
 
 var (
 	InvalidRouteActionError = errors.New("cannot use cors plugin on non-Route_Route route actions")
+	pluginStage             = plugins.DuringStage(plugins.CorsStage)
 )
 
-var pluginStage = plugins.DuringStage(plugins.CorsStage)
+type plugin struct {
+	removeUnused              bool
+	filterRequiredForListener map[*v1.HttpListener]struct{}
+}
 
 func NewPlugin() *plugin {
 	return &plugin{}
 }
 
+func (p *plugin) Name() string {
+	return ExtensionName
+}
+
 func (p *plugin) Init(params plugins.InitParams) error {
+	p.removeUnused = params.Settings.GetGloo().GetRemoveUnusedFilters().GetValue()
+	p.filterRequiredForListener = make(map[*v1.HttpListener]struct{})
 	return nil
 }
 
@@ -58,6 +71,7 @@ func (p *plugin) ProcessVirtualHost(
 			zap.Any("virtual host", in.GetName()),
 		)
 	}
+	p.filterRequiredForListener[params.HttpListener] = struct{}{}
 	out.Cors = &envoy_config_route_v3.CorsPolicy{}
 	return p.translateCommonUserCorsConfig(params.Ctx, corsPlugin, out.GetCors())
 }
@@ -80,6 +94,8 @@ func (p *plugin) ProcessRoute(params plugins.RouteParams, in *v1.Route, out *env
 		}
 		outRa = out.GetRoute()
 	}
+
+	p.filterRequiredForListener[params.HttpListener] = struct{}{}
 	outRa.Cors = &envoy_config_route_v3.CorsPolicy{}
 	if err := p.translateCommonUserCorsConfig(params.Ctx, in.GetOptions().GetCors(), outRa.GetCors()); err != nil {
 		return err
@@ -134,6 +150,11 @@ func (p *plugin) translateRouteSpecificCorsConfig(in *cors.CorsPolicy, out *envo
 }
 
 func (p *plugin) HttpFilters(params plugins.Params, listener *v1.HttpListener) ([]plugins.StagedHttpFilter, error) {
+	_, ok := p.filterRequiredForListener[listener]
+	if !ok && p.removeUnused {
+		return []plugins.StagedHttpFilter{}, nil
+	}
+
 	return []plugins.StagedHttpFilter{
 		plugins.NewStagedFilter(wellknown.CORS, pluginStage),
 	}, nil

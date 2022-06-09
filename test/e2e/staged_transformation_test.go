@@ -2,6 +2,7 @@ package e2e_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -98,9 +99,7 @@ var _ = Describe("Staged Transformation", func() {
 	})
 
 	AfterEach(func() {
-		if envoyInstance != nil {
-			_ = envoyInstance.Clean()
-		}
+		envoyInstance.Clean()
 		cancel()
 	})
 
@@ -306,7 +305,10 @@ var _ = Describe("Staged Transformation", func() {
 	Context("with auth", func() {
 		TestUpstreamReachable := func() {
 			Eventually(func() error {
-				_, err := http.DefaultClient.Get(fmt.Sprintf("http://localhost:%d/1", envoyPort))
+				resp, err := http.DefaultClient.Get(fmt.Sprintf("http://localhost:%d/1", envoyPort))
+				if resp != nil && resp.StatusCode != 403 {
+					return errors.New("Expected status 403")
+				}
 				return err
 			}, "30s", "1s").ShouldNot(HaveOccurred())
 		}

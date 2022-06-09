@@ -74,25 +74,14 @@ The callback path must have a matching route in the VirtualService associated wi
 - `client_id`: This is the **client id** that you obtained when you registered your application with the identity provider.
 - `client_secret_ref`: This is a reference to a Kubernetes secret containing the **client secret** that you obtained 
 when you registered your application with the identity provider. The easiest way to create the Kubernetes secret in the 
-expected format is to use `glooctl`, but you can also provide it by `kubectl apply`ing YAML to your cluster:
+expected format is to use `glooctl`. If you use `kubectl`, be sure to annotate the secret with `*v1.Secret` so that Gloo Edge detects the secret.
 {{< tabs >}}
 {{< tab name="glooctl" codelang="shell">}}
-glooctl create secret oauth --namespace gloo-system --name oidc --client-secret secretvalue
+glooctl create secret oauth --namespace gloo-system --name oidc --client-secret <client_secret_value>
 {{< /tab >}}
-{{< tab name="kubectl" codelang="yaml">}}
-apiVersion: v1
-kind: Secret
-type: Opaque
-metadata:
-  annotations:
-    resource_kind: '*v1.Secret'
-  name: oidc
-  namespace: gloo-system
-data:
-  # The value is a base64 encoding of the following YAML:
-  # client_secret: secretvalue
-  # Gloo Edge expects OAuth client secrets in this format.
-  oauth: Y2xpZW50U2VjcmV0OiBzZWNyZXR2YWx1ZQo=
+{{< tab name="kubectl" codelang="shell">}}
+kubectl create secret generic oidc --from-literal=client-secret=<client_secret>
+kubectl annotate secret oidc resource_kind='*v1.Secret' # Important, since gloo-edge does not watch for opaque secrets without this setting
 {{< /tab >}}
 {{< /tabs >}} 
 - `scopes`: scopes to request in addition to the `openid` scope.
@@ -134,7 +123,7 @@ spec:
 ## Logout URL
 
 Gloo also supports specifying a logout url. When specified, accessing this url will
-trigger a deletion of the user session, with an empty 200 OK response returned.
+trigger a deletion of the user session and revoke the user's access token. This action returns with an empty 200 HTTP response.
 
 Example configuration:
 
@@ -160,7 +149,13 @@ spec:
         logoutPath: /logout
 {{< /highlight >}}
 
-When this url is accessed, the user session and cookie will be deleted.
+When this URL is accessed, the user session and cookie are deleted. 
+The access token on the server is also revoked based on the discovered revocation endpoint. 
+You can also override the revocation endpoint through the [DiscoveryOverride field]{{< versioned_link_path fromRoot="/reference/api/github.com/solo-io/gloo/projects/gloo/api/v1/enterprise/options/extauth/v1/extauth.proto.sk/#discoveryoverride" >}}) in `AuthConfig`.
+
+{{% notice warning %}}
+Gloo currently does not retry to revoke an access token if there is a service error with the authorization server.
+{{% /notice %}}
 
 ## Sessions in Redis
 

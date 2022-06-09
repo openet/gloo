@@ -99,6 +99,8 @@ spec:
                               nullable: true
                               type: integer
                           type: object
+                        searchFilter:
+                          type: string
                         userDnTemplate:
                           type: string
                       type: object
@@ -225,6 +227,8 @@ spec:
                                   items:
                                     type: string
                                   type: array
+                                revocationEndpoint:
+                                  type: string
                                 scopes:
                                   items:
                                     type: string
@@ -288,6 +292,9 @@ spec:
                                     path:
                                       nullable: true
                                       type: string
+                                    sameSite:
+                                      type: string
+                                      x-kubernetes-int-or-string: true
                                   type: object
                                 failOnFetchFailure:
                                   type: boolean

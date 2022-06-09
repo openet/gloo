@@ -13,6 +13,7 @@ weight: 5
 
 - [PathSegment](#pathsegment)
 - [Path](#path)
+- [TemplatedPath](#templatedpath)
 - [ValueProvider](#valueprovider)
 - [GraphQLArgExtraction](#graphqlargextraction)
 - [GraphQLParentExtraction](#graphqlparentextraction)
@@ -29,17 +30,24 @@ weight: 5
 - [GrpcRequestTemplate](#grpcrequesttemplate)
 - [GrpcDescriptorRegistry](#grpcdescriptorregistry)
 - [GrpcResolver](#grpcresolver)
+- [StaticResolver](#staticresolver)
+- [AsyncResponse](#asyncresponse)
 - [AbstractTypeResolver](#abstracttyperesolver)
-- [Query](#query)
 - [QueryMatcher](#querymatcher)
 - [FieldMatcher](#fieldmatcher)
 - [Resolution](#resolution)
+- [CacheControl](#cachecontrol)
+- [CacheControlScope](#cachecontrolscope)
 - [GraphQLConfig](#graphqlconfig)
 - [GraphQLRouteConfig](#graphqlrouteconfig)
+- [PersistedQueryCacheConfig](#persistedquerycacheconfig)
 - [ExecutableSchema](#executableschema)
 - [Executor](#executor)
 - [Local](#local)
 - [Remote](#remote)
+- [Extraction](#extraction)
+- [DynamicMetadataExtraction](#dynamicmetadataextraction)
+- [RemoteSchemaRequest](#remoteschemarequest)
   
 
 
@@ -67,7 +75,7 @@ used to reference into json structures by key(s)
 | ----- | ---- | ----------- | 
 | `key` | `string` | This will extract a key from a Map value. Only one of `key`, `index`, or `all` can be set. |
 | `index` | `int` | Extract element at list. Only one of `index`, `key`, or `all` can be set. |
-| `all` | `bool` | Extracts all elements from a list. Only one of `all`, `key`, or `index` can be set. |
+| `all` | `bool` | Extracts all elements from a map or a list. Only one of `all`, `key`, or `index` can be set. |
 
 
 
@@ -90,6 +98,25 @@ used to reference into json structures by key(s)
 
 
 ---
+### TemplatedPath
+
+
+
+```yaml
+"pathTemplate": string
+"namedPaths": map<string, .envoy.config.filter.http.graphql.v2.Path>
+
+```
+
+| Field | Type | Description |
+| ----- | ---- | ----------- | 
+| `pathTemplate` | `string` | If non-empty, Inserts named paths into a template string. For example, if the template is '/api/{apiVersionPath}/pet/{petIdPath}' and we have two named paths defined in `named_paths`, apiVersionPath and petIdPath, with extracted values 'v2' and '123' respectively, the final resulting value will be '/api/v2/pet/123' Use {PATH_NAME} as the interpolation notation (even repeated) regardless of the type of the provided value. If an undefined PATH_NAME is used in the template, this will nack during configuration. If this is empty, only the value of the first provider will be used as the resulting value. |
+| `namedPaths` | `map<string, .envoy.config.filter.http.graphql.v2.Path>` |  |
+
+
+
+
+---
 ### ValueProvider
 
  
@@ -104,7 +131,7 @@ In the future we may add support for regex and subgroups
 | Field | Type | Description |
 | ----- | ---- | ----------- | 
 | `providers` | `map<string, .envoy.config.filter.http.graphql.v2.ValueProvider.Provider>` | Map of provider name to provider definition. The name will be used to insert the provider value in the provider_template. |
-| `providerTemplate` | `string` | If non-empty, Inserts named providers into a template string. For example, if the provider_template is '/api/{apiVersionProvider}/pet/{petIdProvider}' and we have to named providers defined in `providers`, apiVersionProvider and petIdProvider, with extracted values 'v2' and '123' respectively, the final resulting value will be '/api/v2/pet/123' Use {PROVIDER_NAME} as the interpolation notation (even repeated) regardless of the type of the provided value. If an undefined PROVIDER_NAME is used in the provider_template, this will nack during configuration. If this is empty, only the value of the first provider will be used as the resulting value. |
+| `providerTemplate` | `string` | If non-empty, Inserts named providers into a template string. For example, if the provider_template is '/api/{apiVersionProvider}/pet/{petIdProvider}' and we have two named providers defined in `providers`, apiVersionProvider and petIdProvider, with extracted values 'v2' and '123' respectively, the final resulting value will be '/api/v2/pet/123' Use {PROVIDER_NAME} as the interpolation notation (even repeated) regardless of the type of the provided value. If an undefined PROVIDER_NAME is used in the provider_template, this will nack during configuration. If this is empty, only the value of the first provider will be used as the resulting value. |
 
 
 
@@ -312,14 +339,14 @@ modify JSON response from upstream before it is processed by execution engine.
 
 ```yaml
 "resultRoot": []envoy.config.filter.http.graphql.v2.PathSegment
-"setters": map<string, .envoy.config.filter.http.graphql.v2.Path>
+"setters": map<string, .envoy.config.filter.http.graphql.v2.TemplatedPath>
 
 ```
 
 | Field | Type | Description |
 | ----- | ---- | ----------- | 
 | `resultRoot` | [[]envoy.config.filter.http.graphql.v2.PathSegment](../graphql.proto.sk/#pathsegment) | In cases where the data to populate the graphql type is not in the root object of the result, use result root to specify the path of the response we should use as the root. If {"a": {"b": [1,2,3]}} is the response from the api, setting resultroot as `a.b` will pass on [1,2,3] to the execution engine rather than the whole api response. |
-| `setters` | `map<string, .envoy.config.filter.http.graphql.v2.Path>` | Example: ``` type Query { getSimple: Simple } type Simple { name String address String }``` if we do `getsimple` and the response we get back from the upstream is ``` {"data": { "people": { "name": "John Doe", "details": { "address": "123 Turnip Rd" } } } } ``` the following response transform would let the graphql execution engine correctly marshal the upstream resposne into the expected graphql response: ` responseTransform: result_root: segments: - key: data - key: people setters: address: segments: - key: details - key: address `yaml. |
+| `setters` | `map<string, .envoy.config.filter.http.graphql.v2.TemplatedPath>` | Example: ``` type Query { getSimple: Simple } type Simple { name String address String }``` if we do `getsimple` and the response we get back from the upstream is ``` {"data": { "people": { "name": "John Doe", "details": { "address": "123 Turnip Rd" } } } } ``` the following response transform would let the graphql execution engine correctly marshal the upstream resposne into the expected graphql response: ` responseTransform: result_root: segments: - key: data - key: people setters: address: segments: - key: details - key: address `yaml. |
 
 
 
@@ -412,6 +439,47 @@ Is a Schema Extension
 
 
 ---
+### StaticResolver
+
+ 
+Only meant for integration testing
+
+```yaml
+"syncResponse": string
+"asyncResponse": .envoy.config.filter.http.graphql.v2.StaticResolver.AsyncResponse
+"errorResponse": string
+
+```
+
+| Field | Type | Description |
+| ----- | ---- | ----------- | 
+| `syncResponse` | `string` | Responds synchronously (on the same dispatch loop as the resolve call). Only one of `syncResponse`, `asyncResponse`, or `errorResponse` can be set. |
+| `asyncResponse` | [.envoy.config.filter.http.graphql.v2.StaticResolver.AsyncResponse](../graphql.proto.sk/#asyncresponse) | Responds asynchronously after delay_ms. Only one of `asyncResponse`, `syncResponse`, or `errorResponse` can be set. |
+| `errorResponse` | `string` |  Only one of `errorResponse`, `syncResponse`, or `asyncResponse` can be set. |
+
+
+
+
+---
+### AsyncResponse
+
+
+
+```yaml
+"response": string
+"delayMs": int
+
+```
+
+| Field | Type | Description |
+| ----- | ---- | ----------- | 
+| `response` | `string` |  |
+| `delayMs` | `int` |  |
+
+
+
+
+---
 ### AbstractTypeResolver
 
  
@@ -425,26 +493,6 @@ When implemented, this message will be a field in the Resolution message.
 
 | Field | Type | Description |
 | ----- | ---- | ----------- | 
-
-
-
-
----
-### Query
-
- 
-NOT IMPLEMENTED
-When we'll support prepared queries, this will be the type containing the
-query.
-
-```yaml
-"query": .solo.io.envoy.config.core.v3.DataSource
-
-```
-
-| Field | Type | Description |
-| ----- | ---- | ----------- | 
-| `query` | [.solo.io.envoy.config.core.v3.DataSource](../../../config/core/v3/base.proto.sk/#datasource) |  |
 
 
 
@@ -480,7 +528,7 @@ query.
 | Field | Type | Description |
 | ----- | ---- | ----------- | 
 | `type` | `string` | Object type. For example, Query. |
-| `field` | `string` | Field with in the object. |
+| `field` | `string` | Field within the object. |
 
 
 
@@ -499,6 +547,8 @@ exist in the parent, null will be used.
 ```yaml
 "matcher": .envoy.config.filter.http.graphql.v2.QueryMatcher
 "resolver": .solo.io.envoy.config.core.v3.TypedExtensionConfig
+"statPrefix": string
+"cacheControl": .envoy.config.filter.http.graphql.v2.CacheControl
 
 ```
 
@@ -506,6 +556,48 @@ exist in the parent, null will be used.
 | ----- | ---- | ----------- | 
 | `matcher` | [.envoy.config.filter.http.graphql.v2.QueryMatcher](../graphql.proto.sk/#querymatcher) | Match an object type and field. |
 | `resolver` | [.solo.io.envoy.config.core.v3.TypedExtensionConfig](../../../config/core/v3/extension.proto.sk/#typedextensionconfig) | The resolver to use. |
+| `statPrefix` | `string` | The stats prefix which will be used for this resolver. |
+| `cacheControl` | [.envoy.config.filter.http.graphql.v2.CacheControl](../graphql.proto.sk/#cachecontrol) | caching configuration, defaults to no caching. |
+
+
+
+
+---
+### CacheControl
+
+ 
+Resolvers for scalar, non-root fields rarely fetch data and instead usually populate data via the parent argument.
+Consequently, these fields inherit their default maxAge from their parent to reduce schema clutter.
+
+TODO: Talk with product -- apollo does not do this, but we could factor in upstream Cache-Control header
+response into our inheritance model.
+
+```yaml
+"maxAge": .google.protobuf.UInt32Value
+"scope": .envoy.config.filter.http.graphql.v2.CacheControl.CacheControlScope
+"inheritMaxAge": bool
+
+```
+
+| Field | Type | Description |
+| ----- | ---- | ----------- | 
+| `maxAge` | [.google.protobuf.UInt32Value](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/u-int-32-value) | number of seconds to cache result for. the max_age used for a single graphql request is the minimum of all fields requested. default max_age rules work as follows: - root fields (i.e. Query, Mutation, Subscription) default to 0s - non-root, non-scalar fields (i.e. object, interface, or union; or a list of those types) default to 0s - all other fields inherit the max_age from their parent. |
+| `scope` | [.envoy.config.filter.http.graphql.v2.CacheControl.CacheControlScope](../graphql.proto.sk/#cachecontrolscope) | provide controls to which users can access cached content. |
+| `inheritMaxAge` | `bool` | whether or not to inherit the caching configuration of any parent fields. |
+
+
+
+
+---
+### CacheControlScope
+
+
+
+| Name | Description |
+| ----- | ----------- | 
+| `UNSET` |  |
+| `PUBLIC` | Responses for requests with Authorization header fields must not be stored in a shared cache. But the public directive will cause such responses to be stored in a shared cache. In general, when pages are under Basic Auth or Digest Auth, the browser sends requests with the Authorization header. That means the response is access-controlled for restricted users (who have accounts), and it's fundamentally not shared-cacheable, even if it has max-age. You can use the public directive to unlock that restriction. |
+| `PRIVATE` | You should add the private directive for user-personalized content — in particular, responses received after login, and sessions managed via cookies. If you forget to add private to a response with personalized content, then that response can be stored in a shared cache and end up being reused for multiple users, which can cause personal information to leak. |
 
 
 
@@ -536,19 +628,37 @@ queries, and will not make it to the router filter. i.e. this filter will
 terminate the request for these routes.
 
 ```yaml
-"schema": .solo.io.envoy.config.core.v3.DataSource
-"enableIntrospection": bool
-"resolutions": []envoy.config.filter.http.graphql.v2.Resolution
 "executableSchema": .envoy.config.filter.http.graphql.v2.ExecutableSchema
+"statPrefix": string
+"persistedQueryCacheConfig": .envoy.config.filter.http.graphql.v2.PersistedQueryCacheConfig
+"allowedQueryHashes": []string
 
 ```
 
 | Field | Type | Description |
 | ----- | ---- | ----------- | 
-| `schema` | [.solo.io.envoy.config.core.v3.DataSource](../../../config/core/v3/base.proto.sk/#datasource) | Deprecated. will be removed when gloo 1.10 is released. |
-| `enableIntrospection` | `bool` | Deprecated. will be removed when gloo 1.10 is released. |
-| `resolutions` | [[]envoy.config.filter.http.graphql.v2.Resolution](../graphql.proto.sk/#resolution) | Deprecated. will be removed when gloo 1.10 is released. |
 | `executableSchema` | [.envoy.config.filter.http.graphql.v2.ExecutableSchema](../graphql.proto.sk/#executableschema) |  |
+| `statPrefix` | `string` | The stats prefix which will be used for this route config. |
+| `persistedQueryCacheConfig` | [.envoy.config.filter.http.graphql.v2.PersistedQueryCacheConfig](../graphql.proto.sk/#persistedquerycacheconfig) | Configuration settings for persisted query cache. |
+| `allowedQueryHashes` | `[]string` | Safelist: only allow queries to be executed that match these sha256 hashes. The hash can be computed from the query string or provided (i.e. persisted queries). |
+
+
+
+
+---
+### PersistedQueryCacheConfig
+
+ 
+This message specifies Persisted Query Cache configuration.
+
+```yaml
+"cacheSize": int
+
+```
+
+| Field | Type | Description |
+| ----- | ---- | ----------- | 
+| `cacheSize` | `int` | The unit is number of queries to store, default to 1000. |
 
 
 
@@ -562,6 +672,7 @@ terminate the request for these routes.
 "schemaDefinition": .solo.io.envoy.config.core.v3.DataSource
 "executor": .envoy.config.filter.http.graphql.v2.Executor
 "extensions": map<string, .google.protobuf.Any>
+"logRequestResponseInfo": bool
 
 ```
 
@@ -570,6 +681,7 @@ terminate the request for these routes.
 | `schemaDefinition` | [.solo.io.envoy.config.core.v3.DataSource](../../../config/core/v3/base.proto.sk/#datasource) | Schema to use in string format. |
 | `executor` | [.envoy.config.filter.http.graphql.v2.Executor](../graphql.proto.sk/#executor) | how to execute the schema. |
 | `extensions` | `map<string, .google.protobuf.Any>` | Schema extensions. |
+| `logRequestResponseInfo` | `bool` | Logs request / response sensitive information By default, this is false so no request or response sensitive information is logged. |
 
 
 
@@ -602,6 +714,7 @@ Execute schema using resolvers.
 ```yaml
 "resolutions": []envoy.config.filter.http.graphql.v2.Resolution
 "enableIntrospection": bool
+"maxDepth": int
 
 ```
 
@@ -609,6 +722,7 @@ Execute schema using resolvers.
 | ----- | ---- | ----------- | 
 | `resolutions` | [[]envoy.config.filter.http.graphql.v2.Resolution](../graphql.proto.sk/#resolution) | The resolver map to use to resolve the schema. |
 | `enableIntrospection` | `bool` | Do we enable introspection for the schema? general recommendation is to disable this for production and hence it defaults to false. |
+| `maxDepth` | `int` | The max amount of nesting a query can be executed against this schema. e.g. the following query has these depths: query { # Depth: 0 me { # Depth: 1 friends { # Depth: 2 friends # Depth: 3 } } } If the max_depth is set to 2, then the query at depth 3 will receive an error as a response. The max_depth value of 0 (set by default) will allow an unbounded query depth. |
 
 
 
@@ -617,17 +731,79 @@ Execute schema using resolvers.
 ### Remote
 
  
-NOT IMPLEMENTED YET!
 Execute schema by querying a graphql upstream.
 
 ```yaml
-"cluster": string
+"serverUri": .solo.io.envoy.config.core.v3.HttpUri
+"request": .envoy.config.filter.http.graphql.v2.Executor.Remote.RemoteSchemaRequest
+"spanName": string
 
 ```
 
 | Field | Type | Description |
 | ----- | ---- | ----------- | 
-| `cluster` | `string` | Executes a query remotly, as a graphql client. |
+| `serverUri` | [.solo.io.envoy.config.core.v3.HttpUri](../../../config/core/v3/http_uri.proto.sk/#httpuri) | Server URI of the remote graphql cluster. |
+| `request` | [.envoy.config.filter.http.graphql.v2.Executor.Remote.RemoteSchemaRequest](../graphql.proto.sk/#remoteschemarequest) |  |
+| `spanName` | `string` |  |
+
+
+
+
+---
+### Extraction
+
+
+
+```yaml
+"value": string
+"header": string
+"dynamicMetadata": .envoy.config.filter.http.graphql.v2.Executor.Remote.Extraction.DynamicMetadataExtraction
+
+```
+
+| Field | Type | Description |
+| ----- | ---- | ----------- | 
+| `value` | `string` | Set the extraction type to use a static value. Only one of `value`, `header`, or `dynamicMetadata` can be set. |
+| `header` | `string` | Set the extraction type to use a header value. Specify the name of the header to extract the value from on the original request. Only one of `header`, `value`, or `dynamicMetadata` can be set. |
+| `dynamicMetadata` | [.envoy.config.filter.http.graphql.v2.Executor.Remote.Extraction.DynamicMetadataExtraction](../graphql.proto.sk/#dynamicmetadataextraction) | Set the extraction type to use a dynamic metadata value. Only one of `dynamicMetadata`, `value`, or `header` can be set. |
+
+
+
+
+---
+### DynamicMetadataExtraction
+
+
+
+```yaml
+"metadataNamespace": string
+"key": string
+
+```
+
+| Field | Type | Description |
+| ----- | ---- | ----------- | 
+| `metadataNamespace` | `string` | The namespace that the dynamic metadata is stored in. |
+| `key` | `string` | The key in the namespace that the dynamic metadata is stored under. |
+
+
+
+
+---
+### RemoteSchemaRequest
+
+
+
+```yaml
+"headers": map<string, .envoy.config.filter.http.graphql.v2.Executor.Remote.Extraction>
+"queryParams": map<string, .envoy.config.filter.http.graphql.v2.Executor.Remote.Extraction>
+
+```
+
+| Field | Type | Description |
+| ----- | ---- | ----------- | 
+| `headers` | `map<string, .envoy.config.filter.http.graphql.v2.Executor.Remote.Extraction>` | Map of headers to header value which will be included in the request to the remote graphql server. |
+| `queryParams` | `map<string, .envoy.config.filter.http.graphql.v2.Executor.Remote.Extraction>` | Query params to set on the request to the remote graphql server. |
 
 
 

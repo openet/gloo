@@ -12,7 +12,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/rotisserie/eris"
 	"github.com/solo-io/gloo/pkg/utils/syncutil"
-	v1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
+	v1snap "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/gloosnapshot"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
 	"github.com/solo-io/gloo/projects/gloo/pkg/xds"
 	"github.com/solo-io/go-utils/contextutils"
@@ -67,7 +67,10 @@ func measureResource(ctx context.Context, resource string, len int) {
 	}
 }
 
-func (s *translatorSyncer) syncEnvoy(ctx context.Context, snap *v1.ApiSnapshot, allReports reporter.ResourceReports) error {
+// TODO(kdorosh) in follow up PR, update this interface so it can never error
+// It is logically invalid for us to return an error here (translation of resources always needs to
+// result in a xds snapshot, so we are resilient to pod restarts)
+func (s *translatorSyncer) syncEnvoy(ctx context.Context, snap *v1snap.ApiSnapshot, allReports reporter.ResourceReports) error {
 	ctx, span := trace.StartSpan(ctx, "gloo.syncer.Sync")
 	defer span.End()
 
@@ -75,8 +78,8 @@ func (s *translatorSyncer) syncEnvoy(ctx context.Context, snap *v1.ApiSnapshot, 
 	ctx = contextutils.WithLogger(ctx, "envoyTranslatorSyncer")
 	logger := contextutils.LoggerFrom(ctx)
 	snapHash := hashutils.MustHash(snap)
-	logger.Infof("begin sync %v (%v proxies, %v upstreams, %v endpoints, %v secrets, %v artifacts, %v auth configs, %v rate limit configs, %v graphql schemas)", snapHash,
-		len(snap.Proxies), len(snap.Upstreams), len(snap.Endpoints), len(snap.Secrets), len(snap.Artifacts), len(snap.AuthConfigs), len(snap.Ratelimitconfigs), len(snap.GraphqlSchemas))
+	logger.Infof("begin sync %v (%v proxies, %v upstreams, %v endpoints, %v secrets, %v artifacts, %v auth configs, %v rate limit configs, %v graphql apis)", snapHash,
+		len(snap.Proxies), len(snap.Upstreams), len(snap.Endpoints), len(snap.Secrets), len(snap.Artifacts), len(snap.AuthConfigs), len(snap.Ratelimitconfigs), len(snap.GraphqlApis))
 	defer logger.Infof("end sync %v", snapHash)
 
 	// stringifying the snapshot may be an expensive operation, so we'd like to avoid building the large
@@ -91,26 +94,28 @@ func (s *translatorSyncer) syncEnvoy(ctx context.Context, snap *v1.ApiSnapshot, 
 
 	if !s.settings.GetGloo().GetDisableProxyGarbageCollection().GetValue() {
 		allKeys := map[string]bool{
-			xds.FallbackNodeKey: true,
+			xds.FallbackNodeCacheKey: true,
 		}
 		// Get all envoy node ID keys
 		for _, key := range s.xdsCache.GetStatusKeys() {
 			allKeys[key] = false
 		}
-		// Get all valid node ID keys
-		for _, key := range xds.GetValidKeys(snap.Proxies, s.extensionKeys) {
+		// Get all valid node ID keys for Proxies
+		for _, key := range xds.SnapshotCacheKeys(snap.Proxies) {
 			allKeys[key] = true
 		}
+		// Get all valid node ID keys for extensions (rate-limit, ext-auth)
+		for key := range s.extensionKeys {
+			allKeys[key] = true
+		}
+
 		// preserve keys from the current list of proxies, set previous invalid snapshots to empty snapshot
 		for key, valid := range allKeys {
 			if !valid {
-				if err := s.xdsCache.SetSnapshot(key, emptySnapshot); err != nil {
-					return err
-				}
+				s.xdsCache.SetSnapshot(key, emptySnapshot)
 			}
 		}
 	}
-
 	for _, proxy := range snap.Proxies {
 		proxyCtx := ctx
 		if ctxWithTags, err := tag.New(proxyCtx, tag.Insert(syncerstats.ProxyNameKey, proxy.GetMetadata().Ref().Key())); err == nil {
@@ -122,6 +127,12 @@ func (s *translatorSyncer) syncEnvoy(ctx context.Context, snap *v1.ApiSnapshot, 
 			Snapshot: snap,
 		}
 
+		// TODO(kdorosh) in follow up PR, update this interface so it can never error
+		// It is logically invalid for us to return an error here (translation of resources always needs to
+		// result in a xds snapshot, so we are resilient to pod restarts)
+		//
+		// for now this can only really fail on plugin initialization e.g. https://github.com/solo-io/gloo/blob/4f133dd2be0875463754fecc84c1eced7d4202fd/projects/gloo/pkg/plugins/consul/plugin.go#L134
+		// we are not in a very bad place today but should update this interface ASAP so we don't introduce new regressions
 		xdsSnapshot, reports, _, err := s.translator.Translate(params, proxy)
 		if err != nil {
 			err := eris.Wrapf(err, "translation loop failed")
@@ -133,31 +144,18 @@ func (s *translatorSyncer) syncEnvoy(ctx context.Context, snap *v1.ApiSnapshot, 
 			logger.Warnw("Proxy had invalid config", zap.Any("proxy", proxy.GetMetadata().Ref()), zap.Error(validateErr))
 		}
 
-		key := xds.SnapshotKey(proxy)
+		sanitizedSnapshot := s.sanitizer.SanitizeSnapshot(ctx, snap, xdsSnapshot, reports)
+		// if the snapshot is not consistent, make it so
+		xdsSnapshot.MakeConsistent()
 
-		sanitizedSnapshot, err := s.sanitizer.SanitizeSnapshot(ctx, snap, xdsSnapshot, reports)
-		if err != nil {
-			logger.Errorf("proxy %v was rejected due to invalid config: %v\n"+
-				"Attempting to update only EDS information", proxy.GetMetadata().Ref().Key(), err)
-
-			// If the snapshot is invalid, attempt at least to update the EDS information. This is important because
-			// endpoints are relatively ephemeral entities and the previous snapshot Envoy got might be stale by now.
-			sanitizedSnapshot, err = s.updateEndpointsOnly(key, xdsSnapshot)
-			if err != nil {
-				logger.Errorf("endpoint update failed. xDS snapshot for proxy %v will not be updated. "+
-					"Error is: %s", proxy.GetMetadata().Ref().Key(), err)
-				continue
-			}
-			logger.Infof("successfully updated EDS information for proxy %v", proxy.GetMetadata().Ref().Key())
+		if validateErr := reports.ValidateStrict(); validateErr != nil {
+			logger.Warnw("Proxy had invalid config after xds sanitization", zap.Any("proxy", proxy.GetMetadata().Ref()), zap.Error(validateErr))
 		}
 
 		// Merge reports after sanitization to capture changes made by the sanitizers
 		allReports.Merge(reports)
-		if err := s.xdsCache.SetSnapshot(key, sanitizedSnapshot); err != nil {
-			err := eris.Wrapf(err, "failed while updating xDS snapshot cache")
-			logger.DPanicw("", zap.Error(err))
-			return err
-		}
+		key := xds.SnapshotCacheKey(proxy)
+		s.xdsCache.SetSnapshot(key, sanitizedSnapshot)
 
 		// Record some metrics
 		clustersLen := len(xdsSnapshot.GetResources(resource.ClusterTypeV3).Items)
@@ -194,38 +192,4 @@ func (s *translatorSyncer) ServeXdsSnapshots() error {
 		_, _ = fmt.Fprintf(w, log.Sprintf("%v", s.latestSnap))
 	})
 	return http.ListenAndServe(":10010", r)
-}
-
-// TODO(marco): should we update CDS resources as well?
-// Builds an xDS snapshot by combining:
-// - CDS/LDS/RDS information from the previous xDS snapshot
-// - EDS from the Gloo API snapshot translated curing this sync
-// The resulting snapshot will be checked for consistency before being returned.
-func (s *translatorSyncer) updateEndpointsOnly(snapshotKey string, current envoycache.Snapshot) (envoycache.Snapshot, error) {
-	var newSnapshot cache.Snapshot
-
-	// Get a copy of the last successful snapshot
-	previous, err := s.xdsCache.GetSnapshot(snapshotKey)
-	if err != nil {
-		// if no previous snapshot exists
-		newSnapshot = xds.NewEndpointsSnapshotFromResources(
-			current.GetResources(resource.EndpointTypeV3),
-			current.GetResources(resource.ClusterTypeV3),
-		)
-	} else {
-		newSnapshot = xds.NewSnapshotFromResources(
-			// Set endpoints and clusters calculated during this sync
-			current.GetResources(resource.EndpointTypeV3),
-			current.GetResources(resource.ClusterTypeV3),
-			// Keep other resources from previous snapshot
-			previous.GetResources(resource.RouteTypeV3),
-			previous.GetResources(resource.ListenerTypeV3),
-		)
-	}
-
-	if err := newSnapshot.Consistent(); err != nil {
-		return nil, err
-	}
-
-	return newSnapshot, nil
 }

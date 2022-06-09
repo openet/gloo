@@ -24,6 +24,51 @@ spec:
         properties:
           spec:
             properties:
+              cachingServer:
+                properties:
+                  allowedVaryHeaders:
+                    items:
+                      properties:
+                        exact:
+                          type: string
+                        ignoreCase:
+                          type: boolean
+                        prefix:
+                          type: string
+                        safeRegex:
+                          properties:
+                            googleRe2:
+                              properties:
+                                maxProgramSize:
+                                  maximum: 4294967295
+                                  minimum: 0
+                                  nullable: true
+                                  type: integer
+                              type: object
+                            regex:
+                              type: string
+                          type: object
+                        suffix:
+                          type: string
+                      type: object
+                    type: array
+                  cachingServiceRef:
+                    properties:
+                      name:
+                        type: string
+                      namespace:
+                        type: string
+                    type: object
+                type: object
+              consoleOptions:
+                properties:
+                  apiExplorerEnabled:
+                    nullable: true
+                    type: boolean
+                  readOnly:
+                    nullable: true
+                    type: boolean
+                type: object
               consul:
                 properties:
                   address:
@@ -65,6 +110,9 @@ spec:
                 type: object
               consulDiscovery:
                 properties:
+                  consistencyMode:
+                    type: string
+                    x-kubernetes-int-or-string: true
                   rootCa:
                     properties:
                       name:
@@ -214,6 +262,12 @@ spec:
                     type: boolean
                   compressedProxySpec:
                     type: boolean
+                  enableGatewayController:
+                    nullable: true
+                    type: boolean
+                  persistProxySpec:
+                    nullable: true
+                    type: boolean
                   readGatewaysFromAllNamespaces:
                     type: boolean
                   validation:
@@ -257,7 +311,12 @@ spec:
                 properties:
                   awsOptions:
                     properties:
+                      credentialRefreshDelay:
+                        type: string
                       enableCredentialsDiscovey:
+                        type: boolean
+                      propagateOriginalRouting:
+                        nullable: true
                         type: boolean
                       serviceAccountCredentials:
                         properties:
@@ -317,17 +376,36 @@ spec:
                       replaceInvalidRoutes:
                         type: boolean
                     type: object
+                  proxyDebugBindAddr:
+                    type: string
                   regexMaxProgramSize:
                     maximum: 4294967295
                     minimum: 0
                     nullable: true
                     type: integer
+                  removeUnusedFilters:
+                    nullable: true
+                    type: boolean
                   restXdsBindAddr:
                     type: string
                   validationBindAddr:
                     type: string
                   xdsBindAddr:
                     type: string
+                type: object
+              graphqlOptions:
+                properties:
+                  schemaChangeValidationOptions:
+                    properties:
+                      processingRules:
+                        items:
+                          type: string
+                          x-kubernetes-int-or-string: true
+                        type: array
+                      rejectBreakingChanges:
+                        nullable: true
+                        type: boolean
+                    type: object
                 type: object
               knative:
                 properties:
@@ -445,6 +523,15 @@ spec:
                 type: object
               observabilityOptions:
                 properties:
+                  configStatusMetricLabels:
+                    additionalProperties:
+                      properties:
+                        labelToPath:
+                          additionalProperties:
+                            type: string
+                          type: object
+                      type: object
+                    type: object
                   grafanaIntegration:
                     properties:
                       defaultDashboardFolderId:
@@ -545,6 +632,8 @@ spec:
                   insecure:
                     nullable: true
                     type: boolean
+                  pathPrefix:
+                    type: string
                   rootKey:
                     type: string
                   tlsServerName:

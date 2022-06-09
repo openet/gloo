@@ -17,7 +17,7 @@ node:
   id: "{{.PodName}}.{{.PodNamespace}}"
   metadata:
     # role's value is the key for the in-memory xds cache (projects/gloo/pkg/xds/envoy.go)
-    role: "{{.PodNamespace}}~gateway-proxy"
+    role: "gloo-system~gateway-proxy"
 static_resources:
   listeners: # if or $statsConfig.enabled (or $spec.readConfig $spec.extraListenersHelper) # $spec.extraListenersHelper
   - name: prometheus_listener
@@ -193,7 +193,7 @@ node:
   cluster: gateway
   id: '{{.PodName}}.{{.PodNamespace}}'
   metadata:
-    role: '{{.PodNamespace}}~gateway-proxy'
+    role: 'gloo-system~gateway-proxy'
 static_resources:
   clusters:
   - alt_stat_name: xds_cluster
@@ -331,7 +331,7 @@ node:
   cluster: gateway
   id: '{{.PodName}}.{{.PodNamespace}}'
   metadata:
-    role: '{{.PodNamespace}}~gateway-proxy'
+    role: 'gloo-system~gateway-proxy'
 static_resources:
   clusters:
   - alt_stat_name: xds_cluster
@@ -383,7 +383,7 @@ static_resources:
     upstream_connection_options:
       tcp_keepalive: {}
   - connect_timeout: 1s
-    lb_policy: round_robin
+    lb_policy: ROUND_ROBIN
     load_assignment:
       cluster_name: zipkin
       endpoints:
@@ -483,7 +483,7 @@ node:
   cluster: gateway
   id: '{{.PodName}}.{{.PodNamespace}}'
   metadata:
-    role: '{{.PodNamespace}}~gateway-proxy'
+    role: 'gloo-system~gateway-proxy'
 static_resources:
   clusters:
   - alt_stat_name: xds_cluster
@@ -670,7 +670,7 @@ node:
   cluster: gateway
   id: '{{.PodName}}.{{.PodNamespace}}'
   metadata:
-    role: '{{.PodNamespace}}~gateway-proxy'
+    role: 'gloo-system~gateway-proxy'
 static_resources:
   clusters:
   - alt_stat_name: xds_cluster

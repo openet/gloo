@@ -1,42 +1,40 @@
 package e2e_test
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 
+	"github.com/rotisserie/eris"
+
 	"github.com/golang/protobuf/ptypes/wrappers"
-	v3 "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/config/core/v3"
-
-	"github.com/solo-io/solo-kit/pkg/errors"
-
-	"github.com/solo-io/solo-kit/pkg/api/v1/resources"
-
-	"github.com/solo-io/gloo/projects/gloo/pkg/translator"
-
-	gatewaydefaults "github.com/solo-io/gloo/projects/gateway/pkg/defaults"
-	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/core/matchers"
-	extauthv1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/enterprise/options/extauth/v1"
-
-	"github.com/solo-io/solo-kit/pkg/api/v1/resources/common/kubernetes"
-	"github.com/solo-io/solo-kit/pkg/utils/kubeutils"
-	corev1 "k8s.io/api/core/v1"
-
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
-
 	gatewayv1 "github.com/solo-io/gloo/projects/gateway/pkg/api/v1"
+	gatewaydefaults "github.com/solo-io/gloo/projects/gateway/pkg/defaults"
+	"github.com/solo-io/gloo/projects/gateway/pkg/utils/metrics"
+	v3 "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/config/core/v3"
 	gloov1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
+	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/core/matchers"
+	extauthv1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/enterprise/options/extauth/v1"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/grpc_web"
 	"github.com/solo-io/gloo/projects/gloo/pkg/defaults"
+	"github.com/solo-io/gloo/projects/gloo/pkg/translator"
 	gloohelpers "github.com/solo-io/gloo/test/helpers"
 	"github.com/solo-io/gloo/test/services"
 	"github.com/solo-io/gloo/test/v1helpers"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients"
+	"github.com/solo-io/solo-kit/pkg/api/v1/resources"
+	"github.com/solo-io/solo-kit/pkg/api/v1/resources/common/kubernetes"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
+	"github.com/solo-io/solo-kit/pkg/errors"
+	"github.com/solo-io/solo-kit/pkg/utils/kubeutils"
+	corev1 "k8s.io/api/core/v1"
+)
+
+const (
+	tlsInspectorType = "type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector"
 )
 
 var _ = Describe("Gateway", func() {
@@ -46,6 +44,8 @@ var _ = Describe("Gateway", func() {
 		cancel         context.CancelFunc
 		testClients    services.TestClients
 		writeNamespace string
+
+		vsMetric = metrics.Names[gatewayv1.VirtualServiceGVK]
 	)
 
 	BeforeEach(func() {
@@ -64,7 +64,7 @@ var _ = Describe("Gateway", func() {
 
 		BeforeEach(func() {
 			validationPort := services.AllocateGlooPort()
-			writeNamespace = "gloo-system"
+			writeNamespace = defaults.GlooSystem
 			ro := &services.RunOptions{
 				NsToWrite: writeNamespace,
 				NsToWatch: []string{"default", writeNamespace},
@@ -76,7 +76,20 @@ var _ = Describe("Gateway", func() {
 				Settings: &gloov1.Settings{
 					Gateway: &gloov1.GatewayOptions{
 						Validation: &gloov1.GatewayOptions_ValidationOptions{
+							// Enable strict validation,
+							AlwaysAccept:              &wrappers.BoolValue{Value: false},
 							ProxyValidationServerAddr: fmt.Sprintf("127.0.0.1:%v", validationPort),
+						},
+					},
+					// Record the config status for virtual services. Use the resource name as a
+					// label on the metric so that a unique time series is tracked for each VS
+					ObservabilityOptions: &gloov1.Settings_ObservabilityOptions{
+						ConfigStatusMetricLabels: map[string]*metrics.Labels{
+							"VirtualService.v1.gateway.solo.io": {
+								LabelToPath: map[string]string{
+									"name": "{.metadata.name}",
+								},
+							},
 						},
 					},
 				},
@@ -87,9 +100,23 @@ var _ = Describe("Gateway", func() {
 
 		Context("http gateway", func() {
 
+			var defaultGateways []*gatewayv1.Gateway
+
 			BeforeEach(func() {
-				err := gloohelpers.WriteDefaultGateways(writeNamespace, testClients.GatewayClient)
-				Expect(err).NotTo(HaveOccurred(), "Should be able to write default gateways")
+				defaultGateway := gatewaydefaults.DefaultGateway(writeNamespace)
+				defaultSslGateway := gatewaydefaults.DefaultSslGateway(writeNamespace)
+
+				defaultGateways = []*gatewayv1.Gateway{
+					defaultGateway,
+					defaultSslGateway,
+				}
+			})
+
+			JustBeforeEach(func() {
+				for _, gw := range defaultGateways {
+					_, err := testClients.GatewayClient.Write(gw, clients.WriteOpts{Ctx: ctx})
+					Expect(err).NotTo(HaveOccurred())
+				}
 
 				// wait for the two gateways to be created.
 				Eventually(func() (gatewayv1.GatewayList, error) {
@@ -97,10 +124,16 @@ var _ = Describe("Gateway", func() {
 				}, "10s", "0.1s").Should(HaveLen(2), "Gateways should be present")
 			})
 
-			It("should disable grpc web filter", func() {
+			JustAfterEach(func() {
+				for _, gw := range defaultGateways {
+					err := testClients.GatewayClient.Delete(gw.GetMetadata().GetNamespace(), gw.GetMetadata().GetName(), clients.DeleteOpts{Ctx: ctx})
+					Expect(err).NotTo(HaveOccurred())
+				}
+			})
 
+			It("should disable grpc web filter", func() {
 				gatewayClient := testClients.GatewayClient
-				gw, err := gatewayClient.List(writeNamespace, clients.ListOpts{})
+				gw, err := gatewayClient.List(writeNamespace, clients.ListOpts{Ctx: ctx})
 				Expect(err).NotTo(HaveOccurred())
 
 				for _, g := range gw {
@@ -118,7 +151,7 @@ var _ = Describe("Gateway", func() {
 				}
 
 				// write a virtual service so we have a proxy
-				vs := getTrivialVirtualServiceForUpstream("gloo-system", &core.ResourceRef{Name: "test", Namespace: "test"})
+				vs := getTrivialVirtualServiceForUpstream(writeNamespace, &core.ResourceRef{Name: "test", Namespace: "test"})
 				_, err = testClients.VirtualServiceClient.Write(vs, clients.WriteOpts{})
 				Expect(err).NotTo(HaveOccurred())
 
@@ -146,7 +179,7 @@ var _ = Describe("Gateway", func() {
 
 			})
 
-			It("should create 2 gateways", func() {
+			It("should create 2 gateways (1 ssl)", func() {
 				gatewaycli := testClients.GatewayClient
 				gw, err := gatewaycli.List(writeNamespace, clients.ListOpts{})
 				Expect(err).NotTo(HaveOccurred())
@@ -162,7 +195,6 @@ var _ = Describe("Gateway", func() {
 			})
 
 			It("correctly configures gateway for a virtual service which contains a route to a service", func() {
-
 				// Create a service so gloo can generate "fake" upstreams for it
 				svc := kubernetes.NewService("default", "my-service")
 				svc.Spec = corev1.ServiceSpec{Ports: []corev1.ServicePort{{Port: 1234}}}
@@ -170,8 +202,8 @@ var _ = Describe("Gateway", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				// Create a virtual service with a route pointing to the above service
-				vs := getTrivialVirtualServiceForService("gloo-system", kubeutils.FromKubeMeta(svc.ObjectMeta, true).Ref(), uint32(svc.Spec.Ports[0].Port))
-				_, err = testClients.VirtualServiceClient.Write(vs, clients.WriteOpts{})
+				vs := getTrivialVirtualServiceForService(writeNamespace, kubeutils.FromKubeMeta(svc.ObjectMeta, true).Ref(), uint32(svc.Spec.Ports[0].Port))
+				_, err = testClients.VirtualServiceClient.Write(vs, clients.WriteOpts{Ctx: ctx})
 				Expect(err).NotTo(HaveOccurred())
 
 				// Wait for proxy to be accepted
@@ -200,6 +232,10 @@ var _ = Describe("Gateway", func() {
 				Expect(service.Ref.Namespace).To(Equal(svc.Namespace))
 				Expect(service.Ref.Name).To(Equal(svc.Name))
 				Expect(service.Port).To(BeEquivalentTo(svc.Spec.Ports[0].Port))
+
+				// clean up the virtual service that we created
+				err = testClients.VirtualServiceClient.Delete(vs.GetMetadata().GetNamespace(), vs.GetMetadata().GetName(), clients.DeleteOpts{})
+				Expect(err).NotTo(HaveOccurred())
 			})
 
 			It("won't allow a bad authconfig in a virtualservice to block updates to a gateway", func() {
@@ -218,8 +254,8 @@ var _ = Describe("Gateway", func() {
 				svc, err := testClients.ServiceClient.Write(svc, clients.WriteOpts{Ctx: ctx})
 				Expect(err).NotTo(HaveOccurred())
 
-				// Create a trivial, working service with a route pointing to the above service
-				vs1 := getTrivialVirtualServiceForService(defaults.GlooSystem, kubeutils.FromKubeMeta(svc.ObjectMeta, true).Ref(), uint32(svc.Spec.Ports[0].Port))
+				// Create a trivial, working VS with a route pointing to the above service
+				vs1 := getTrivialVirtualServiceForService(writeNamespace, kubeutils.FromKubeMeta(svc.ObjectMeta, true).Ref(), uint32(svc.Spec.Ports[0].Port))
 				vs1.VirtualHost.Domains = []string{"vs1"}
 				vs1.Metadata.Name = "vs1"
 				_, err = testClients.VirtualServiceClient.Write(vs1, clients.WriteOpts{})
@@ -320,17 +356,22 @@ var _ = Describe("Gateway", func() {
 					Expect(service.Ref.Name).To(Equal(svc.Name))
 					Expect(service.Port).To(BeEquivalentTo(svc.Spec.Ports[0].Port))
 				}
+
+				// Make sure each virtual service's status metric is as expected:
+				Expect(gloohelpers.ReadMetricByLabel(vsMetric, "name", "vs1")).To(Equal(0))
+				Expect(gloohelpers.ReadMetricByLabel(vsMetric, "name", "vs2")).To(Equal(1))
+				Expect(gloohelpers.ReadMetricByLabel(vsMetric, "name", "vs3")).To(Equal(0))
 			})
 
 			Context("traffic", func() {
 
 				var (
 					envoyInstance *services.EnvoyInstance
-					tu            *v1helpers.TestUpstream
+					testUpstream  *v1helpers.TestUpstream
 				)
 
 				TestUpstreamReachable := func() {
-					v1helpers.TestUpstreamReachable(defaults.HttpPort, tu, nil)
+					v1helpers.TestUpstreamReachable(defaults.HttpPort, testUpstream, nil)
 				}
 
 				BeforeEach(func() {
@@ -338,23 +379,28 @@ var _ = Describe("Gateway", func() {
 					envoyInstance, err = envoyFactory.NewEnvoyInstance()
 					Expect(err).NotTo(HaveOccurred())
 
-					tu = v1helpers.NewTestHttpUpstream(ctx, envoyInstance.LocalAddr())
+					testUpstream = v1helpers.NewTestHttpUpstream(ctx, envoyInstance.LocalAddr())
 
-					_, err = testClients.UpstreamClient.Write(tu.Upstream, clients.WriteOpts{})
-					Expect(err).NotTo(HaveOccurred())
 					err = envoyInstance.RunWithRoleAndRestXds(writeNamespace+"~"+gatewaydefaults.GatewayProxyName, testClients.GlooPort, testClients.RestXdsPort)
 					Expect(err).NotTo(HaveOccurred())
 				})
 
+				JustBeforeEach(func() {
+					_, err := testClients.UpstreamClient.Write(testUpstream.Upstream, clients.WriteOpts{Ctx: ctx})
+					Expect(err).NotTo(HaveOccurred())
+				})
+
+				JustAfterEach(func() {
+					err := testClients.UpstreamClient.Delete(testUpstream.Upstream.GetMetadata().GetNamespace(), testUpstream.Upstream.GetMetadata().GetName(), clients.DeleteOpts{Ctx: ctx})
+					Expect(err).NotTo(HaveOccurred())
+				})
+
 				AfterEach(func() {
-					if envoyInstance != nil {
-						_ = envoyInstance.Clean()
-					}
+					envoyInstance.Clean()
 				})
 
 				It("works when rapid virtual service creation and deletion causes no race conditions", func() {
-					up := tu.Upstream
-					vs := getTrivialVirtualServiceForUpstream(writeNamespace, up.Metadata.Ref())
+					vs := getTrivialVirtualServiceForUpstream(writeNamespace, testUpstream.Upstream.Metadata.Ref())
 
 					// Write the Virtual Service
 					_, err := testClients.VirtualServiceClient.Write(vs, clients.WriteOpts{})
@@ -399,8 +445,7 @@ var _ = Describe("Gateway", func() {
 				})
 
 				It("should work with no ssl and clean up the envoy config when the virtual service is deleted", func() {
-					up := tu.Upstream
-					vs := getTrivialVirtualServiceForUpstream(writeNamespace, up.Metadata.Ref())
+					vs := getTrivialVirtualServiceForUpstream(writeNamespace, testUpstream.Upstream.Metadata.Ref())
 					_, err := testClients.VirtualServiceClient.Write(vs, clients.WriteOpts{})
 					Expect(err).NotTo(HaveOccurred())
 
@@ -437,7 +482,7 @@ var _ = Describe("Gateway", func() {
 				})
 
 				It("should not match requests that contain a header that is excluded from match", func() {
-					up := tu.Upstream
+					up := testUpstream.Upstream
 					vs := getTrivialVirtualServiceForUpstream("gloo-system", up.Metadata.Ref())
 					_, err := testClients.VirtualServiceClient.Write(vs, clients.WriteOpts{})
 					Expect(err).NotTo(HaveOccurred())
@@ -471,11 +516,9 @@ var _ = Describe("Gateway", func() {
 				})
 
 				It("should direct requests that use cluster_header to the proper upstream", func() {
-					// Construct upstream name {{name}}_{{namespace}}
-					us := tu.Upstream
-					upstreamName := translator.UpstreamToClusterName(us.Metadata.Ref())
+					upstreamName := translator.UpstreamToClusterName(testUpstream.Upstream.Metadata.Ref())
 
-					vs := getTrivialVirtualService("gloo-system")
+					vs := getTrivialVirtualService(writeNamespace)
 					// Create route that uses cluster header destination
 					vs.GetVirtualHost().Routes = []*gatewayv1.Route{{
 						Action: &gatewayv1.Route_RouteAction{
@@ -508,29 +551,10 @@ var _ = Describe("Gateway", func() {
 
 				Context("ssl", func() {
 
-					TestUpstreamSslReachable := func() {
-						cert := gloohelpers.Certificate()
-						v1helpers.TestUpstreamReachable(defaults.HttpsPort, tu, &cert)
-					}
+					var secret *gloov1.Secret
 
-					It("should work with ssl", func() {
-						// Check tls inspector has not been added yet
-						Eventually(func() (string, error) {
-							envoyConfig := ""
-							resp, err := envoyInstance.EnvoyConfig()
-							if err != nil {
-								return "", err
-							}
-							p := new(bytes.Buffer)
-							if _, err := io.Copy(p, resp.Body); err != nil {
-								return "", err
-							}
-							defer resp.Body.Close()
-							envoyConfig = p.String()
-							return envoyConfig, nil
-						}, "10s", "0.1s").Should(Not(MatchRegexp("type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector")))
-
-						secret := &gloov1.Secret{
+					BeforeEach(func() {
+						secret = &gloov1.Secret{
 							Metadata: &core.Metadata{
 								Name:      "secret",
 								Namespace: "default",
@@ -542,40 +566,43 @@ var _ = Describe("Gateway", func() {
 								},
 							},
 						}
-						createdSecret, err := testClients.SecretClient.Write(secret, clients.WriteOpts{})
-						Expect(err).NotTo(HaveOccurred())
+					})
 
-						up := tu.Upstream
-						vscli := testClients.VirtualServiceClient
-						vs := getTrivialVirtualServiceForUpstream("gloo-system", up.Metadata.Ref())
+					JustBeforeEach(func() {
+						_, err := testClients.SecretClient.Write(secret, clients.WriteOpts{Ctx: ctx})
+						Expect(err).NotTo(HaveOccurred())
+					})
+
+					JustAfterEach(func() {
+						err := testClients.SecretClient.Delete(secret.GetMetadata().GetNamespace(), secret.GetMetadata().GetName(), clients.DeleteOpts{Ctx: ctx})
+						Expect(err).NotTo(HaveOccurred())
+					})
+
+					TestUpstreamSslReachable := func() {
+						cert := gloohelpers.Certificate()
+						v1helpers.TestUpstreamReachable(defaults.HttpsPort, testUpstream, &cert)
+					}
+
+					It("should work with ssl", func() {
+						// Check tls inspector has not been added yet
+						Eventually(envoyInstance.EnvoyConfigDump, "10s", "0.1s").Should(Not(MatchRegexp(tlsInspectorType)))
+
+						vs := getTrivialVirtualServiceForUpstream(writeNamespace, testUpstream.Upstream.Metadata.Ref())
 						vs.SslConfig = &gloov1.SslConfig{
 							SslSecrets: &gloov1.SslConfig_SecretRef{
 								SecretRef: &core.ResourceRef{
-									Name:      createdSecret.Metadata.Name,
-									Namespace: createdSecret.Metadata.Namespace,
+									Name:      secret.GetMetadata().GetName(),
+									Namespace: secret.GetMetadata().GetNamespace(),
 								},
 							},
 						}
 
-						_, err = vscli.Write(vs, clients.WriteOpts{})
+						_, err := testClients.VirtualServiceClient.Write(vs, clients.WriteOpts{})
 						Expect(err).NotTo(HaveOccurred())
 
 						TestUpstreamSslReachable()
 
-						Eventually(func() (string, error) {
-							envoyConfig := ""
-							resp, err := envoyInstance.EnvoyConfig()
-							if err != nil {
-								return "", err
-							}
-							p := new(bytes.Buffer)
-							if _, err := io.Copy(p, resp.Body); err != nil {
-								return "", err
-							}
-							defer resp.Body.Close()
-							envoyConfig = p.String()
-							return envoyConfig, nil
-						}, "10s", "0.1s").Should(MatchRegexp("type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector"))
+						Eventually(envoyInstance.EnvoyConfigDump, "10s", "0.1s").Should(MatchRegexp(tlsInspectorType))
 					})
 				})
 			})
@@ -584,67 +611,58 @@ var _ = Describe("Gateway", func() {
 		Context("tcp gateway", func() {
 
 			var (
-				envoyInstance *services.EnvoyInstance
-				tu            *v1helpers.TestUpstream
+				defaultGateways []*gatewayv1.Gateway
+				envoyInstance   *services.EnvoyInstance
+				tu              *v1helpers.TestUpstream
 			)
 
 			BeforeEach(func() {
+				var err error
 				// Use tcp gateway instead of default
 				defaultGateway := gatewaydefaults.DefaultTcpGateway(writeNamespace)
 				defaultSslGateway := gatewaydefaults.DefaultTcpSslGateway(writeNamespace)
 
-				_, err := testClients.GatewayClient.Write(defaultGateway, clients.WriteOpts{})
-				Expect(err).NotTo(HaveOccurred(), "Should be able to write default gateways")
-				_, err = testClients.GatewayClient.Write(defaultSslGateway, clients.WriteOpts{})
-				Expect(err).NotTo(HaveOccurred(), "Should be able to write default ssl gateways")
-
-				// wait for the two gateways to be created.
-				Eventually(func() (gatewayv1.GatewayList, error) {
-					return testClients.GatewayClient.List(writeNamespace, clients.ListOpts{})
-				}, "10s", "0.1s").Should(HaveLen(2), "Gateways should be present")
+				defaultGateways = []*gatewayv1.Gateway{
+					defaultGateway,
+					defaultSslGateway,
+				}
 
 				envoyInstance, err = envoyFactory.NewEnvoyInstance()
 				Expect(err).NotTo(HaveOccurred())
 
 				tu = v1helpers.NewTestHttpUpstream(ctx, envoyInstance.LocalAddr())
 
-				_, err = testClients.UpstreamClient.Write(tu.Upstream, clients.WriteOpts{})
-				Expect(err).NotTo(HaveOccurred())
 				err = envoyInstance.RunWithRoleAndRestXds(writeNamespace+"~"+gatewaydefaults.GatewayProxyName, testClients.GlooPort, testClients.RestXdsPort)
 				Expect(err).NotTo(HaveOccurred())
 			})
 
-			AfterEach(func() {
-				if envoyInstance != nil {
-					_ = envoyInstance.Clean()
+			JustBeforeEach(func() {
+				for _, gw := range defaultGateways {
+					_, err := testClients.GatewayClient.Write(gw, clients.WriteOpts{Ctx: ctx})
+					Expect(err).NotTo(HaveOccurred(), "Should be able to write default gateways")
 				}
+
+				_, err := testClients.UpstreamClient.Write(tu.Upstream, clients.WriteOpts{Ctx: ctx})
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			JustAfterEach(func() {
+				for _, gw := range defaultGateways {
+					err := testClients.GatewayClient.Delete(gw.GetMetadata().GetNamespace(), gw.GetMetadata().GetName(), clients.DeleteOpts{Ctx: ctx})
+					Expect(err).NotTo(HaveOccurred(), "Should be able to delete default gateways")
+				}
+			})
+
+			AfterEach(func() {
+				envoyInstance.Clean()
 			})
 
 			Context("ssl", func() {
 
-				TestUpstreamSslReachableTcp := func() {
-					cert := gloohelpers.Certificate()
-					v1helpers.TestUpstreamReachable(defaults.HttpsPort, tu, &cert)
-				}
+				var secret *gloov1.Secret
 
-				It("should work with ssl", func() {
-					// Check tls inspector has not been added yet
-					Eventually(func() (string, error) {
-						envoyConfig := ""
-						resp, err := envoyInstance.EnvoyConfig()
-						if err != nil {
-							return "", err
-						}
-						p := new(bytes.Buffer)
-						if _, err := io.Copy(p, resp.Body); err != nil {
-							return "", err
-						}
-						defer resp.Body.Close()
-						envoyConfig = p.String()
-						return envoyConfig, nil
-					}, "10s", "0.1s").Should(Not(MatchRegexp("type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector")))
-
-					secret := &gloov1.Secret{
+				BeforeEach(func() {
+					secret = &gloov1.Secret{
 						Metadata: &core.Metadata{
 							Name:      "secret",
 							Namespace: "default",
@@ -656,8 +674,26 @@ var _ = Describe("Gateway", func() {
 							},
 						},
 					}
-					createdSecret, err := testClients.SecretClient.Write(secret, clients.WriteOpts{Ctx: ctx, OverwriteExisting: true})
+				})
+
+				JustBeforeEach(func() {
+					_, err := testClients.SecretClient.Write(secret, clients.WriteOpts{Ctx: ctx})
 					Expect(err).NotTo(HaveOccurred())
+				})
+
+				JustAfterEach(func() {
+					err := testClients.SecretClient.Delete(secret.GetMetadata().GetNamespace(), secret.GetMetadata().GetName(), clients.DeleteOpts{Ctx: ctx})
+					Expect(err).NotTo(HaveOccurred())
+				})
+
+				TestUpstreamSslReachableTcp := func() {
+					cert := gloohelpers.Certificate()
+					v1helpers.TestUpstreamReachable(defaults.HttpsPort, tu, &cert)
+				}
+
+				It("should work with ssl", func() {
+					// Check tls inspector has not been added yet
+					Eventually(envoyInstance.EnvoyConfigDump, "10s", "0.1s").Should(Not(MatchRegexp(tlsInspectorType)))
 
 					host := &gloov1.TcpHost{
 						Name: "one",
@@ -673,8 +709,8 @@ var _ = Describe("Gateway", func() {
 						SslConfig: &gloov1.SslConfig{
 							SslSecrets: &gloov1.SslConfig_SecretRef{
 								SecretRef: &core.ResourceRef{
-									Name:      createdSecret.Metadata.Name,
-									Namespace: createdSecret.Metadata.Namespace,
+									Name:      secret.GetMetadata().GetName(),
+									Namespace: secret.GetMetadata().GetNamespace(),
 								},
 							},
 							AlpnProtocols: []string{"http/1.1"},
@@ -697,20 +733,7 @@ var _ = Describe("Gateway", func() {
 					}
 
 					// Check tls inspector is correctly configured
-					Eventually(func() (string, error) {
-						envoyConfig := ""
-						resp, err := envoyInstance.EnvoyConfig()
-						if err != nil {
-							return "", err
-						}
-						p := new(bytes.Buffer)
-						if _, err := io.Copy(p, resp.Body); err != nil {
-							return "", err
-						}
-						defer resp.Body.Close()
-						envoyConfig = p.String()
-						return envoyConfig, nil
-					}, "10s", "0.1s").Should(MatchRegexp("type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector"))
+					Eventually(envoyInstance.EnvoyConfigDump, "10s", "0.1s").Should(MatchRegexp(tlsInspectorType))
 
 					TestUpstreamSslReachableTcp()
 				})
@@ -722,88 +745,128 @@ var _ = Describe("Gateway", func() {
 		// The underlying Http and Tcp logic is tested independently
 		Context("hybrid gateway", func() {
 
-			BeforeEach(func() {
-				err := gloohelpers.WriteDefaultHybridGateway(writeNamespace, testClients.GatewayClient)
-				Expect(err).NotTo(HaveOccurred(), "Should be able to write default hybrid gateway")
+			var (
+				envoyInstance *services.EnvoyInstance
+				testUpstream  *v1helpers.TestUpstream
 
-				// wait for the gateway to be created
-				Eventually(func() (gatewayv1.GatewayList, error) {
-					return testClients.GatewayClient.List(writeNamespace, clients.ListOpts{})
-				}, "10s", "0.1s").Should(HaveLen(1), "Gateway should be present")
+				virtualService *gatewayv1.VirtualService
+				hybridGateway  *gatewayv1.Gateway
+			)
+
+			BeforeEach(func() {
+				var err error
+
+				envoyInstance, err = envoyFactory.NewEnvoyInstance()
+				Expect(err).NotTo(HaveOccurred())
+
+				testUpstream = v1helpers.NewTestHttpUpstream(ctx, envoyInstance.LocalAddr())
+				virtualService = getTrivialVirtualServiceForUpstream(writeNamespace, testUpstream.Upstream.Metadata.Ref())
+				hybridGateway = gatewaydefaults.DefaultHybridGateway(writeNamespace)
+
+				err = envoyInstance.RunWithRoleAndRestXds(writeNamespace+"~"+gatewaydefaults.GatewayProxyName, testClients.GlooPort, testClients.RestXdsPort)
+				Expect(err).NotTo(HaveOccurred())
+			})
+
+			JustBeforeEach(func() {
+				var err error
+
+				_, err = testClients.UpstreamClient.Write(testUpstream.Upstream, clients.WriteOpts{Ctx: ctx})
+				Expect(err).NotTo(HaveOccurred(), "Should be able to write upstream")
+
+				virtualService, err = testClients.VirtualServiceClient.Write(virtualService, clients.WriteOpts{Ctx: ctx})
+				Expect(err).NotTo(HaveOccurred(), "Should be able to write virtual service")
+
+				hybridGateway, err = testClients.GatewayClient.Write(hybridGateway, clients.WriteOpts{Ctx: ctx})
+				Expect(err).NotTo(HaveOccurred(), "Should be able to write hybrid gateway")
+			})
+
+			JustAfterEach(func() {
+				var err error
+
+				err = testClients.GatewayClient.Delete(hybridGateway.GetMetadata().GetNamespace(), hybridGateway.GetMetadata().GetName(), clients.DeleteOpts{Ctx: ctx})
+				Expect(err).NotTo(HaveOccurred(), "Should be able to delete hybrid gateway")
+
+				err = testClients.VirtualServiceClient.Delete(virtualService.GetMetadata().GetNamespace(), virtualService.GetMetadata().GetName(), clients.DeleteOpts{Ctx: ctx, IgnoreNotExist: true})
+				Expect(err).NotTo(HaveOccurred(), "Should be able to delete virtual service")
+
+				err = testClients.UpstreamClient.Delete(testUpstream.Upstream.GetMetadata().GetNamespace(), testUpstream.Upstream.GetMetadata().GetName(), clients.DeleteOpts{Ctx: ctx})
+				Expect(err).NotTo(HaveOccurred(), "Should be able to delete upstream")
+			})
+
+			AfterEach(func() {
+				envoyInstance.Clean()
 			})
 
 			It("should create a hybrid listener with http and tcp matched listeners", func() {
-
-				gatewayClient := testClients.GatewayClient
-				gw, err := gatewayClient.List(writeNamespace, clients.ListOpts{})
+				modifiedHybridGateway, err := testClients.GatewayClient.Read(writeNamespace, hybridGateway.GetMetadata().GetName(), clients.ReadOpts{Ctx: ctx})
 				Expect(err).NotTo(HaveOccurred())
 
-				for _, g := range gw {
-					hybridGateway := g.GetHybridGateway()
-					if hybridGateway != nil {
-						hybridGateway.MatchedGateways = []*gatewayv1.MatchedGateway{
-							{
-								Matcher: &gatewayv1.Matcher{
-									SourcePrefixRanges: []*v3.CidrRange{
-										{
-											AddressPrefix: "1.2.3.4",
-											PrefixLen: &wrappers.UInt32Value{
-												Value: 32,
-											},
-										},
+				modifiedHybridGateway.GetHybridGateway().MatchedGateways = []*gatewayv1.MatchedGateway{
+					{
+						Matcher: &gatewayv1.Matcher{
+							SourcePrefixRanges: []*v3.CidrRange{
+								{
+									AddressPrefix: "1.2.3.4",
+									PrefixLen: &wrappers.UInt32Value{
+										Value: 32,
 									},
 								},
-								GatewayType: &gatewayv1.MatchedGateway_HttpGateway{
-									HttpGateway: &gatewayv1.HttpGateway{},
-								},
 							},
-							{
-								Matcher: &gatewayv1.Matcher{
-									SourcePrefixRanges: []*v3.CidrRange{
-										{
-											AddressPrefix: "5.6.7.8",
-											PrefixLen: &wrappers.UInt32Value{
-												Value: 32,
-											},
-										},
+						},
+						GatewayType: &gatewayv1.MatchedGateway_HttpGateway{
+							HttpGateway: &gatewayv1.HttpGateway{
+								VirtualServiceNamespaces: []string{writeNamespace},
+							},
+						},
+					},
+					{
+						Matcher: &gatewayv1.Matcher{
+							SourcePrefixRanges: []*v3.CidrRange{
+								{
+									AddressPrefix: "5.6.7.8",
+									PrefixLen: &wrappers.UInt32Value{
+										Value: 32,
 									},
 								},
-								GatewayType: &gatewayv1.MatchedGateway_TcpGateway{
-									TcpGateway: &gatewayv1.TcpGateway{},
-								},
 							},
-						}
+						},
+						GatewayType: &gatewayv1.MatchedGateway_TcpGateway{
+							TcpGateway: &gatewayv1.TcpGateway{},
+						},
+					},
+				}
+				_, err = testClients.GatewayClient.Write(modifiedHybridGateway, clients.WriteOpts{Ctx: ctx, OverwriteExisting: true})
+				Expect(err).NotTo(HaveOccurred())
+
+				// wait for hybrid listener to propagate to the proxy
+				gloohelpers.EventuallyResourceAccepted(func() (resources.InputResource, error) {
+					proxy, err := testClients.ProxyClient.Read(writeNamespace, gatewaydefaults.GatewayProxyName, clients.ReadOpts{})
+					if err != nil {
+						return nil, err
 					}
 
-					_, err := gatewayClient.Write(g, clients.WriteOpts{Ctx: ctx, OverwriteExisting: true})
-					Expect(err).NotTo(HaveOccurred())
-				}
+					// There should only be a single listener on the proxy and it should be a HybridListener
+					hybridListener := proxy.GetListeners()[0].GetHybridListener()
+					if hybridListener == nil {
+						return nil, eris.New("HybridListener is not present on Proxy")
+					}
 
-				// write a virtual service so we have a proxy
-				vs := getTrivialVirtualServiceForUpstream("gloo-system", &core.ResourceRef{Name: "test", Namespace: "test"})
-				_, err = testClients.VirtualServiceClient.Write(vs, clients.WriteOpts{})
-				Expect(err).NotTo(HaveOccurred())
+					matchedListeners := hybridListener.GetMatchedListeners()
+					if len(matchedListeners) != 2 {
+						return nil, eris.New("HybridListener should have 2 matched listeners")
+					}
 
-				// make sure it propagates to proxy
-				Eventually(
-					func() (bool, error) {
-						proxy, err := testClients.ProxyClient.Read(writeNamespace, gatewaydefaults.GatewayProxyName, clients.ReadOpts{})
-						if err != nil {
-							return false, err
-						}
-						for _, l := range proxy.Listeners {
-							if hl := l.GetHybridListener(); hl != nil {
-								if len(hl.MatchedListeners) != 2 ||
-									hl.MatchedListeners[0].GetHttpListener() == nil ||
-									len(hl.MatchedListeners[0].GetHttpListener().GetVirtualHosts()) != 1 ||
-									hl.MatchedListeners[1].GetTcpListener() == nil {
-									continue
-								}
-								return true, nil
-							}
-						}
-						return false, nil
-					}, "5s", "0.1s").Should(BeTrue())
+					if len(matchedListeners[0].GetHttpListener().GetVirtualHosts()) != 1 {
+						return nil, eris.New("HybridListener should have HttpListener with 1 Virtual host")
+					}
+
+					if matchedListeners[1].GetTcpListener() == nil {
+						return nil, eris.New("HybridListener should have non-nil TcpListener")
+					}
+
+					// if all conditions are met, return the proxy
+					return proxy, nil
+				})
 			})
 
 			It("correctly configures gateway for a virtual service which contains a route to a service", func() {
@@ -813,29 +876,33 @@ var _ = Describe("Gateway", func() {
 				svc, err := testClients.ServiceClient.Write(svc, clients.WriteOpts{Ctx: ctx})
 				Expect(err).NotTo(HaveOccurred())
 
-				// Create a virtual service with a route pointing to the above service
-				vs := getTrivialVirtualServiceForService("gloo-system", kubeutils.FromKubeMeta(svc.ObjectMeta, true).Ref(), uint32(svc.Spec.Ports[0].Port))
-				_, err = testClients.VirtualServiceClient.Write(vs, clients.WriteOpts{})
+				// Update the existing virtual service with a route pointing to the above service
+				virtualService.VirtualHost.Routes[0].GetRouteAction().GetSingle().DestinationType = &gloov1.Destination_Kube{
+					Kube: &gloov1.KubernetesServiceDestination{
+						Ref:  kubeutils.FromKubeMeta(svc.ObjectMeta, true).Ref(),
+						Port: uint32(svc.Spec.Ports[0].Port),
+					},
+				}
+				_, err = testClients.VirtualServiceClient.Write(virtualService, clients.WriteOpts{Ctx: ctx, OverwriteExisting: true})
 				Expect(err).NotTo(HaveOccurred())
 
 				// Wait for proxy to be accepted
 				var proxy *gloov1.Proxy
-				Eventually(
-					func() (bool, error) {
-						proxy, err = testClients.ProxyClient.Read(writeNamespace, gatewaydefaults.GatewayProxyName, clients.ReadOpts{})
-						if err != nil {
-							return false, err
-						}
-						for _, l := range proxy.Listeners {
-							if hl := l.GetHybridListener(); hl != nil {
-								if len(hl.MatchedListeners) != 1 {
-									continue
-								}
-								return true, nil
+				gloohelpers.EventuallyResourceAccepted(func() (resources.InputResource, error) {
+					proxy, err = testClients.ProxyClient.Read(writeNamespace, gatewaydefaults.GatewayProxyName, clients.ReadOpts{})
+					if err != nil {
+						return nil, err
+					}
+					for _, l := range proxy.Listeners {
+						if hl := l.GetHybridListener(); hl != nil {
+							if len(hl.MatchedListeners) != 1 {
+								continue
 							}
+							return proxy, nil
 						}
-						return false, nil
-					}, "5s", "0.1s").Should(BeTrue())
+					}
+					return nil, nil
+				}, "5s", "0.1s")
 
 				// Verify that the proxy has the expected route
 				Expect(proxy.Listeners).To(HaveLen(1))
@@ -848,97 +915,39 @@ var _ = Describe("Gateway", func() {
 				Expect(httpListener.VirtualHosts[0].Routes[0].GetRouteAction()).NotTo(BeNil())
 				Expect(httpListener.VirtualHosts[0].Routes[0].GetRouteAction().GetSingle()).NotTo(BeNil())
 				service := httpListener.VirtualHosts[0].Routes[0].GetRouteAction().GetSingle().GetKube()
-				Expect(service.Ref.Namespace).To(Equal(svc.Namespace))
-				Expect(service.Ref.Name).To(Equal(svc.Name))
+				Expect(service.GetRef().GetNamespace()).To(Equal(svc.Namespace))
+				Expect(service.GetRef().GetName()).To(Equal(svc.Name))
 				Expect(service.Port).To(BeEquivalentTo(svc.Spec.Ports[0].Port))
 			})
 
 			Context("http traffic", func() {
 
-				var (
-					envoyInstance *services.EnvoyInstance
-					tu            *v1helpers.TestUpstream
-				)
-
 				TestUpstreamReachable := func() {
-					v1helpers.TestUpstreamReachable(defaults.HybridPort, tu, nil)
+					v1helpers.TestUpstreamReachable(defaults.HybridPort, testUpstream, nil)
 				}
 
-				BeforeEach(func() {
-					var err error
-					envoyInstance, err = envoyFactory.NewEnvoyInstance()
-					Expect(err).NotTo(HaveOccurred())
-
-					tu = v1helpers.NewTestHttpUpstream(ctx, envoyInstance.LocalAddr())
-
-					_, err = testClients.UpstreamClient.Write(tu.Upstream, clients.WriteOpts{})
-					Expect(err).NotTo(HaveOccurred())
-					err = envoyInstance.RunWithRoleAndRestXds(writeNamespace+"~"+gatewaydefaults.GatewayProxyName, testClients.GlooPort, testClients.RestXdsPort)
-					Expect(err).NotTo(HaveOccurred())
-				})
-
-				AfterEach(func() {
-					if envoyInstance != nil {
-						_ = envoyInstance.Clean()
-					}
-				})
-
 				It("works when rapid virtual service creation and deletion causes no race conditions", func() {
-					up := tu.Upstream
-					vs := getTrivialVirtualServiceForUpstream(writeNamespace, up.Metadata.Ref())
-
-					// Write the Virtual Service
-					_, err := testClients.VirtualServiceClient.Write(vs, clients.WriteOpts{})
-					Expect(err).NotTo(HaveOccurred())
-
-					// Wait for proxy to be created
-					var proxyList gloov1.ProxyList
-					Eventually(func() bool {
-						proxyList, err = testClients.ProxyClient.List(writeNamespace, clients.ListOpts{})
-						if err != nil {
-							return false
-						}
-						return len(proxyList) == 1
-					}, "20s", "1s").Should(BeTrue())
+					var err error
 
 					TestUpstreamReachable()
 
 					// Delete the Virtual Service
-					err = testClients.VirtualServiceClient.Delete(writeNamespace, vs.GetMetadata().Name, clients.DeleteOpts{})
+					err = testClients.VirtualServiceClient.Delete(writeNamespace, virtualService.GetMetadata().GetName(), clients.DeleteOpts{Ctx: ctx})
 					Expect(err).NotTo(HaveOccurred())
 
-					// The vs should be deleted
-					var vsList gatewayv1.VirtualServiceList
-					Eventually(func() bool {
-						vsList, err = testClients.VirtualServiceClient.List(writeNamespace, clients.ListOpts{})
-						if err != nil {
-							return false
-						}
-						if len(vsList) != 0 {
-							testClients.VirtualServiceClient.Delete(writeNamespace, vs.GetMetadata().Name, clients.DeleteOpts{})
-							return false
-						}
-						return true
-					}, "10s", "0.5s").Should(BeTrue())
-					Consistently(func() bool {
-						vsList, err = testClients.VirtualServiceClient.List(writeNamespace, clients.ListOpts{})
-						if err != nil {
-							return false
-						}
-						return len(vsList) == 0
-					}, "10s", "0.5s").Should(BeTrue())
+					Eventually(func() (gatewayv1.VirtualServiceList, error) {
+						return testClients.VirtualServiceClient.List(writeNamespace, clients.ListOpts{Ctx: ctx})
+					}, "10s", "0.5s").Should(HaveLen(0))
+					Consistently(func() (gatewayv1.VirtualServiceList, error) {
+						return testClients.VirtualServiceClient.List(writeNamespace, clients.ListOpts{Ctx: ctx})
+					}, "10s", "0.5s").Should(HaveLen(0))
 				})
 
 				It("should work with no ssl and clean up the envoy config when the virtual service is deleted", func() {
-					up := tu.Upstream
-					vs := getTrivialVirtualServiceForUpstream(writeNamespace, up.Metadata.Ref())
-					_, err := testClients.VirtualServiceClient.Write(vs, clients.WriteOpts{})
-					Expect(err).NotTo(HaveOccurred())
-
 					TestUpstreamReachable()
 
 					// Delete the Virtual Service
-					err = testClients.VirtualServiceClient.Delete(writeNamespace, vs.GetMetadata().Name, clients.DeleteOpts{})
+					err := testClients.VirtualServiceClient.Delete(writeNamespace, virtualService.GetMetadata().GetName(), clients.DeleteOpts{Ctx: ctx})
 					Expect(err).NotTo(HaveOccurred())
 
 					// Wait for proxy to be deleted
@@ -968,11 +977,6 @@ var _ = Describe("Gateway", func() {
 				})
 
 				It("should not match requests that contain a header that is excluded from match", func() {
-					up := tu.Upstream
-					vs := getTrivialVirtualServiceForUpstream("gloo-system", up.Metadata.Ref())
-					_, err := testClients.VirtualServiceClient.Write(vs, clients.WriteOpts{})
-					Expect(err).NotTo(HaveOccurred())
-
 					// Create a regular request
 					request, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/", defaults.HybridPort), nil)
 					Expect(err).NotTo(HaveOccurred())
@@ -1002,13 +1006,10 @@ var _ = Describe("Gateway", func() {
 				})
 
 				It("should direct requests that use cluster_header to the proper upstream", func() {
-					// Construct upstream name {{name}}_{{namespace}}
-					us := tu.Upstream
-					upstreamName := translator.UpstreamToClusterName(us.Metadata.Ref())
+					upstreamName := translator.UpstreamToClusterName(testUpstream.Upstream.Metadata.Ref())
 
-					vs := getTrivialVirtualService("gloo-system")
 					// Create route that uses cluster header destination
-					vs.GetVirtualHost().Routes = []*gatewayv1.Route{{
+					virtualService.GetVirtualHost().Routes = []*gatewayv1.Route{{
 						Action: &gatewayv1.Route_RouteAction{
 							RouteAction: &gloov1.RouteAction{
 								Destination: &gloov1.RouteAction_ClusterHeader{
@@ -1017,7 +1018,7 @@ var _ = Describe("Gateway", func() {
 							},
 						}}}
 
-					_, err := testClients.VirtualServiceClient.Write(vs, clients.WriteOpts{})
+					_, err := testClients.VirtualServiceClient.Write(virtualService, clients.WriteOpts{Ctx: ctx, OverwriteExisting: true})
 					Expect(err).NotTo(HaveOccurred())
 
 					// Create a regular request
@@ -1039,29 +1040,10 @@ var _ = Describe("Gateway", func() {
 
 				Context("ssl", func() {
 
-					TestUpstreamSslReachable := func() {
-						cert := gloohelpers.Certificate()
-						v1helpers.TestUpstreamReachable(defaults.HybridPort, tu, &cert)
-					}
+					var secret *gloov1.Secret
 
-					It("should work with ssl if ssl config is present in matcher", func() {
-						// Check tls inspector has not been added yet
-						Eventually(func() (string, error) {
-							envoyConfig := ""
-							resp, err := envoyInstance.EnvoyConfig()
-							if err != nil {
-								return "", err
-							}
-							p := new(bytes.Buffer)
-							if _, err := io.Copy(p, resp.Body); err != nil {
-								return "", err
-							}
-							defer resp.Body.Close()
-							envoyConfig = p.String()
-							return envoyConfig, nil
-						}, "10s", "0.1s").Should(Not(MatchRegexp("type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector")))
-
-						secret := &gloov1.Secret{
+					BeforeEach(func() {
+						secret = &gloov1.Secret{
 							Metadata: &core.Metadata{
 								Name:      "secret",
 								Namespace: "default",
@@ -1073,120 +1055,66 @@ var _ = Describe("Gateway", func() {
 								},
 							},
 						}
-						createdSecret, err := testClients.SecretClient.Write(secret, clients.WriteOpts{})
+					})
+
+					JustBeforeEach(func() {
+						_, err := testClients.SecretClient.Write(secret, clients.WriteOpts{Ctx: ctx})
 						Expect(err).NotTo(HaveOccurred())
+					})
+
+					JustAfterEach(func() {
+						err := testClients.SecretClient.Delete(secret.GetMetadata().GetNamespace(), secret.GetMetadata().GetName(), clients.DeleteOpts{Ctx: ctx})
+						Expect(err).NotTo(HaveOccurred())
+					})
+
+					TestUpstreamSslReachable := func() {
+						cert := gloohelpers.Certificate()
+						v1helpers.TestUpstreamReachable(defaults.HybridPort, testUpstream, &cert)
+					}
+
+					It("should work with ssl if ssl config is present in matcher", func() {
+						// Check tls inspector has not been added yet
+						Eventually(envoyInstance.EnvoyConfigDump, "10s", "0.1s").Should(Not(MatchRegexp(tlsInspectorType)))
 
 						sslConfig := &gloov1.SslConfig{
 							SslSecrets: &gloov1.SslConfig_SecretRef{
-								SecretRef: &core.ResourceRef{
-									Name:      createdSecret.Metadata.Name,
-									Namespace: createdSecret.Metadata.Namespace,
-								},
+								SecretRef: secret.GetMetadata().Ref(),
 							},
 						}
 
 						// Update gateway with ssl config
-						gatewayClient := testClients.GatewayClient
-						gw, err := gatewayClient.List(writeNamespace, clients.ListOpts{})
+						gw, err := testClients.GatewayClient.List(writeNamespace, clients.ListOpts{Ctx: ctx})
 						Expect(err).NotTo(HaveOccurred())
 
 						for _, g := range gw {
 							hybridGateway := g.GetHybridGateway()
 							if hybridGateway != nil {
-								hybridGateway.MatchedGateways = []*gatewayv1.MatchedGateway{
-									{
-										Matcher: &gatewayv1.Matcher{
-											SslConfig: sslConfig,
-										},
-										GatewayType: &gatewayv1.MatchedGateway_HttpGateway{
-											HttpGateway: &gatewayv1.HttpGateway{},
-										},
-									},
+								hybridGateway.MatchedGateways[0].Matcher = &gatewayv1.Matcher{
+									SslConfig: sslConfig,
 								}
 							}
 
-							_, err := gatewayClient.Write(g, clients.WriteOpts{Ctx: ctx, OverwriteExisting: true})
+							_, err := testClients.GatewayClient.Write(g, clients.WriteOpts{Ctx: ctx, OverwriteExisting: true})
 							Expect(err).NotTo(HaveOccurred())
 						}
 
-						up := tu.Upstream
-						vscli := testClients.VirtualServiceClient
-						vs := getTrivialVirtualServiceForUpstream("gloo-system", up.Metadata.Ref())
-						vs.SslConfig = &gloov1.SslConfig{
-							SslSecrets: &gloov1.SslConfig_SecretRef{
-								SecretRef: &core.ResourceRef{
-									Name:      createdSecret.Metadata.Name,
-									Namespace: createdSecret.Metadata.Namespace,
-								},
-							},
-						}
-
-						_, err = vscli.Write(vs, clients.WriteOpts{})
+						virtualService.SslConfig = sslConfig
+						_, err = testClients.VirtualServiceClient.Write(virtualService, clients.WriteOpts{Ctx: ctx, OverwriteExisting: true})
 						Expect(err).NotTo(HaveOccurred())
 
 						TestUpstreamSslReachable()
 
-						Eventually(func() (string, error) {
-							envoyConfig := ""
-							resp, err := envoyInstance.EnvoyConfig()
-							if err != nil {
-								return "", err
-							}
-							p := new(bytes.Buffer)
-							if _, err := io.Copy(p, resp.Body); err != nil {
-								return "", err
-							}
-							defer resp.Body.Close()
-							envoyConfig = p.String()
-							return envoyConfig, nil
-						}, "10s", "0.1s").Should(MatchRegexp("type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector"))
+						Eventually(envoyInstance.EnvoyConfigDump, "10s", "0.1s").Should(MatchRegexp(tlsInspectorType))
 					})
 				})
 			})
 
 			Context("tcp ssl", func() {
-				var (
-					envoyInstance *services.EnvoyInstance
-					tu            *v1helpers.TestUpstream
-				)
+
+				var secret *gloov1.Secret
 
 				BeforeEach(func() {
-					var err error
-
-					envoyInstance, err = envoyFactory.NewEnvoyInstance()
-					Expect(err).NotTo(HaveOccurred())
-
-					tu = v1helpers.NewTestHttpUpstream(ctx, envoyInstance.LocalAddr())
-
-					_, err = testClients.UpstreamClient.Write(tu.Upstream, clients.WriteOpts{})
-					Expect(err).NotTo(HaveOccurred())
-					err = envoyInstance.RunWithRoleAndRestXds(writeNamespace+"~"+gatewaydefaults.GatewayProxyName, testClients.GlooPort, testClients.RestXdsPort)
-					Expect(err).NotTo(HaveOccurred())
-				})
-
-				TestUpstreamSslReachableTcp := func() {
-					cert := gloohelpers.Certificate()
-					v1helpers.TestUpstreamReachable(defaults.HybridPort, tu, &cert)
-				}
-
-				It("should work with ssl", func() {
-					// Check tls inspector has not been added yet
-					Eventually(func() (string, error) {
-						envoyConfig := ""
-						resp, err := envoyInstance.EnvoyConfig()
-						if err != nil {
-							return "", err
-						}
-						p := new(bytes.Buffer)
-						if _, err := io.Copy(p, resp.Body); err != nil {
-							return "", err
-						}
-						defer resp.Body.Close()
-						envoyConfig = p.String()
-						return envoyConfig, nil
-					}, "10s", "0.1s").Should(Not(MatchRegexp("type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector")))
-
-					secret := &gloov1.Secret{
+					secret = &gloov1.Secret{
 						Metadata: &core.Metadata{
 							Name:      "secret",
 							Namespace: "default",
@@ -1198,16 +1126,34 @@ var _ = Describe("Gateway", func() {
 							},
 						},
 					}
-					createdSecret, err := testClients.SecretClient.Write(secret, clients.WriteOpts{Ctx: ctx, OverwriteExisting: true})
+				})
+
+				JustBeforeEach(func() {
+					_, err := testClients.SecretClient.Write(secret, clients.WriteOpts{Ctx: ctx})
 					Expect(err).NotTo(HaveOccurred())
+				})
+
+				JustAfterEach(func() {
+					err := testClients.SecretClient.Delete(secret.GetMetadata().GetNamespace(), secret.GetMetadata().GetName(), clients.DeleteOpts{Ctx: ctx})
+					Expect(err).NotTo(HaveOccurred())
+				})
+
+				TestUpstreamSslReachableTcp := func() {
+					cert := gloohelpers.Certificate()
+					v1helpers.TestUpstreamReachable(defaults.HybridPort, testUpstream, &cert)
+				}
+
+				It("should work with ssl", func() {
+					// Check tls inspector has not been added yet
+					Eventually(envoyInstance.EnvoyConfigDump, "10s", "0.1s").Should(Not(MatchRegexp(tlsInspectorType)))
 
 					host := &gloov1.TcpHost{
-						Name: "one",
+						Name: "tcp-host-one",
 						Destination: &gloov1.TcpHost_TcpAction{
 							Destination: &gloov1.TcpHost_TcpAction_Single{
 								Single: &gloov1.Destination{
 									DestinationType: &gloov1.Destination_Upstream{
-										Upstream: tu.Upstream.Metadata.Ref(),
+										Upstream: testUpstream.Upstream.Metadata.Ref(),
 									},
 								},
 							},
@@ -1215,8 +1161,8 @@ var _ = Describe("Gateway", func() {
 						SslConfig: &gloov1.SslConfig{
 							SslSecrets: &gloov1.SslConfig_SecretRef{
 								SecretRef: &core.ResourceRef{
-									Name:      createdSecret.Metadata.Name,
-									Namespace: createdSecret.Metadata.Namespace,
+									Name:      secret.GetMetadata().GetName(),
+									Namespace: secret.GetMetadata().GetNamespace(),
 								},
 							},
 							AlpnProtocols: []string{"http/1.1"},
@@ -1224,14 +1170,15 @@ var _ = Describe("Gateway", func() {
 					}
 
 					// Update gateway with tcp hosts
-					gatewayClient := testClients.GatewayClient
-					gw, err := gatewayClient.List(writeNamespace, clients.ListOpts{})
+					gw, err := testClients.GatewayClient.List(writeNamespace, clients.ListOpts{Ctx: ctx})
 					Expect(err).NotTo(HaveOccurred())
 
 					for _, g := range gw {
 						hybridGateway := g.GetHybridGateway()
 						if hybridGateway != nil {
 							hybridGateway.MatchedGateways = []*gatewayv1.MatchedGateway{
+								// Even though this test does not operate on HttpGateways, we intentionally include
+								// the configuration to ensure that it does not affect TcpGateway translation
 								{
 									Matcher: &gatewayv1.Matcher{
 										SourcePrefixRanges: []*v3.CidrRange{
@@ -1258,25 +1205,12 @@ var _ = Describe("Gateway", func() {
 							}
 						}
 
-						_, err := gatewayClient.Write(g, clients.WriteOpts{Ctx: ctx, OverwriteExisting: true})
+						_, err := testClients.GatewayClient.Write(g, clients.WriteOpts{Ctx: ctx, OverwriteExisting: true})
 						Expect(err).NotTo(HaveOccurred())
 					}
 
 					// Check tls inspector is correctly configured
-					Eventually(func() (string, error) {
-						envoyConfig := ""
-						resp, err := envoyInstance.EnvoyConfig()
-						if err != nil {
-							return "", err
-						}
-						p := new(bytes.Buffer)
-						if _, err := io.Copy(p, resp.Body); err != nil {
-							return "", err
-						}
-						defer resp.Body.Close()
-						envoyConfig = p.String()
-						return envoyConfig, nil
-					}, "100s", "0.1s").Should(MatchRegexp("type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector"))
+					Eventually(envoyInstance.EnvoyConfigDump, "10s", "0.1s").Should(MatchRegexp(tlsInspectorType))
 
 					TestUpstreamSslReachableTcp()
 				})

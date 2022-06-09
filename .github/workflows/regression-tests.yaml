@@ -12,7 +12,7 @@ jobs:
       matrix:
         # knative support has been deprecated: https://github.com/solo-io/gloo/issues/5707
         # We have removed it from our CI regression tests
-        kube-e2e-test-type: ['gateway', 'ingress', 'helm', 'gloomtls', 'glooctl']
+        kube-e2e-test-type: ['gateway', 'gloo', 'ingress', 'helm', 'gloomtls', 'glooctl']
         xds-relay: [ 'false' ]
         include:
           - kube-e2e-test-type: 'gateway'
@@ -39,10 +39,10 @@ jobs:
 
         echo "After clearing disk space:"
         df -h
-    - name: Set up Go 1.16.3
+    - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: 1.16.3
+        go-version: 1.18.2
       id: go
     - name: Check out code into the Go module directory
       uses: actions/checkout@v2
@@ -96,3 +96,18 @@ jobs:
         # see what's in the cluster if we failed
         kubectl get all -A
         kubectl get configmaps -A
+    - name: Set pull_request_url
+      if: ${{ github.event_name == 'pull_request' && failure() }}
+      run: echo "pull_request_url=$(cat ${{ github.event_path }} | jq --raw-output .pull_request._links.html.href)" >> $GITHUB_ENV
+    - name: Set direct_message_id
+      if: ${{ github.event_name == 'pull_request' && failure() }}
+      run: echo "direct_message_id=$(cat ./.github/workflows/notify-on-regression-failure-list.json | jq -r '."${{ github.actor }}"')" >> $GITHUB_ENV
+    - name: Send Message
+      id: message-on-fail
+      if: ${{ github.event_name == 'pull_request' && failure() }}
+      shell: bash
+      run: |
+        curl -X POST https://slack.com/api/chat.postMessage\
+              -H "Content-Type: application/json; charset=utf-8"\
+              -H "Authorization: Bearer ${{ secrets.SLACKBOT_BEARER }}"\
+              -d '{"channel":"${{ env.direct_message_id }}","text":"Hey, `${{ github.actor }}`!  The <https://github.com/solo-io/gloo/actions/runs/${{github.run_id}}|regression tests> for your <${{ env.pull_request_url }}|${{ github.head_ref }} PR> have failed."}'

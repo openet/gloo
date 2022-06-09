@@ -269,6 +269,14 @@ func (m *Listener) Hash(hasher hash.Hash64) (uint64, error) {
 
 	}
 
+	switch m.OpaqueMetadata.(type) {
+
+	case *Listener_Metadata:
+
+	case *Listener_MetadataStatic:
+
+	}
+
 	return hasher.Sum64(), nil
 }
 
@@ -533,6 +541,30 @@ func (m *MatchedListener) Hash(hasher hash.Hash64) (uint64, error) {
 		}
 	}
 
+	for _, v := range m.GetSslConfigurations() {
+
+		if h, ok := interface{}(v).(safe_hasher.SafeHasher); ok {
+			if _, err = hasher.Write([]byte("")); err != nil {
+				return 0, err
+			}
+			if _, err = h.Hash(hasher); err != nil {
+				return 0, err
+			}
+		} else {
+			if fieldValue, err := hashstructure.Hash(v, nil); err != nil {
+				return 0, err
+			} else {
+				if _, err = hasher.Write([]byte("")); err != nil {
+					return 0, err
+				}
+				if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {
+					return 0, err
+				}
+			}
+		}
+
+	}
+
 	switch m.ListenerType.(type) {
 
 	case *MatchedListener_HttpListener:
@@ -713,6 +745,14 @@ func (m *VirtualHost) Hash(hasher hash.Hash64) (uint64, error) {
 		}
 	}
 
+	switch m.OpaqueMetadata.(type) {
+
+	case *VirtualHost_Metadata:
+
+	case *VirtualHost_MetadataStatic:
+
+	}
+
 	return hasher.Sum64(), nil
 }
 
@@ -845,20 +885,20 @@ func (m *Route) Hash(hasher hash.Hash64) (uint64, error) {
 			}
 		}
 
-	case *Route_GraphqlSchemaRef:
+	case *Route_GraphqlApiRef:
 
-		if h, ok := interface{}(m.GetGraphqlSchemaRef()).(safe_hasher.SafeHasher); ok {
-			if _, err = hasher.Write([]byte("GraphqlSchemaRef")); err != nil {
+		if h, ok := interface{}(m.GetGraphqlApiRef()).(safe_hasher.SafeHasher); ok {
+			if _, err = hasher.Write([]byte("GraphqlApiRef")); err != nil {
 				return 0, err
 			}
 			if _, err = h.Hash(hasher); err != nil {
 				return 0, err
 			}
 		} else {
-			if fieldValue, err := hashstructure.Hash(m.GetGraphqlSchemaRef(), nil); err != nil {
+			if fieldValue, err := hashstructure.Hash(m.GetGraphqlApiRef(), nil); err != nil {
 				return 0, err
 			} else {
-				if _, err = hasher.Write([]byte("GraphqlSchemaRef")); err != nil {
+				if _, err = hasher.Write([]byte("GraphqlApiRef")); err != nil {
 					return 0, err
 				}
 				if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {
@@ -866,6 +906,14 @@ func (m *Route) Hash(hasher hash.Hash64) (uint64, error) {
 				}
 			}
 		}
+
+	}
+
+	switch m.OpaqueMetadata.(type) {
+
+	case *Route_Metadata:
+
+	case *Route_MetadataStatic:
 
 	}
 
@@ -957,6 +1005,28 @@ func (m *RouteAction) Hash(hasher hash.Hash64) (uint64, error) {
 
 		if _, err = hasher.Write([]byte(m.GetClusterHeader())); err != nil {
 			return 0, err
+		}
+
+	case *RouteAction_DynamicForwardProxy:
+
+		if h, ok := interface{}(m.GetDynamicForwardProxy()).(safe_hasher.SafeHasher); ok {
+			if _, err = hasher.Write([]byte("DynamicForwardProxy")); err != nil {
+				return 0, err
+			}
+			if _, err = h.Hash(hasher); err != nil {
+				return 0, err
+			}
+		} else {
+			if fieldValue, err := hashstructure.Hash(m.GetDynamicForwardProxy(), nil); err != nil {
+				return 0, err
+			} else {
+				if _, err = hasher.Write([]byte("DynamicForwardProxy")); err != nil {
+					return 0, err
+				}
+				if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {
+					return 0, err
+				}
+			}
 		}
 
 	}
@@ -1374,6 +1444,28 @@ func (m *RedirectAction) Hash(hasher hash.Hash64) (uint64, error) {
 			return 0, err
 		}
 
+	case *RedirectAction_RegexRewrite:
+
+		if h, ok := interface{}(m.GetRegexRewrite()).(safe_hasher.SafeHasher); ok {
+			if _, err = hasher.Write([]byte("RegexRewrite")); err != nil {
+				return 0, err
+			}
+			if _, err = h.Hash(hasher); err != nil {
+				return 0, err
+			}
+		} else {
+			if fieldValue, err := hashstructure.Hash(m.GetRegexRewrite(), nil); err != nil {
+				return 0, err
+			} else {
+				if _, err = hasher.Write([]byte("RegexRewrite")); err != nil {
+					return 0, err
+				}
+				if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {
+					return 0, err
+				}
+			}
+		}
+
 	}
 
 	return hasher.Sum64(), nil
@@ -1399,6 +1491,46 @@ func (m *DirectResponseAction) Hash(hasher hash.Hash64) (uint64, error) {
 
 	if _, err = hasher.Write([]byte(m.GetBody())); err != nil {
 		return 0, err
+	}
+
+	return hasher.Sum64(), nil
+}
+
+// Hash function
+func (m *SourceMetadata) Hash(hasher hash.Hash64) (uint64, error) {
+	if m == nil {
+		return 0, nil
+	}
+	if hasher == nil {
+		hasher = fnv.New64()
+	}
+	var err error
+	if _, err = hasher.Write([]byte("gloo.solo.io.github.com/solo-io/gloo/projects/gloo/pkg/api/v1.SourceMetadata")); err != nil {
+		return 0, err
+	}
+
+	for _, v := range m.GetSources() {
+
+		if h, ok := interface{}(v).(safe_hasher.SafeHasher); ok {
+			if _, err = hasher.Write([]byte("")); err != nil {
+				return 0, err
+			}
+			if _, err = h.Hash(hasher); err != nil {
+				return 0, err
+			}
+		} else {
+			if fieldValue, err := hashstructure.Hash(v, nil); err != nil {
+				return 0, err
+			} else {
+				if _, err = hasher.Write([]byte("")); err != nil {
+					return 0, err
+				}
+				if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {
+					return 0, err
+				}
+			}
+		}
+
 	}
 
 	return hasher.Sum64(), nil
@@ -1507,6 +1639,51 @@ func (m *TcpHost_TcpAction) Hash(hasher hash.Hash64) (uint64, error) {
 			}
 		}
 
+	}
+
+	return hasher.Sum64(), nil
+}
+
+// Hash function
+func (m *SourceMetadata_SourceRef) Hash(hasher hash.Hash64) (uint64, error) {
+	if m == nil {
+		return 0, nil
+	}
+	if hasher == nil {
+		hasher = fnv.New64()
+	}
+	var err error
+	if _, err = hasher.Write([]byte("gloo.solo.io.github.com/solo-io/gloo/projects/gloo/pkg/api/v1.SourceMetadata_SourceRef")); err != nil {
+		return 0, err
+	}
+
+	if h, ok := interface{}(m.GetResourceRef()).(safe_hasher.SafeHasher); ok {
+		if _, err = hasher.Write([]byte("ResourceRef")); err != nil {
+			return 0, err
+		}
+		if _, err = h.Hash(hasher); err != nil {
+			return 0, err
+		}
+	} else {
+		if fieldValue, err := hashstructure.Hash(m.GetResourceRef(), nil); err != nil {
+			return 0, err
+		} else {
+			if _, err = hasher.Write([]byte("ResourceRef")); err != nil {
+				return 0, err
+			}
+			if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {
+				return 0, err
+			}
+		}
+	}
+
+	if _, err = hasher.Write([]byte(m.GetResourceKind())); err != nil {
+		return 0, err
+	}
+
+	err = binary.Write(hasher, binary.LittleEndian, m.GetObservedGeneration())
+	if err != nil {
+		return 0, err
 	}
 
 	return hasher.Sum64(), nil

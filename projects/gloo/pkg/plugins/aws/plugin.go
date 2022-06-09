@@ -12,11 +12,13 @@ import (
 	envoyauth "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/ptypes/any"
 	"github.com/golang/protobuf/ptypes/wrappers"
 	"github.com/hashicorp/go-multierror"
 	. "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/extensions/aws"
 	envoy_transform "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/extensions/transformation"
 	v1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
+
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/aws"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/pluginutils"
@@ -28,38 +30,38 @@ import (
 	"github.com/solo-io/solo-kit/pkg/errors"
 )
 
+var (
+	_ plugins.Plugin           = new(plugin)
+	_ plugins.UpstreamPlugin   = new(plugin)
+	_ plugins.RoutePlugin      = new(plugin)
+	_ plugins.HttpFilterPlugin = new(plugin)
+)
+
 const (
+	ExtensionName = "aws_lambda"
 	// filter info
 	FilterName = "io.solo.aws_lambda"
 )
 
-var _ plugins.Plugin = new(plugin)
-var _ plugins.UpstreamPlugin = new(plugin)
-var _ plugins.RoutePlugin = new(plugin)
-var _ plugins.HttpFilterPlugin = new(plugin)
-
-var pluginStage = plugins.DuringStage(plugins.OutAuthStage)
-
-func getLambdaHostname(s *aws.UpstreamSpec) string {
-	return fmt.Sprintf("lambda.%s.amazonaws.com", s.GetRegion())
-}
-
-func NewPlugin(earlyTransformsAdded *bool) plugins.Plugin {
-	return &plugin{
-		earlyTransformsAdded: earlyTransformsAdded,
-	}
-}
+var (
+	pluginStage          = plugins.DuringStage(plugins.OutAuthStage)
+	transformPluginStage = plugins.BeforeStage(plugins.OutAuthStage)
+)
 
 type plugin struct {
-	recordedUpstreams map[string]*aws.UpstreamSpec
-	ctx               context.Context
-	// earlyTransformsAdded is intended to point to the RequireEarlyTransformation property
-	// in the transformation plugin, which controls whether early-stage transforms will be processed
-	// see AWS plugin instantiation at the following link as an example:
-	// https://github.com/solo-io/gloo/blob/2168dff1344d2b488d74cb2c1baabe10a9301757/projects/gloo/pkg/plugins/registry/registry.go#L61
-	earlyTransformsAdded *bool
-	settings             *v1.GlooOptions_AWSOptions
-	upstreamOptions      *v1.UpstreamOptions
+	recordedUpstreams  map[string]*aws.UpstreamSpec
+	ctx                context.Context
+	settings           *v1.GlooOptions_AWSOptions
+	upstreamOptions    *v1.UpstreamOptions
+	needTransformation bool
+}
+
+func NewPlugin() plugins.Plugin {
+	return &plugin{}
+}
+
+func (p *plugin) Name() string {
+	return ExtensionName
 }
 
 func (p *plugin) Init(params plugins.InitParams) error {
@@ -67,7 +69,12 @@ func (p *plugin) Init(params plugins.InitParams) error {
 	p.recordedUpstreams = make(map[string]*aws.UpstreamSpec)
 	p.settings = params.Settings.GetGloo().GetAwsOptions()
 	p.upstreamOptions = params.Settings.GetUpstreamOptions()
+	p.needTransformation = false
 	return nil
+}
+
+func getLambdaHostname(s *aws.UpstreamSpec) string {
+	return fmt.Sprintf("lambda.%s.amazonaws.com", s.GetRegion())
 }
 
 func (p *plugin) ProcessUpstream(params plugins.Params, in *v1.Upstream, out *envoy_config_cluster_v3.Cluster) error {
@@ -194,8 +201,9 @@ func (p *plugin) ProcessRoute(params plugins.RouteParams, in *v1.Route, out *env
 						Async: awsDestinationSpec.Aws.GetInvocationStyle() == aws.DestinationSpec_ASYNC,
 						// we need to query escape per AWS spec:
 						// see the CanonicalQueryString section in here: https://docs.aws.amazon.com/general/latest/gr/sigv4-create-canonical-request.html
-						Qualifier: url.QueryEscape(lambdaFunc.GetQualifier()),
-						Name:      lambdaFunc.GetLambdaFunctionName(),
+						Qualifier:   url.QueryEscape(lambdaFunc.GetQualifier()),
+						Name:        lambdaFunc.GetLambdaFunctionName(),
+						UnwrapAsAlb: awsDestinationSpec.Aws.GetUnwrapAsAlb(),
 					}
 
 					return lambdaRouteFunc, nil
@@ -208,8 +216,8 @@ func (p *plugin) ProcessRoute(params plugins.RouteParams, in *v1.Route, out *env
 	if err != nil {
 		return err
 	}
-	return pluginutils.MarkPerFilterConfig(p.ctx, params.Snapshot, in, out, transformation.FilterName,
-		func(spec *v1.Destination) (proto.Message, error) {
+	return pluginutils.ModifyPerFilterConfig(p.ctx, params.Snapshot, in, out, transformation.FilterName,
+		func(spec *v1.Destination, existing *any.Any) (proto.Message, error) {
 			// check if it's aws destination
 			if spec.GetDestinationSpec() == nil {
 				return nil, nil
@@ -219,91 +227,76 @@ func (p *plugin) ProcessRoute(params plugins.RouteParams, in *v1.Route, out *env
 				return nil, nil
 			}
 
-			transformations := []*envoy_transform.RouteTransformations_RouteTransformation{}
-
 			requesttransform := awsDestinationSpec.Aws.GetRequestTransformation()
+			repsonsetransform := awsDestinationSpec.Aws.GetResponseTransformation()
+			if !requesttransform && !repsonsetransform {
+				return nil, nil
+			}
+			p.needTransformation = true
+
+			transform := &envoy_transform.RouteTransformations_RouteTransformation{
+				Stage: transformation.AwsStageNumber,
+			}
+			var reqTransform *envoy_transform.Transformation
+			var respTransform *envoy_transform.Transformation
+
+			if requesttransform {
+				reqTransform = &envoy_transform.Transformation{
+					TransformationType: &envoy_transform.Transformation_HeaderBodyTransform{
+						HeaderBodyTransform: &envoy_transform.HeaderBodyTransform{
+							AddRequestMetadata: true,
+						},
+					},
+				}
+			}
+
+			if repsonsetransform {
+				respTransform = &envoy_transform.Transformation{
+					TransformationType: &envoy_transform.Transformation_TransformationTemplate{
+						TransformationTemplate: &envoy_transform.TransformationTemplate{
+							BodyTransformation: &envoy_transform.TransformationTemplate_Body{
+								Body: &envoy_transform.InjaTemplate{
+									Text: "{{body}}",
+								},
+							},
+							Headers: map[string]*envoy_transform.InjaTemplate{
+								"content-type": {
+									Text: "text/html",
+								},
+							},
+						},
+					},
+				}
+			}
+
 			if requesttransform {
 				// Early stage transform: place all headers in the request body
-				transformations = append(transformations, &envoy_transform.RouteTransformations_RouteTransformation{
-					Stage: transformation.EarlyStageNumber,
-					Match: &envoy_transform.RouteTransformations_RouteTransformation_RequestMatch_{
-						RequestMatch: &envoy_transform.RouteTransformations_RouteTransformation_RequestMatch{
-							RequestTransformation: &envoy_transform.Transformation{
-								TransformationType: &envoy_transform.Transformation_HeaderBodyTransform{
-									HeaderBodyTransform: &envoy_transform.HeaderBodyTransform{},
-								},
-							},
-						},
+				transform.Match = &envoy_transform.RouteTransformations_RouteTransformation_RequestMatch_{
+					RequestMatch: &envoy_transform.RouteTransformations_RouteTransformation_RequestMatch{
+						RequestTransformation:  reqTransform,
+						ResponseTransformation: respTransform,
 					},
-				})
-
-				// Regular stage transform: extract the path and querystring
-				transformations = append(transformations, &envoy_transform.RouteTransformations_RouteTransformation{
-					Match: &envoy_transform.RouteTransformations_RouteTransformation_RequestMatch_{
-						RequestMatch: &envoy_transform.RouteTransformations_RouteTransformation_RequestMatch{
-							RequestTransformation: &envoy_transform.Transformation{
-								TransformationType: &envoy_transform.Transformation_TransformationTemplate{
-									TransformationTemplate: &envoy_transform.TransformationTemplate{
-										Extractors: map[string]*envoy_transform.Extraction{
-											"path": {
-												Source:   &envoy_transform.Extraction_Header{Header: ":path"},
-												Regex:    `([^\?]+)(\?.*)?`,
-												Subgroup: uint32(1),
-											},
-											"queryString": {
-												Source:   &envoy_transform.Extraction_Header{Header: ":path"},
-												Regex:    `([^\?]+)(\?(.*))?`,
-												Subgroup: uint32(3),
-											},
-											"httpMethod": {
-												Source:   &envoy_transform.Extraction_Header{Header: ":method"},
-												Regex:    `(.*)`,
-												Subgroup: uint32(1),
-											},
-										},
-										BodyTransformation: &envoy_transform.TransformationTemplate_MergeExtractorsToBody{
-											MergeExtractorsToBody: &envoy_transform.MergeExtractorsToBody{},
-										},
-									},
-								},
-							},
-						},
+				}
+			} else {
+				// if we got here, we have a response transform. otherwise, we would have returned early.
+				transform.Match = &envoy_transform.RouteTransformations_RouteTransformation_ResponseMatch_{
+					ResponseMatch: &envoy_transform.RouteTransformations_RouteTransformation_ResponseMatch{
+						ResponseTransformation: respTransform,
 					},
-				})
+				}
 
-				// Tell the transformation filter to process early-stage transformations
-				*p.earlyTransformsAdded = true
 			}
 
-			repsonsetransform := awsDestinationSpec.Aws.GetResponseTransformation()
-			if repsonsetransform {
-				transformations = append(transformations, &envoy_transform.RouteTransformations_RouteTransformation{
-					Match: &envoy_transform.RouteTransformations_RouteTransformation_ResponseMatch_{
-						ResponseMatch: &envoy_transform.RouteTransformations_RouteTransformation_ResponseMatch{
-							ResponseTransformation: &envoy_transform.Transformation{
-								TransformationType: &envoy_transform.Transformation_TransformationTemplate{
-									TransformationTemplate: &envoy_transform.TransformationTemplate{
-										BodyTransformation: &envoy_transform.TransformationTemplate_Body{
-											Body: &envoy_transform.InjaTemplate{
-												Text: "{{body}}",
-											},
-										},
-										Headers: map[string]*envoy_transform.InjaTemplate{
-											"content-type": {
-												Text: "text/html",
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				})
+			var transforms envoy_transform.RouteTransformations
+			if existing != nil {
+				err := existing.UnmarshalTo(&transforms)
+				if err != nil {
+					// this should never happen
+					return nil, err
+				}
 			}
-
-			return &envoy_transform.RouteTransformations{
-				Transformations: transformations,
-			}, nil
+			transforms.Transformations = append(transforms.GetTransformations(), transform)
+			return &transforms, nil
 		},
 	)
 }
@@ -326,6 +319,9 @@ func (p *plugin) HttpFilters(_ plugins.Params, _ *v1.HttpListener) ([]plugins.St
 			ServiceAccountCredentials: typedFetcher.ServiceAccountCredentials,
 		}
 	}
+	filterconfig.CredentialRefreshDelay = p.settings.GetCredentialRefreshDelay()
+	filterconfig.PropagateOriginalRouting = p.settings.GetPropagateOriginalRouting().GetValue()
+
 	f, err := plugins.NewStagedFilterWithConfig(FilterName, filterconfig, pluginStage)
 	if err != nil {
 		return nil, err
@@ -333,6 +329,16 @@ func (p *plugin) HttpFilters(_ plugins.Params, _ *v1.HttpListener) ([]plugins.St
 
 	filters := []plugins.StagedHttpFilter{
 		f,
+	}
+	if p.needTransformation {
+		awsStageConfig := &envoy_transform.FilterTransformations{
+			Stage: transformation.AwsStageNumber,
+		}
+		tf, err := plugins.NewStagedFilterWithConfig(transformation.FilterName, awsStageConfig, transformPluginStage)
+		if err != nil {
+			return nil, err
+		}
+		filters = append(filters, tf)
 	}
 
 	return filters, nil

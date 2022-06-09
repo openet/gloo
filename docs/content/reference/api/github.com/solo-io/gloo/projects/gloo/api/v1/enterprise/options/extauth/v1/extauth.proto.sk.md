@@ -33,15 +33,16 @@ weight: 5
 - [InternalSession](#internalsession)
 - [RedisSession](#redissession)
 - [CookieOptions](#cookieoptions)
+- [SameSite](#samesite)
 - [HeaderConfiguration](#headerconfiguration)
 - [DiscoveryOverride](#discoveryoverride)
 - [JwksOnDemandCacheRefreshPolicy](#jwksondemandcacherefreshpolicy)
 - [OidcAuthorizationCode](#oidcauthorizationcode)
-- [AccessTokenValidation](#accesstokenvalidation)
 - [JwtValidation](#jwtvalidation)
 - [RemoteJwks](#remotejwks)
 - [LocalJwks](#localjwks)
 - [IntrospectionValidation](#introspectionvalidation)
+- [AccessTokenValidation](#accesstokenvalidation)
 - [ScopeList](#scopelist)
 - [OauthSecret](#oauthsecret)
 - [ApiKeyAuth](#apikeyauth)
@@ -558,6 +559,7 @@ Deprecated: Prefer OAuth2
 "notSecure": bool
 "httpOnly": .google.protobuf.BoolValue
 "path": .google.protobuf.StringValue
+"sameSite": .enterprise.gloo.solo.io.UserSession.CookieOptions.SameSite
 "domain": string
 
 ```
@@ -568,7 +570,24 @@ Deprecated: Prefer OAuth2
 | `notSecure` | `bool` | Use a non-secure cookie. Note - this should only be used for testing and in trusted environments. |
 | `httpOnly` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Set the cookie to be HttpOnly. defaults to true. Set explicity to false to disable. |
 | `path` | [.google.protobuf.StringValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/string-value) | Path of the cookie. If unset, defaults to "/". Set it explicitly to "" to avoid setting a path. |
+| `sameSite` | [.enterprise.gloo.solo.io.UserSession.CookieOptions.SameSite](../extauth.proto.sk/#samesite) | Whether the cookie should be restricted to a first-party or same-site context. The default mode is LaxMode. |
 | `domain` | `string` | Cookie domain. |
+
+
+
+
+---
+### SameSite
+
+ 
+The SameSite options. The default value is LaxMode.
+
+| Name | Description |
+| ----- | ----------- | 
+| `DefaultMode` | Default Mode is the same as LaxMode but will not show up in the Cookie Header. This value is ignored. |
+| `LaxMode` | Cookies are not sent on normal cross-site subrequests, but are sent when navigating to the origin site. |
+| `StrictMode` | Only be sent in a first-party context and not be sent along with requests initiated by third party websites. |
+| `NoneMode` | Cookies are sent in all contexts. Cookie NotSecure must be unset. |
 
 
 
@@ -610,6 +629,7 @@ https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
 "idTokenAlgs": []string
 "authMethods": []string
 "claims": []string
+"revocationEndpoint": string
 
 ```
 
@@ -624,6 +644,7 @@ https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
 | `idTokenAlgs` | `[]string` | list of json web signature signing algorithms that the provider supports for encoding claims in a jwt. |
 | `authMethods` | `[]string` | list of client authentication methods supported by the provider token endpoint. |
 | `claims` | `[]string` | list of claim types that the provider supports. |
+| `revocationEndpoint` | `string` | url of the provider token revocation endpoint. |
 
 
 
@@ -707,33 +728,6 @@ not yet in the local cache.
 
 
 ---
-### AccessTokenValidation
-
-
-
-```yaml
-"introspectionUrl": string
-"jwt": .enterprise.gloo.solo.io.AccessTokenValidation.JwtValidation
-"introspection": .enterprise.gloo.solo.io.AccessTokenValidation.IntrospectionValidation
-"userinfoUrl": string
-"cacheTimeout": .google.protobuf.Duration
-"requiredScopes": .enterprise.gloo.solo.io.AccessTokenValidation.ScopeList
-
-```
-
-| Field | Type | Description |
-| ----- | ---- | ----------- | 
-| `introspectionUrl` | `string` | The URL for the [OAuth2.0 Token Introspection](https://tools.ietf.org/html/rfc7662) endpoint. If provided, the (opaque) access token provided or received from the oauth authorization endpoint will be validated against this endpoint, or locally cached responses for this access token. This field is deprecated as it does not support authenticated introspection requests. Only one of `introspectionUrl`, `jwt`, or `introspection` can be set. |
-| `jwt` | [.enterprise.gloo.solo.io.AccessTokenValidation.JwtValidation](../extauth.proto.sk/#jwtvalidation) | Validate access tokens that conform to the [JSON Web Token (JWT)](https://tools.ietf.org/html/rfc7519) specification. Only one of `jwt`, `introspectionUrl`, or `introspection` can be set. |
-| `introspection` | [.enterprise.gloo.solo.io.AccessTokenValidation.IntrospectionValidation](../extauth.proto.sk/#introspectionvalidation) | Defines how (opaque) access tokens, received from the oauth authorization endpoint, are validated [OAuth2.0 Token Introspection](https://tools.ietf.org/html/rfc7662) specification. Only one of `introspection`, `introspectionUrl`, or `jwt` can be set. |
-| `userinfoUrl` | `string` | The URL for the OIDC userinfo endpoint. If provided, the (opaque) access token provided or received from the oauth endpoint will be queried and the userinfo response (or cached response) will be added to the `AuthorizationRequest` state under the "introspection" key. This can be useful to leverage the userinfo response in, for example, an external auth server plugin. |
-| `cacheTimeout` | [.google.protobuf.Duration](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/duration) | How long the token introspection and userinfo endpoint response for a specific access token should be kept in the in-memory cache. The result will be invalidated at this timeout, or at "exp" time from the introspection result, whichever comes sooner. If omitted, defaults to 10 minutes. If zero, then no caching will be done. |
-| `requiredScopes` | [.enterprise.gloo.solo.io.AccessTokenValidation.ScopeList](../extauth.proto.sk/#scopelist) | Require access token to have all of the scopes in the given list. This configuration applies to both opaque and JWT tokens. In the case of opaque tokens, this will check the scopes returned in the "scope" member of introspection response (as described in [Section 2.2 of RFC7662](https://tools.ietf.org/html/rfc7662#section-2.2). In case of JWTs the scopes to be validated are expected to be contained in the "scope" claim of the token in the form of a space-separated string. Omitting this field means that scope validation will be skipped. |
-
-
-
-
----
 ### JwtValidation
 
  
@@ -757,16 +751,16 @@ If the JWT has been successfully validated, its set of claims will be added to t
 `AuthorizationRequest` state under the "jwtAccessToken" key.
 
 ```yaml
-"remoteJwks": .enterprise.gloo.solo.io.AccessTokenValidation.JwtValidation.RemoteJwks
-"localJwks": .enterprise.gloo.solo.io.AccessTokenValidation.JwtValidation.LocalJwks
+"remoteJwks": .enterprise.gloo.solo.io.JwtValidation.RemoteJwks
+"localJwks": .enterprise.gloo.solo.io.JwtValidation.LocalJwks
 "issuer": string
 
 ```
 
 | Field | Type | Description |
 | ----- | ---- | ----------- | 
-| `remoteJwks` | [.enterprise.gloo.solo.io.AccessTokenValidation.JwtValidation.RemoteJwks](../extauth.proto.sk/#remotejwks) | Fetches the JWKS from a remote location. Only one of `remoteJwks` or `localJwks` can be set. |
-| `localJwks` | [.enterprise.gloo.solo.io.AccessTokenValidation.JwtValidation.LocalJwks](../extauth.proto.sk/#localjwks) | Loads the JWKS from a local data source. Only one of `localJwks` or `remoteJwks` can be set. |
+| `remoteJwks` | [.enterprise.gloo.solo.io.JwtValidation.RemoteJwks](../extauth.proto.sk/#remotejwks) | Fetches the JWKS from a remote location. Only one of `remoteJwks` or `localJwks` can be set. |
+| `localJwks` | [.enterprise.gloo.solo.io.JwtValidation.LocalJwks](../extauth.proto.sk/#localjwks) | Loads the JWKS from a local data source. Only one of `localJwks` or `remoteJwks` can be set. |
 | `issuer` | `string` | Allow only tokens that have been issued by this principal (i.e. whose "iss" claim matches this value). If empty, issuer validation will be skipped. |
 
 
@@ -835,6 +829,33 @@ These values will be encoded in a basic auth header in order to authenticate the
 | `clientId` | `string` | Your client id as registered with the issuer. Optional: Use if the token introspection url requires client authentication. |
 | `clientSecretRef` | [.core.solo.io.ResourceRef](../../../../../../../../../../solo-kit/api/v1/ref.proto.sk/#resourceref) | Your client secret as registered with the issuer. Optional: Use if the token introspection url requires client authentication. |
 | `userIdAttributeName` | `string` | The name of the [introspection response](https://tools.ietf.org/html/rfc7662#section-2.2) attribute that contains the ID of the resource owner (e.g. `sub`, `username`). If specified, the external auth server will use the value of the attribute as the identifier of the authenticated user and add it to the request headers and/or dynamic metadata (depending on how the server is configured); if the field is set and the attribute cannot be found, the request will be denied. This field is optional and by default the server will not try to derive the user ID. |
+
+
+
+
+---
+### AccessTokenValidation
+
+
+
+```yaml
+"introspectionUrl": string
+"jwt": .enterprise.gloo.solo.io.JwtValidation
+"introspection": .enterprise.gloo.solo.io.IntrospectionValidation
+"userinfoUrl": string
+"cacheTimeout": .google.protobuf.Duration
+"requiredScopes": .enterprise.gloo.solo.io.AccessTokenValidation.ScopeList
+
+```
+
+| Field | Type | Description |
+| ----- | ---- | ----------- | 
+| `introspectionUrl` | `string` | The URL for the [OAuth2.0 Token Introspection](https://tools.ietf.org/html/rfc7662) endpoint. If provided, the (opaque) access token provided or received from the oauth authorization endpoint will be validated against this endpoint, or locally cached responses for this access token. This field is deprecated as it does not support authenticated introspection requests. Only one of `introspectionUrl`, `jwt`, or `introspection` can be set. |
+| `jwt` | [.enterprise.gloo.solo.io.JwtValidation](../extauth.proto.sk/#jwtvalidation) | Validate access tokens that conform to the [JSON Web Token (JWT)](https://tools.ietf.org/html/rfc7519) specification. Only one of `jwt`, `introspectionUrl`, or `introspection` can be set. |
+| `introspection` | [.enterprise.gloo.solo.io.IntrospectionValidation](../extauth.proto.sk/#introspectionvalidation) | Defines how (opaque) access tokens, received from the oauth authorization endpoint, are validated [OAuth2.0 Token Introspection](https://tools.ietf.org/html/rfc7662) specification. Only one of `introspection`, `introspectionUrl`, or `jwt` can be set. |
+| `userinfoUrl` | `string` | The URL for the OIDC userinfo endpoint. If provided, the (opaque) access token provided or received from the oauth endpoint will be queried and the userinfo response (or cached response) will be added to the `AuthorizationRequest` state under the "introspection" key. This can be useful to leverage the userinfo response in, for example, an external auth server plugin. |
+| `cacheTimeout` | [.google.protobuf.Duration](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/duration) | How long the token introspection and userinfo endpoint response for a specific access token should be kept in the in-memory cache. The result will be invalidated at this timeout, or at "exp" time from the introspection result, whichever comes sooner. If omitted, defaults to 10 minutes. If zero, then no caching will be done. |
+| `requiredScopes` | [.enterprise.gloo.solo.io.AccessTokenValidation.ScopeList](../extauth.proto.sk/#scopelist) | Require access token to have all of the scopes in the given list. This configuration applies to both opaque and JWT tokens. In the case of opaque tokens, this will check the scopes returned in the "scope" member of introspection response (as described in [Section 2.2 of RFC7662](https://tools.ietf.org/html/rfc7662#section-2.2). In case of JWTs the scopes to be validated are expected to be contained in the "scope" claim of the token in the form of a space-separated string. Omitting this field means that scope validation will be skipped. |
 
 
 
@@ -992,6 +1013,7 @@ Authenticates and authorizes requests by querying an LDAP server. Gloo makes the
 "membershipAttributeName": string
 "allowedGroups": []string
 "pool": .enterprise.gloo.solo.io.Ldap.ConnectionPool
+"searchFilter": string
 
 ```
 
@@ -1002,6 +1024,7 @@ Authenticates and authorizes requests by querying an LDAP server. Gloo makes the
 | `membershipAttributeName` | `string` | Case-insensitive name of the attribute that contains the names of the groups an entry is member of. Gloo will look for attributes with the given name to determine which groups the user entry belongs to. Defaults to 'memberOf' if not provided. |
 | `allowedGroups` | `[]string` | In order for the request to be authenticated, the membership attribute (e.g. *memberOf*) on the user entry must contain at least of one of the group DNs specified via this option. E.g. []string{ "cn=managers,ou=groups,dc=solo,dc=io", "cn=developers,ou=groups,dc=solo,dc=io" }. |
 | `pool` | [.enterprise.gloo.solo.io.Ldap.ConnectionPool](../extauth.proto.sk/#connectionpool) | Use this property to tune the pool of connections to the LDAP server that Gloo maintains. |
+| `searchFilter` | `string` | Use to set a custom filter when searching a member. Defaults to "(uid=*)". |
 
 
 

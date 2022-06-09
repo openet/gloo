@@ -146,6 +146,10 @@ func (m *HttpConnectionManagerSettings) Equal(that interface{}) bool {
 		return false
 	}
 
+	if m.GetStripAnyHostPort() != target.GetStripAnyHostPort() {
+		return false
+	}
+
 	if m.GetAcceptHttp_10() != target.GetAcceptHttp_10() {
 		return false
 	}
@@ -154,7 +158,11 @@ func (m *HttpConnectionManagerSettings) Equal(that interface{}) bool {
 		return false
 	}
 
-	if m.GetProperCaseHeaderKeyFormat() != target.GetProperCaseHeaderKeyFormat() {
+	if m.GetAllowChunkedLength() != target.GetAllowChunkedLength() {
+		return false
+	}
+
+	if m.GetEnableTrailers() != target.GetEnableTrailers() {
 		return false
 	}
 
@@ -233,6 +241,20 @@ func (m *HttpConnectionManagerSettings) Equal(that interface{}) bool {
 		}
 	}
 
+	if m.GetHeadersWithUnderscoresAction() != target.GetHeadersWithUnderscoresAction() {
+		return false
+	}
+
+	if h, ok := interface{}(m.GetMaxRequestsPerConnection()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetMaxRequestsPerConnection()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetMaxRequestsPerConnection(), target.GetMaxRequestsPerConnection()) {
+			return false
+		}
+	}
+
 	if m.GetServerHeaderTransformation() != target.GetServerHeaderTransformation() {
 		return false
 	}
@@ -255,6 +277,43 @@ func (m *HttpConnectionManagerSettings) Equal(that interface{}) bool {
 		}
 	} else {
 		if !proto.Equal(m.GetNormalizePath(), target.GetNormalizePath()) {
+			return false
+		}
+	}
+
+	if h, ok := interface{}(m.GetUuidRequestIdConfig()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetUuidRequestIdConfig()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetUuidRequestIdConfig(), target.GetUuidRequestIdConfig()) {
+			return false
+		}
+	}
+
+	switch m.HeaderFormat.(type) {
+
+	case *HttpConnectionManagerSettings_ProperCaseHeaderKeyFormat:
+		if _, ok := target.HeaderFormat.(*HttpConnectionManagerSettings_ProperCaseHeaderKeyFormat); !ok {
+			return false
+		}
+
+		if m.GetProperCaseHeaderKeyFormat() != target.GetProperCaseHeaderKeyFormat() {
+			return false
+		}
+
+	case *HttpConnectionManagerSettings_PreserveCaseHeaderKeyFormat:
+		if _, ok := target.HeaderFormat.(*HttpConnectionManagerSettings_PreserveCaseHeaderKeyFormat); !ok {
+			return false
+		}
+
+		if m.GetPreserveCaseHeaderKeyFormat() != target.GetPreserveCaseHeaderKeyFormat() {
+			return false
+		}
+
+	default:
+		// m is nil but target is not nil
+		if m.HeaderFormat != target.HeaderFormat {
 			return false
 		}
 	}
@@ -307,6 +366,50 @@ func (m *HttpConnectionManagerSettings_SetCurrentClientCertDetails) Equal(that i
 
 	if m.GetUri() != target.GetUri() {
 		return false
+	}
+
+	return true
+}
+
+// Equal function
+func (m *HttpConnectionManagerSettings_UuidRequestIdConfigSettings) Equal(that interface{}) bool {
+	if that == nil {
+		return m == nil
+	}
+
+	target, ok := that.(*HttpConnectionManagerSettings_UuidRequestIdConfigSettings)
+	if !ok {
+		that2, ok := that.(HttpConnectionManagerSettings_UuidRequestIdConfigSettings)
+		if ok {
+			target = &that2
+		} else {
+			return false
+		}
+	}
+	if target == nil {
+		return m == nil
+	} else if m == nil {
+		return false
+	}
+
+	if h, ok := interface{}(m.GetPackTraceReason()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetPackTraceReason()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetPackTraceReason(), target.GetPackTraceReason()) {
+			return false
+		}
+	}
+
+	if h, ok := interface{}(m.GetUseRequestIdForTraceSampling()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetUseRequestIdForTraceSampling()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetUseRequestIdForTraceSampling(), target.GetUseRequestIdForTraceSampling()) {
+			return false
+		}
 	}
 
 	return true

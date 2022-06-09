@@ -17,7 +17,7 @@ glooctl check [flags]
 ### Options
 
 ```
-  -x, --exclude strings     check to exclude: (pods, upstreamgroup, secrets, gateways, proxies)
+  -x, --exclude strings     check to exclude: (deployments, pods, upstreams, upstreamgroup, auth-configs, rate-limit-configs, secrets, virtual-services, gateways, proxies, xds-metrics)
   -h, --help                help for check
   -n, --namespace string    namespace for reading or writing resources (default "gloo-system")
   -o, --output OutputType   output format: (json, table) (default table)
@@ -28,6 +28,7 @@ glooctl check [flags]
 ```
   -c, --config string              set the path to the glooctl config file (default "<home_directory>/.gloo/glooctl-config.yaml")
       --consul-address string      address of the Consul server. Use with --use-consul (default "127.0.0.1:8500")
+      --consul-allow-stale-reads   Allows reading using Consul's stale consistency mode.
       --consul-datacenter string   Datacenter to use. If not provided, the default agent datacenter is used. Use with --use-consul
       --consul-root-key string     key prefix for for Consul key-value storage. (default "gloo")
       --consul-scheme string       URI scheme for the Consul server. Use with --use-consul (default "http")

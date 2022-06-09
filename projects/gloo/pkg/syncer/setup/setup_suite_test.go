@@ -1,4 +1,4 @@
-package setup_test
+package setup
 
 import (
 	"testing"
@@ -8,8 +8,8 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestSetup(t *testing.T) {
+func TestSyncer(t *testing.T) {
 	RegisterFailHandler(Fail)
 	junitReporter := reporters.NewJUnitReporter("junit.xml")
-	RunSpecsWithDefaultAndCustomReporters(t, "Setup Suite", []Reporter{junitReporter})
+	RunSpecsWithDefaultAndCustomReporters(t, "Gloo Translator Syncer Suite", []Reporter{junitReporter})
 }

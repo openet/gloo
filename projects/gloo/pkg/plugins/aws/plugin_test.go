@@ -10,15 +10,19 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	. "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/extensions/aws"
+	envoy_transform "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/extensions/transformation"
 	v1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
+	v1snap "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/gloosnapshot"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/aws"
 	awsapi "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/aws"
+	v1transformation "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/transformation"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
 	. "github.com/solo-io/gloo/projects/gloo/pkg/plugins/aws"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/transformation"
 	"github.com/solo-io/gloo/projects/gloo/pkg/utils"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
 	"github.com/solo-io/solo-kit/test/matchers"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 const (
@@ -42,8 +46,7 @@ var _ = Describe("Plugin", func() {
 	)
 
 	BeforeEach(func() {
-		var b bool
-		awsPlugin = NewPlugin(&b)
+		awsPlugin = NewPlugin()
 
 		upstreamName := "up"
 		clusterName := upstreamName
@@ -105,7 +108,7 @@ var _ = Describe("Plugin", func() {
 		}
 
 		initParams = plugins.InitParams{}
-		params.Snapshot = &v1.ApiSnapshot{
+		params.Snapshot = &v1snap.ApiSnapshot{
 			Secrets: v1.SecretList{{
 				Metadata: &core.Metadata{
 					Name:      "secretref",
@@ -324,6 +327,66 @@ var _ = Describe("Plugin", func() {
 			Expect(outroute.TypedPerFilterConfig).To(HaveKey(FilterName))
 			Expect(outroute.TypedPerFilterConfig).To(HaveKey(transformation.FilterName))
 		})
+
+		Context("should interact well with transform plugin", func() {
+			var (
+				transformationPlugin *transformation.Plugin
+			)
+			BeforeEach(func() {
+				route.GetRouteAction().GetSingle().GetDestinationSpec().GetAws().ResponseTransformation = true
+				route.Options = &v1.RouteOptions{
+					StagedTransformations: &v1transformation.TransformationStages{
+						Regular: &v1transformation.RequestResponseTransformations{
+							RequestTransforms: []*v1transformation.RequestMatch{
+								{
+									ClearRouteCache: true,
+								},
+							},
+						},
+					},
+				}
+				transformationPlugin = transformation.NewPlugin()
+				transformationPlugin.Init(initParams)
+			})
+			verify := func() {
+				Expect(outroute.TypedPerFilterConfig).To(HaveKey(FilterName))
+				Expect(outroute.TypedPerFilterConfig).To(HaveKey(transformation.FilterName))
+
+				pfc := outroute.GetTypedPerFilterConfig()[transformation.FilterName]
+				var transforms envoy_transform.RouteTransformations
+				pfc.UnmarshalTo(&transforms)
+
+				Expect(transforms.Transformations).To(HaveLen(2))
+			}
+			It("should work with aws first", func() {
+				err := awsPlugin.(plugins.RoutePlugin).ProcessRoute(plugins.RouteParams{VirtualHostParams: vhostParams}, route, outroute)
+				Expect(err).NotTo(HaveOccurred())
+				err = transformationPlugin.ProcessRoute(plugins.RouteParams{VirtualHostParams: vhostParams}, route, outroute)
+				Expect(err).NotTo(HaveOccurred())
+				verify()
+			})
+			It("should work with transformation first", func() {
+				// the same but in referse order
+				err := transformationPlugin.ProcessRoute(plugins.RouteParams{VirtualHostParams: vhostParams}, route, outroute)
+				Expect(err).NotTo(HaveOccurred())
+				err = awsPlugin.(plugins.RoutePlugin).ProcessRoute(plugins.RouteParams{VirtualHostParams: vhostParams}, route, outroute)
+				Expect(err).NotTo(HaveOccurred())
+				verify()
+			})
+		})
+
+		It("should process route with addon options", func() {
+			route.GetRouteAction().GetSingle().GetDestinationSpec().GetAws().UnwrapAsAlb = true
+			route.GetRouteAction().GetSingle().GetDestinationSpec().GetAws().InvocationStyle = 1
+			err := awsPlugin.(plugins.RoutePlugin).ProcessRoute(plugins.RouteParams{VirtualHostParams: vhostParams}, route, outroute)
+			Expect(err).NotTo(HaveOccurred())
+
+			msg, err := utils.AnyToMessage(outroute.GetTypedPerFilterConfig()[FilterName])
+			Expect(err).Should(BeNil())
+			cfg := msg.(*AWSLambdaPerRoute)
+			Expect(cfg.UnwrapAsAlb).Should(Equal(true))
+			Expect(cfg.Async).Should(Equal(true))
+		})
 	})
 
 	Context("filters", func() {
@@ -337,13 +400,25 @@ var _ = Describe("Plugin", func() {
 			// check that we have filters
 			filters, err := awsPlugin.(plugins.HttpFilterPlugin).HttpFilters(params, nil)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(filters).NotTo(BeEmpty())
+			Expect(filters).To(HaveLen(1))
 		})
 
 		It("should not produce filters when no upstreams are present", func() {
 			filters, err := awsPlugin.(plugins.HttpFilterPlugin).HttpFilters(params, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(filters).To(BeEmpty())
+		})
+
+		It("should produce 2 filters when transformations are present", func() {
+			err := awsPlugin.(plugins.UpstreamPlugin).ProcessUpstream(params, upstream, out)
+			Expect(err).NotTo(HaveOccurred())
+			route.GetRouteAction().GetSingle().GetDestinationSpec().GetAws().ResponseTransformation = true
+			err = awsPlugin.(plugins.RoutePlugin).ProcessRoute(plugins.RouteParams{VirtualHostParams: vhostParams}, route, outroute)
+			Expect(err).NotTo(HaveOccurred())
+
+			filters, err := awsPlugin.(plugins.HttpFilterPlugin).HttpFilters(params, nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(filters).To(HaveLen(2))
 		})
 	})
 
@@ -464,7 +539,6 @@ var _ = Describe("Plugin", func() {
 			goTypedConfig := filters[0].HttpFilter.GetTypedConfig()
 			err = ptypes.UnmarshalAny(goTypedConfig, cfg)
 			Expect(err).NotTo(HaveOccurred())
-
 		}
 
 		It("should enable service account credentials in the filter", func() {
@@ -472,6 +546,15 @@ var _ = Describe("Plugin", func() {
 			saCredentialsExpected := cfg.GetServiceAccountCredentials()
 			Expect(saCredentialsExpected).NotTo(BeNil())
 			Expect(saCredentialsExpected).To(matchers.MatchProto(saCredentials))
+		})
+		It("can enable all config options", func() {
+
+			initParams.Settings.Gloo.AwsOptions.PropagateOriginalRouting = wrapperspb.Bool(true)
+			initParams.Settings.Gloo.AwsOptions.CredentialRefreshDelay = &duration.Duration{Seconds: 1}
+
+			process()
+			Expect(cfg.PropagateOriginalRouting).To(Equal(true))
+			Expect(*cfg.CredentialRefreshDelay).To(Equal(duration.Duration{Seconds: 1}))
 		})
 
 		It("will add the token if it is present on the secret", func() {

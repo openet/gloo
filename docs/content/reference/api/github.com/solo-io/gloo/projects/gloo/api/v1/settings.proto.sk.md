@@ -25,10 +25,12 @@ weight: 5
 - [ConsulConfiguration](#consulconfiguration)
 - [ServiceDiscoveryOptions](#servicediscoveryoptions)
 - [ConsulUpstreamDiscoveryConfiguration](#consulupstreamdiscoveryconfiguration)
+- [ConsulConsistencyModes](#consulconsistencymodes)
 - [KubernetesConfiguration](#kubernetesconfiguration)
 - [RateLimits](#ratelimits)
 - [ObservabilityOptions](#observabilityoptions)
 - [GrafanaIntegration](#grafanaintegration)
+- [MetricLabels](#metriclabels)
 - [UpstreamOptions](#upstreamoptions)
 - [GlooOptions](#gloooptions)
 - [AWSOptions](#awsoptions)
@@ -36,6 +38,10 @@ weight: 5
 - [VirtualServiceOptions](#virtualserviceoptions)
 - [GatewayOptions](#gatewayoptions)
 - [ValidationOptions](#validationoptions)
+- [ConsoleOptions](#consoleoptions)
+- [GraphqlOptions](#graphqloptions)
+- [SchemaChangeValidationOptions](#schemachangevalidationoptions)
+- [ProcessingRule](#processingrule)
   
 
 
@@ -80,10 +86,13 @@ Represents global settings for all the Gloo components.
 "rbac": .rbac.options.gloo.solo.io.Settings
 "extauth": .enterprise.gloo.solo.io.Settings
 "namedExtauth": map<string, .enterprise.gloo.solo.io.Settings>
+"cachingServer": .caching.options.gloo.solo.io.Settings
 "metadata": .core.solo.io.Metadata
 "namespacedStatuses": .core.solo.io.NamespacedStatuses
 "observabilityOptions": .gloo.solo.io.Settings.ObservabilityOptions
 "upstreamOptions": .gloo.solo.io.UpstreamOptions
+"consoleOptions": .gloo.solo.io.ConsoleOptions
+"graphqlOptions": .gloo.solo.io.GraphqlOptions
 
 ```
 
@@ -116,10 +125,13 @@ Represents global settings for all the Gloo components.
 | `rbac` | [.rbac.options.gloo.solo.io.Settings](../enterprise/options/rbac/rbac.proto.sk/#settings) | Enterprise-only: Settings for RBAC across all Gloo resources (VirtualServices, Routes, etc.). |
 | `extauth` | [.enterprise.gloo.solo.io.Settings](../enterprise/options/extauth/v1/extauth.proto.sk/#settings) | Enterprise-only: External auth related settings. |
 | `namedExtauth` | `map<string, .enterprise.gloo.solo.io.Settings>` | Enterprise-only: External auth related settings for additional auth servers This should only be used in the case where separate servers are needed to authorize separate routes. With multiple auth servers configured in Settings, multiple filters will be configured on the filter chain, but only 1 will be executed on a route. The name of the auth server (ie the key in the map) will be used to apply the configuration on the route. If an auth server name is not supplied on a route, the default auth server will be applied. |
+| `cachingServer` | [.caching.options.gloo.solo.io.Settings](../enterprise/options/caching/caching.proto.sk/#settings) | Enterprise-only: Settings for the caching server itself This may eventually be able to be set at a per listener level. At this time is used for plugin translation via the init.Params. |
 | `metadata` | [.core.solo.io.Metadata](../../../../../../solo-kit/api/v1/metadata.proto.sk/#metadata) | Metadata contains the object metadata for this resource. |
 | `namespacedStatuses` | [.core.solo.io.NamespacedStatuses](../../../../../../solo-kit/api/v1/status.proto.sk/#namespacedstatuses) | NamespacedStatuses indicates the validation status of this resource. NamespacedStatuses is read-only by clients, and set by gloo during validation. |
 | `observabilityOptions` | [.gloo.solo.io.Settings.ObservabilityOptions](../settings.proto.sk/#observabilityoptions) | Provides settings related to the observability deployment (enterprise only). |
 | `upstreamOptions` | [.gloo.solo.io.UpstreamOptions](../settings.proto.sk/#upstreamoptions) | Default configuration to use for upstreams, when not provided by specific upstream When these properties are defined on an upstream, this configuration will be ignored. |
+| `consoleOptions` | [.gloo.solo.io.ConsoleOptions](../settings.proto.sk/#consoleoptions) | Enterprise-only: Settings for the Gloo Edge Enterprise Console (UI). |
+| `graphqlOptions` | [.gloo.solo.io.GraphqlOptions](../settings.proto.sk/#graphqloptions) | Enterprise-only: GraphQL settings. |
 
 
 
@@ -172,6 +184,7 @@ Use [HashiCorp Vault](https://www.vaultproject.io/) as storage for secret data.
 "tlsServerName": string
 "insecure": .google.protobuf.BoolValue
 "rootKey": string
+"pathPrefix": string
 
 ```
 
@@ -186,6 +199,7 @@ Use [HashiCorp Vault](https://www.vaultproject.io/) as storage for secret data.
 | `tlsServerName` | `string` | tlsServerName, if set, is used to set the SNI host when connecting via TLS. |
 | `insecure` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Insecure enables or disables SSL verification. |
 | `rootKey` | `string` | all keys stored in Vault will begin with this Vault this can be used to run multiple instances of Gloo against the same Consul cluster defaults to `gloo`. |
+| `pathPrefix` | `string` | Optional: The name of a Vault Secrets Engine to which Vault should route traffic. For more info see https://learn.hashicorp.com/tutorials/vault/getting-started-secrets-engines. Defaults to 'secret'. |
 
 
 
@@ -401,6 +415,7 @@ upstreams to connect to those services and their instances.
 "tlsTagName": string
 "rootCa": .core.solo.io.ResourceRef
 "splitTlsServices": bool
+"consistencyMode": .gloo.solo.io.Settings.ConsulUpstreamDiscoveryConfiguration.ConsulConsistencyModes
 
 ```
 
@@ -410,6 +425,23 @@ upstreams to connect to those services and their instances.
 | `tlsTagName` | `string` | The tag that gloo should use to make TLS upstreams from consul services, and to partition consul serviceInstances between TLS/non-TLS upstreams. Defaults to 'glooUseTls'. |
 | `rootCa` | [.core.solo.io.ResourceRef](../../../../../../solo-kit/api/v1/ref.proto.sk/#resourceref) | The reference for the root CA resource to be used by discovered consul TLS upstreams. |
 | `splitTlsServices` | `bool` | If true, then create two upstreams when the tlsTagName is found on a consul service, one with tls and one without. This requires a consul service's serviceInstances be individually tagged; servicesInstances with the tlsTagName tag are directed to the TLS upstream, while those without the tlsTagName tag are sorted into the non-TLS upstream. |
+| `consistencyMode` | [.gloo.solo.io.Settings.ConsulUpstreamDiscoveryConfiguration.ConsulConsistencyModes](../settings.proto.sk/#consulconsistencymodes) | Sets the consistency mode. The default is the ConsistentMode. |
+
+
+
+
+---
+### ConsulConsistencyModes
+
+ 
+These are the same consistency modes offered by Consul. For more information please review https://www.consul.io/api-docs/features/consistency.
+For more information please review https://pkg.go.dev/github.com/hashicorp/consul/api#QueryOptions.
+
+| Name | Description |
+| ----- | ----------- | 
+| `ConsistentMode` | This is strongly consistent. Sets the RequireConsistent in the consul api to true. |
+| `DefaultMode` | This will set (clears) both the AllowStale and the RequireConsistent in the consul api to false. |
+| `StaleMode` | Allows stale reads when set. This will set the AllowStale in the consul api. |
 
 
 
@@ -458,12 +490,14 @@ Provides overrides for the default configuration parameters used to interact wit
 
 ```yaml
 "grafanaIntegration": .gloo.solo.io.Settings.ObservabilityOptions.GrafanaIntegration
+"configStatusMetricLabels": map<string, .gloo.solo.io.Settings.ObservabilityOptions.MetricLabels>
 
 ```
 
 | Field | Type | Description |
 | ----- | ---- | ----------- | 
 | `grafanaIntegration` | [.gloo.solo.io.Settings.ObservabilityOptions.GrafanaIntegration](../settings.proto.sk/#grafanaintegration) | Options to configure Gloo's integration with [Kubernetes](https://www.kubernetes.io/). |
+| `configStatusMetricLabels` | `map<string, .gloo.solo.io.Settings.ObservabilityOptions.MetricLabels>` | Enable metrics that track the configuration status of various resource types. Each (key, value) pair in the map defines a metric for a particular resource type. Configuration status metrics are not recorded by default; metrics are recorded only for the resources specified in this map. Keys specify the resource type (GroupVersionKind) to track for status changes (e.g. "VirtualService.v1.gateway.solo.io"). Values specify the labels to set on the metric. |
 
 
 
@@ -482,6 +516,23 @@ Provides settings related to the observability pod's interactions with grafana
 | Field | Type | Description |
 | ----- | ---- | ----------- | 
 | `defaultDashboardFolderId` | [.google.protobuf.UInt32Value](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/u-int-32-value) | (UInt32Value) Grafana allows dashboards to be added to specific folders by specifying that folder's ID If unset, automatic upstream dashboards are generated in the general folder (folderId: 0). If set, the observability deployment will try to create/move all upstreams without their own folderId to the folder specified here, after verifying that a folder with such an ID exists. Be aware that grafana requires a folders ID, which should not be confused with the similarly-named and more easily accessible folder UID value. If individual upstream dashboards need to be placed specific granafa folders, they can be given their own folder IDs by annotating the upstreams. The annotation key must be 'observability.solo.io/dashboard_folder_id' and the value must be the folder ID. Folder IDs can be retrieved from grafana with a pair of terminal commands: 1. Port forward the grafana deployment to surface its API: kubectl -n gloo-system port-forward deployment/glooe-grafana 3000 2. Request all folder data (after admin:admin is replaced with the correct credentials): curl http://admin:admin@localhost:3000/api/folders. |
+
+
+
+
+---
+### MetricLabels
+
+
+
+```yaml
+"labelToPath": map<string, string>
+
+```
+
+| Field | Type | Description |
+| ----- | ---- | ----------- | 
+| `labelToPath` | `map<string, string>` | Each (key, value) pair in the map defines a label to be applied. Keys specify the name of the label (e.g. "namespace"). Values specify the jsonpath (https://kubernetes.io/docs/reference/kubectl/jsonpath/) string corresponding to the field of a resource to use as the label value (e.g. "{.metadata.namespace}"). For example, if labelToPath = {name: '{.metadata.name}', namespace: '{.metadata.namespace}'} for Upstream.v1.gateway.solo.io, the following metric would be produced: validation_gateway_solo_io_upstream_config_status{name="default-petstore-8080",namespace="gloo-system"} 0. |
 
 
 
@@ -525,6 +576,8 @@ Settings specific to the gloo (Envoy xDS server) controller
 "restXdsBindAddr": string
 "enableRestEds": .google.protobuf.BoolValue
 "failoverUpstreamDnsPollingInterval": .google.protobuf.Duration
+"removeUnusedFilters": .google.protobuf.BoolValue
+"proxyDebugBindAddr": string
 
 ```
 
@@ -543,6 +596,8 @@ Settings specific to the gloo (Envoy xDS server) controller
 | `restXdsBindAddr` | `string` | Where the `gloo` REST xDS server should bind. Defaults to `0.0.0.0:9976`. |
 | `enableRestEds` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Whether or not to use rest xds for all EDS by default. Rest XDS, as opposed to grpc, uses http polling rather than streaming. |
 | `failoverUpstreamDnsPollingInterval` | [.google.protobuf.Duration](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/duration) | The polling interval for the DNS server if upstream failover is configured. If there is a failover upstream address with a hostname instead of an IP, Gloo will resolve the hostname with the configured frequency to update endpoints with any changes to DNS resolution. Defaults to 10s. |
+| `removeUnusedFilters` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | By default gloo adds a series of filters to envoy to ensure that new routes are picked up Even if the listener previously did not have a filter on the chain previously. When set to true unused filters are not added to the chain by default. Defaults to false. |
+| `proxyDebugBindAddr` | `string` | Where the `gloo` proxy debug server should bind. Defaults to `gloo:9966`. |
 
 
 
@@ -555,6 +610,8 @@ Settings specific to the gloo (Envoy xDS server) controller
 ```yaml
 "enableCredentialsDiscovey": bool
 "serviceAccountCredentials": .envoy.config.filter.http.aws_lambda.v2.AWSLambdaConfig.ServiceAccountCredentials
+"propagateOriginalRouting": .google.protobuf.BoolValue
+"credentialRefreshDelay": .google.protobuf.Duration
 
 ```
 
@@ -562,6 +619,8 @@ Settings specific to the gloo (Envoy xDS server) controller
 | ----- | ---- | ----------- | 
 | `enableCredentialsDiscovey` | `bool` | Enable credential discovery via IAM; when this is set, there's no need provide a secret on the upstream when running on AWS environment. Note: This should **ONLY** be enabled when running in an AWS environment, as the AWS code blocks the envoy main thread. This should be negligible when running inside AWS. Only one of `enableCredentialsDiscovey` or `serviceAccountCredentials` can be set. |
 | `serviceAccountCredentials` | [.envoy.config.filter.http.aws_lambda.v2.AWSLambdaConfig.ServiceAccountCredentials](../../external/envoy/extensions/aws/filter.proto.sk/#serviceaccountcredentials) | Use projected service account token, and role arn to create temporary credentials with which to authenticate lambda requests. This functionality is meant to work along side EKS service account to IAM binding functionality as outlined here: https://docs.aws.amazon.com/eks/latest/userguide/iam-roles-for-service-accounts.html If the following environment values are not present in the gateway-proxy, this option cannot be used. 1. AWS_WEB_IDENTITY_TOKEN_FILE 2. AWS_ROLE_ARN The role which will be assumed by the credentials will be the one specified by AWS_ROLE_ARN, however, this can also be overwritten in the AWS Upstream spec via the role_arn field If they are not specified envoy will NACK the config update, which will show up in the logs when running OS Gloo. When running Gloo enterprise it will be reflected in the prometheus stat: "glooe.solo.io/xds/nack" In order to specify the aws sts endpoint, both the cluster and uri must be set. This is due to an envoy limitation which cannot infer the host or path from the cluster, and therefore must be explicitly specified via the uri. Only one of `serviceAccountCredentials` or `enableCredentialsDiscovey` can be set. |
+| `propagateOriginalRouting` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Send downstream path and method as `x-envoy-original-path` and `x-envoy-original-method` headers on the request to AWS lambda. Defaults to false. |
+| `credentialRefreshDelay` | [.google.protobuf.Duration](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/duration) | Sets cadence for refreshing credentials for Service Account. Does nothing if Service account is not set. Does not affect the default filewatch for service account only augments it. Defaults to not refreshing on time period. Suggested is 15 minutes. |
 
 
 
@@ -571,6 +630,7 @@ Settings specific to the gloo (Envoy xDS server) controller
 
  
 Policy for how Gloo should handle invalid config
+[#next-free-field: 15]
 
 ```yaml
 "replaceInvalidRoutes": bool
@@ -620,6 +680,8 @@ Settings specific to the Gateway controller
 "alwaysSortRouteTableRoutes": bool
 "compressedProxySpec": bool
 "virtualServiceOptions": .gloo.solo.io.VirtualServiceOptions
+"persistProxySpec": .google.protobuf.BoolValue
+"enableGatewayController": .google.protobuf.BoolValue
 
 ```
 
@@ -631,6 +693,8 @@ Settings specific to the Gateway controller
 | `alwaysSortRouteTableRoutes` | `bool` | Deprecated. This setting is ignored. Maintained for backwards compatibility with settings exposed on 1.2.x branch of Gloo. |
 | `compressedProxySpec` | `bool` | If set, compresses proxy space. This can help make the Proxy CRD smaller to fit in etcd. This is an advanced option. Use with care. |
 | `virtualServiceOptions` | [.gloo.solo.io.VirtualServiceOptions](../settings.proto.sk/#virtualserviceoptions) | Default configuration to use for VirtualServices, when not provided by a specific virtual service When these properties are defined on a specific VirtualService, this configuration will be ignored. |
+| `persistProxySpec` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Set this to persist the Proxy CRD to etcd By default, proxies are kept in memory to improve performance. Proxies can be persisted to etcd to allow external tools and other pods to read the contents the Proxy CRD. |
+| `enableGatewayController` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | This is set based on the install mode. It indicates to gloo whether or not it should run the gateway translations and validation. |
 
 
 
@@ -664,7 +728,80 @@ options for configuring admission control / validation
 | `allowWarnings` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Accept resources if validation produced a warning (defaults to true). By setting to false, this means that validation will start rejecting resources that would result in warnings, rather than just those that would result in errors. |
 | `warnRouteShortCircuiting` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Write a warning to route resources if validation produced a route ordering warning (defaults to false). By setting to true, this means that Gloo will start assigning warnings to resources that would result in route short-circuiting within a virtual host, for example: - prefix routes that make later routes unreachable - regex routes that make later routes unreachable - duplicate matchers. |
 | `disableTransformationValidation` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | By default gloo will attempt to validate transformations by calling out to a local envoy binary in `validate` mode. Calling this local envoy binary can become slow when done many times during a single validation. Setting this to true will stop gloo from calling out to envoy to validate the transformations, which may speed up the validation time considerably, but may also cause the transformation config to fail after being sent to envoy. When disabling this, ensure that your transformations are valid prior to applying them. |
-| `validationServerGrpcMaxSizeBytes` | [.google.protobuf.Int32Value](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/int-32-value) | By default, gRPC validation messages between gateway and gloo pods have a max message size of 4 MB. Setting this value sets the gRPC max message size in bytes for the gloo validation server. This should only be changed if necessary. If not included, the gRPC max message size will be the default of 4 MB. |
+| `validationServerGrpcMaxSizeBytes` | [.google.protobuf.Int32Value](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/int-32-value) | By default, gRPC validation messages between gateway and gloo pods have a max message size of 100 MB. Setting this value sets the gRPC max message size in bytes for the gloo validation server. This should only be changed if necessary. If not included, the gRPC max message size will be the default of 100 MB. |
+
+
+
+
+---
+### ConsoleOptions
+
+ 
+Settings used by the Enterprise Console (UI)
+
+```yaml
+"readOnly": .google.protobuf.BoolValue
+"apiExplorerEnabled": .google.protobuf.BoolValue
+
+```
+
+| Field | Type | Description |
+| ----- | ---- | ----------- | 
+| `readOnly` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | If true, then custom resources can only be viewed in read-only mode in the UI. If false, then resources can be created, updated, and deleted via the UI. Currently, create/update/delete operations are only supported for GraphQL resources. This feature requires a Gloo Edge Enterprise license with GraphQL enabled. Defaults to true. |
+| `apiExplorerEnabled` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Whether to enable the GraphQL API Explorer. This feature requires a Gloo Edge Enterprise license with GraphQL enabled. Defaults to true. |
+
+
+
+
+---
+### GraphqlOptions
+
+ 
+GraphQL settings used by the control plane and UI.
+
+```yaml
+"schemaChangeValidationOptions": .gloo.solo.io.GraphqlOptions.SchemaChangeValidationOptions
+
+```
+
+| Field | Type | Description |
+| ----- | ---- | ----------- | 
+| `schemaChangeValidationOptions` | [.gloo.solo.io.GraphqlOptions.SchemaChangeValidationOptions](../settings.proto.sk/#schemachangevalidationoptions) | Options for how to validate changes to schema definitions. |
+
+
+
+
+---
+### SchemaChangeValidationOptions
+
+
+
+```yaml
+"rejectBreakingChanges": .google.protobuf.BoolValue
+"processingRules": []gloo.solo.io.GraphqlOptions.SchemaChangeValidationOptions.ProcessingRule
+
+```
+
+| Field | Type | Description |
+| ----- | ---- | ----------- | 
+| `rejectBreakingChanges` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Schema definition updates can be considered safe, dangerous, or breaking. If this field is set to true, then breaking schema updates will be rejected. Defaults to false. |
+| `processingRules` | [[]gloo.solo.io.GraphqlOptions.SchemaChangeValidationOptions.ProcessingRule](../settings.proto.sk/#processingrule) | We use [GraphQL Inspector](https://www.graphql-inspector.com/docs/essentials/diff) to detect breaking changes to GraphQL schemas. This field allows for passing [processing rules](https://www.graphql-inspector.com/docs/essentials/diff#rules) to GraphQL Inspector to customize how various change types are handled. |
+
+
+
+
+---
+### ProcessingRule
+
+
+
+| Name | Description |
+| ----- | ----------- | 
+| `RULE_UNSPECIFIED` |  |
+| `RULE_DANGEROUS_TO_BREAKING` | Turn every dangerous change into a breaking change. |
+| `RULE_DEPRECATED_FIELD_REMOVAL_DANGEROUS` | Treat the removal of a deprecated field as a dangerous change, instead of a breaking change. |
+| `RULE_IGNORE_DESCRIPTION_CHANGES` | Ignore description changes. |
+| `RULE_IGNORE_UNREACHABLE` | Ignore breaking changes on parts of the schema that are not reachable starting from the root types. |
 
 
 

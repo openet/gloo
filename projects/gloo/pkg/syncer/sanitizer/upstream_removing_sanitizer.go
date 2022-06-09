@@ -5,7 +5,7 @@ import (
 
 	envoy_config_cluster_v3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	"github.com/solo-io/gloo/pkg/utils"
-	v1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
+	v1snap "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/gloosnapshot"
 	"github.com/solo-io/gloo/projects/gloo/pkg/syncer/stats"
 	"github.com/solo-io/gloo/projects/gloo/pkg/translator"
 	"github.com/solo-io/gloo/projects/gloo/pkg/xds"
@@ -17,6 +17,9 @@ import (
 
 var (
 	mUpstreamsRemoved = utils.MakeLastValueCounter("gloo.solo.io/sanitizer/upstreams_removed", "The number upstreams removed from the sanitized xds snapshot", stats.ProxyNameKey)
+
+	// Compile-time assertion
+	_ XdsSanitizer = new(UpstreamRemovingSanitizer)
 )
 
 type UpstreamRemovingSanitizer struct{}
@@ -31,15 +34,14 @@ func NewUpstreamRemovingSanitizer() *UpstreamRemovingSanitizer {
 //
 func (s *UpstreamRemovingSanitizer) SanitizeSnapshot(
 	ctx context.Context,
-	glooSnapshot *v1.ApiSnapshot,
+	glooSnapshot *v1snap.ApiSnapshot,
 	xdsSnapshot envoycache.Snapshot,
 	reports reporter.ResourceReports,
-) (envoycache.Snapshot, error) {
+) envoycache.Snapshot {
 	ctx = contextutils.WithLogger(ctx, "invalid-upstream-remover")
 
-	resourcesErr := reports.Validate()
-	if resourcesErr == nil {
-		return xdsSnapshot, nil
+	if reports.Validate() == nil {
+		return xdsSnapshot
 	}
 
 	contextutils.LoggerFrom(ctx).Debug("removing errored upstreams and checking consistency")
@@ -54,6 +56,11 @@ func (s *UpstreamRemovingSanitizer) SanitizeSnapshot(
 		if reports[up].Errors != nil {
 
 			clusterName := translator.UpstreamToClusterName(up.GetMetadata().Ref())
+			if clusters.Items[clusterName] == nil {
+				// cluster has already been removed from the snapshot
+				contextutils.LoggerFrom(ctx).Debugf("cluster %s does not exist in the xds snapshot", clusterName)
+				continue
+			}
 			endpointName := clusterName
 			cluster, _ := clusters.Items[clusterName].ResourceProto().(*envoy_config_cluster_v3.Cluster)
 			if cluster.GetType() == envoy_config_cluster_v3.Cluster_EDS {
@@ -75,17 +82,12 @@ func (s *UpstreamRemovingSanitizer) SanitizeSnapshot(
 	// TODO(marco): the function accepts and return a Snapshot interface, but then swaps in its own implementation.
 	//  This breaks the abstraction and mocking the snapshot becomes impossible. We should have a generic way of
 	//  creating snapshots.
-	xdsSnapshot = xds.NewSnapshotFromResources(
+	newXdsSnapshot := xds.NewSnapshotFromResources(
 		endpoints,
 		clusters,
 		xdsSnapshot.GetResources(resource.RouteTypeV3),
 		xdsSnapshot.GetResources(resource.ListenerTypeV3),
 	)
-
-	// If the snapshot is not consistent,
-	if xdsSnapshot.Consistent() != nil {
-		return xdsSnapshot, resourcesErr
-	}
 
 	// Convert errors related to upstreams to warnings
 	for _, up := range glooSnapshot.Upstreams.AsInputResources() {
@@ -96,5 +98,5 @@ func (s *UpstreamRemovingSanitizer) SanitizeSnapshot(
 		}
 	}
 
-	return xdsSnapshot, nil
+	return newXdsSnapshot
 }

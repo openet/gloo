@@ -18,6 +18,7 @@ spec:
     xdsBindAddr: "0.0.0.0:{{ .Values.gloo.deployment.xdsPort }}"
     restXdsBindAddr: "0.0.0.0:{{ .Values.gloo.deployment.restXdsPort }}"
 {{- end }}
+    proxyDebugBindAddr: "0.0.0.0:{{ .Values.gloo.deployment.proxyDebugPort }}"
     enableRestEds: {{ .Values.settings.enableRestEds | default false }}
 {{- /* .Values.settings.replaceInvalidRoutes for backwards compatibility */}}
 {{- if or (.Values.settings.invalidConfigPolicy) (.Values.settings.replaceInvalidRoutes) }}
@@ -32,8 +33,9 @@ spec:
 {{- if .Values.settings.regexMaxProgramSize }}
     regexMaxProgramSize: {{ .Values.settings.regexMaxProgramSize }}
 {{- end }}
-{{- if .Values.settings.aws.enableServiceAccountCredentials }}
+{{- if .Values.settings.aws }}
     awsOptions:
+{{- if .Values.settings.aws.enableServiceAccountCredentials }}
       serviceAccountCredentials:
         cluster: aws_sts_cluster
 {{- if not .Values.settings.aws.stsCredentialsRegion }}
@@ -42,8 +44,15 @@ spec:
         uri: sts.{{ .Values.settings.aws.stsCredentialsRegion }}.amazonaws.com
 {{- end }}
 {{- else if .Values.settings.aws.enableCredentialsDiscovery }}
-    awsOptions:
       enableCredentialsDiscovey: true
+{{- end }}
+
+ {{- if  .Values.settings.aws.credential_refresh_delay }}
+      credentialRefreshDelay: {{  .Values.settings.aws.credential_refresh_delay }}
+{{- end }}
+{{- if  .Values.settings.aws.propagateOriginalRouting }}
+      propagateOriginalRouting: {{ .Values.settings.aws.propagateOriginalRouting }}
+{{- end }}
 {{- end }}
 
   {{- if .Values.settings.integrations.consul }}
@@ -51,7 +60,7 @@ spec:
   {{- toYaml .Values.settings.integrations.consul | nindent 4 }}
   {{- end }}
   {{- if .Values.settings.integrations.consulUpstreamDiscovery }}
-  consulUpstreamDiscovery:
+  consulDiscovery:
   {{- toYaml .Values.settings.integrations.consulUpstreamDiscovery | nindent 4 }}
   {{- end }}
 
@@ -79,9 +88,13 @@ spec:
 
   gateway:
     readGatewaysFromAllNamespaces: {{ .Values.gateway.readGatewaysFromAllNamespaces }}
+{{- if or .Values.gateway.persistProxySpec (not .Values.gateway.enabled) }}
+    persistProxySpec: true
+{{- end}}
 {{- if .Values.gateway.compressedProxySpec}}
     compressedProxySpec: {{ .Values.gateway.compressedProxySpec}}
 {{- end}}
+    enableGatewayController: {{ .Values.gateway.enabled }}
 {{- if .Values.gateway.validation.enabled }}
     validation:
       proxyValidationServerAddr: "gloo:{{ .Values.gloo.deployment.validationPort }}"
@@ -110,7 +123,7 @@ spec:
 {{- end }}
 
 {{- if .Values.settings.rateLimit }}
-  rateLimit:
+  ratelimit:
 {{- toYaml .Values.settings.rateLimit | nindent 4 }}
 {{- end }}
 

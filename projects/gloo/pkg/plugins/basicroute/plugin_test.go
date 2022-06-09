@@ -36,6 +36,7 @@ var _ = Describe("prefix rewrite", func() {
 			Options: &v1.RouteOptions{
 				PrefixRewrite: &wrappers.StringValue{Value: "/foo"},
 			},
+			Action: &v1.Route_RouteAction{},
 		}, out)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(routeAction.PrefixRewrite).To(Equal("/foo"))
@@ -55,6 +56,7 @@ var _ = Describe("prefix rewrite", func() {
 		// should be no-op
 		err := p.ProcessRoute(plugins.RouteParams{}, &v1.Route{
 			Options: &v1.RouteOptions{},
+			Action:  &v1.Route_RouteAction{},
 		}, out)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(routeAction.PrefixRewrite).To(Equal("/"))
@@ -64,6 +66,7 @@ var _ = Describe("prefix rewrite", func() {
 			Options: &v1.RouteOptions{
 				PrefixRewrite: &wrappers.StringValue{Value: ""},
 			},
+			Action: &v1.Route_RouteAction{},
 		}, out)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(routeAction.PrefixRewrite).To(BeEmpty())
@@ -104,6 +107,7 @@ var _ = Describe("regex rewrite", func() {
 					Substitution: "/foo",
 				},
 			},
+			Action: &v1.Route_RouteAction{},
 		}, out)
 
 		rmas := &envoy_type_matcher_v3.RegexMatchAndSubstitute{
@@ -159,6 +163,7 @@ var _ = Describe("regex rewrite", func() {
 					Substitution: "/foo",
 				},
 			},
+			Action: &v1.Route_RouteAction{},
 		}, out)
 
 		rmas := &envoy_type_matcher_v3.RegexMatchAndSubstitute{
@@ -216,6 +221,7 @@ var _ = Describe("regex rewrite", func() {
 					Substitution: "/foo",
 				},
 			},
+			Action: &v1.Route_RouteAction{},
 		}, out)
 
 		rmas := &envoy_type_matcher_v3.RegexMatchAndSubstitute{
@@ -249,6 +255,7 @@ var _ = Describe("timeout", func() {
 			Options: &v1.RouteOptions{
 				Timeout: t,
 			},
+			Action: &v1.Route_RouteAction{},
 		}, out)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(routeAction.Timeout).NotTo(BeNil())
@@ -259,10 +266,10 @@ var _ = Describe("timeout", func() {
 var _ = Describe("retries", func() {
 
 	var (
-		plugin              *Plugin
 		retryPolicy         *retries.RetryPolicy
 		expectedRetryPolicy *envoy_config_route_v3.RetryPolicy
 	)
+
 	BeforeEach(func() {
 		t := prototime.DurationToProto(time.Minute)
 		retryPolicy = &retries.RetryPolicy{
@@ -277,11 +284,10 @@ var _ = Describe("retries", func() {
 			},
 			PerTryTimeout: t,
 		}
-
-		plugin = NewPlugin()
 	})
 
 	It("works", func() {
+		plugin := NewPlugin()
 		routeAction := &envoy_config_route_v3.RouteAction{}
 		out := &envoy_config_route_v3.Route{
 			Action: &envoy_config_route_v3.Route_Route{
@@ -292,11 +298,14 @@ var _ = Describe("retries", func() {
 			Options: &v1.RouteOptions{
 				Retries: retryPolicy,
 			},
+			Action: &v1.Route_RouteAction{},
 		}, out)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(routeAction.RetryPolicy).To(Equal(expectedRetryPolicy))
 	})
+
 	It("works on vhost", func() {
+		plugin := NewPlugin()
 		out := &envoy_config_route_v3.VirtualHost{}
 		err := plugin.ProcessVirtualHost(plugins.VirtualHostParams{}, &v1.VirtualHost{
 			Options: &v1.VirtualHostOptions{
@@ -324,6 +333,7 @@ var _ = Describe("host rewrite", func() {
 			Options: &v1.RouteOptions{
 				HostRewriteType: &v1.RouteOptions_HostRewrite{HostRewrite: "/foo"},
 			},
+			Action: &v1.Route_RouteAction{},
 		}, out)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(routeAction.GetHostRewriteLiteral()).To(Equal("/foo"))
@@ -343,6 +353,7 @@ var _ = Describe("host rewrite", func() {
 		// should be no-op
 		err := p.ProcessRoute(plugins.RouteParams{}, &v1.Route{
 			Options: &v1.RouteOptions{},
+			Action:  &v1.Route_RouteAction{},
 		}, out)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(routeAction.GetHostRewriteLiteral()).To(Equal("/"))
@@ -352,6 +363,7 @@ var _ = Describe("host rewrite", func() {
 			Options: &v1.RouteOptions{
 				HostRewriteType: &v1.RouteOptions_HostRewrite{HostRewrite: ""},
 			},
+			Action: &v1.Route_RouteAction{},
 		}, out)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(routeAction.GetHostRewriteLiteral()).To(BeEmpty())
@@ -380,6 +392,7 @@ var _ = Describe("host rewrite", func() {
 					},
 				},
 			},
+			Action: &v1.Route_RouteAction{},
 		}, out)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(routeAction.GetAutoHostRewrite().GetValue()).To(Equal(true))
@@ -410,6 +423,7 @@ var _ = Describe("upgrades", func() {
 					},
 				},
 			},
+			Action: &v1.Route_RouteAction{},
 		}, out)
 
 		Expect(err).NotTo(HaveOccurred())
@@ -447,6 +461,7 @@ var _ = Describe("upgrades", func() {
 					},
 				},
 			},
+			Action: &v1.Route_RouteAction{},
 		}, out)
 
 		Expect(err).To(MatchError(ContainSubstring("upgrade config websocket is not unique")))

@@ -102,6 +102,8 @@ The updated `data` directory structure should look like this:
 │   ├── gateways
 │   │   └── gloo-system
 │   │       └── gateway-proxy.yaml
+│   ├── graphqlapis
+│   │   └── gloo-system
 │   ├── proxies
 │   │   └── gloo-system
 │   ├── ratelimitconfigs

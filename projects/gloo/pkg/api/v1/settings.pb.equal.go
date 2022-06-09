@@ -216,6 +216,16 @@ func (m *Settings) Equal(that interface{}) bool {
 
 	}
 
+	if h, ok := interface{}(m.GetCachingServer()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetCachingServer()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetCachingServer(), target.GetCachingServer()) {
+			return false
+		}
+	}
+
 	if h, ok := interface{}(m.GetMetadata()).(equality.Equalizer); ok {
 		if !h.Equal(target.GetMetadata()) {
 			return false
@@ -252,6 +262,26 @@ func (m *Settings) Equal(that interface{}) bool {
 		}
 	} else {
 		if !proto.Equal(m.GetUpstreamOptions(), target.GetUpstreamOptions()) {
+			return false
+		}
+	}
+
+	if h, ok := interface{}(m.GetConsoleOptions()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetConsoleOptions()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetConsoleOptions(), target.GetConsoleOptions()) {
+			return false
+		}
+	}
+
+	if h, ok := interface{}(m.GetGraphqlOptions()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetGraphqlOptions()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetGraphqlOptions(), target.GetGraphqlOptions()) {
 			return false
 		}
 	}
@@ -582,6 +612,20 @@ func (m *GlooOptions) Equal(that interface{}) bool {
 		}
 	}
 
+	if h, ok := interface{}(m.GetRemoveUnusedFilters()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetRemoveUnusedFilters()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetRemoveUnusedFilters(), target.GetRemoveUnusedFilters()) {
+			return false
+		}
+	}
+
+	if strings.Compare(m.GetProxyDebugBindAddr(), target.GetProxyDebugBindAddr()) != 0 {
+		return false
+	}
+
 	return true
 }
 
@@ -672,6 +716,104 @@ func (m *GatewayOptions) Equal(that interface{}) bool {
 		}
 	} else {
 		if !proto.Equal(m.GetVirtualServiceOptions(), target.GetVirtualServiceOptions()) {
+			return false
+		}
+	}
+
+	if h, ok := interface{}(m.GetPersistProxySpec()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetPersistProxySpec()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetPersistProxySpec(), target.GetPersistProxySpec()) {
+			return false
+		}
+	}
+
+	if h, ok := interface{}(m.GetEnableGatewayController()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetEnableGatewayController()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetEnableGatewayController(), target.GetEnableGatewayController()) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Equal function
+func (m *ConsoleOptions) Equal(that interface{}) bool {
+	if that == nil {
+		return m == nil
+	}
+
+	target, ok := that.(*ConsoleOptions)
+	if !ok {
+		that2, ok := that.(ConsoleOptions)
+		if ok {
+			target = &that2
+		} else {
+			return false
+		}
+	}
+	if target == nil {
+		return m == nil
+	} else if m == nil {
+		return false
+	}
+
+	if h, ok := interface{}(m.GetReadOnly()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetReadOnly()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetReadOnly(), target.GetReadOnly()) {
+			return false
+		}
+	}
+
+	if h, ok := interface{}(m.GetApiExplorerEnabled()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetApiExplorerEnabled()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetApiExplorerEnabled(), target.GetApiExplorerEnabled()) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Equal function
+func (m *GraphqlOptions) Equal(that interface{}) bool {
+	if that == nil {
+		return m == nil
+	}
+
+	target, ok := that.(*GraphqlOptions)
+	if !ok {
+		that2, ok := that.(GraphqlOptions)
+		if ok {
+			target = &that2
+		} else {
+			return false
+		}
+	}
+	if target == nil {
+		return m == nil
+	} else if m == nil {
+		return false
+	}
+
+	if h, ok := interface{}(m.GetSchemaChangeValidationOptions()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetSchemaChangeValidationOptions()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetSchemaChangeValidationOptions(), target.GetSchemaChangeValidationOptions()) {
 			return false
 		}
 	}
@@ -787,6 +929,10 @@ func (m *Settings_VaultSecrets) Equal(that interface{}) bool {
 	}
 
 	if strings.Compare(m.GetRootKey(), target.GetRootKey()) != 0 {
+		return false
+	}
+
+	if strings.Compare(m.GetPathPrefix(), target.GetPathPrefix()) != 0 {
 		return false
 	}
 
@@ -1098,6 +1244,10 @@ func (m *Settings_ConsulUpstreamDiscoveryConfiguration) Equal(that interface{}) 
 		return false
 	}
 
+	if m.GetConsistencyMode() != target.GetConsistencyMode() {
+		return false
+	}
+
 	return true
 }
 
@@ -1164,6 +1314,23 @@ func (m *Settings_ObservabilityOptions) Equal(that interface{}) bool {
 		if !proto.Equal(m.GetGrafanaIntegration(), target.GetGrafanaIntegration()) {
 			return false
 		}
+	}
+
+	if len(m.GetConfigStatusMetricLabels()) != len(target.GetConfigStatusMetricLabels()) {
+		return false
+	}
+	for k, v := range m.GetConfigStatusMetricLabels() {
+
+		if h, ok := interface{}(v).(equality.Equalizer); ok {
+			if !h.Equal(target.GetConfigStatusMetricLabels()[k]) {
+				return false
+			}
+		} else {
+			if !proto.Equal(v, target.GetConfigStatusMetricLabels()[k]) {
+				return false
+			}
+		}
+
 	}
 
 	return true
@@ -1316,6 +1483,41 @@ func (m *Settings_ObservabilityOptions_GrafanaIntegration) Equal(that interface{
 }
 
 // Equal function
+func (m *Settings_ObservabilityOptions_MetricLabels) Equal(that interface{}) bool {
+	if that == nil {
+		return m == nil
+	}
+
+	target, ok := that.(*Settings_ObservabilityOptions_MetricLabels)
+	if !ok {
+		that2, ok := that.(Settings_ObservabilityOptions_MetricLabels)
+		if ok {
+			target = &that2
+		} else {
+			return false
+		}
+	}
+	if target == nil {
+		return m == nil
+	} else if m == nil {
+		return false
+	}
+
+	if len(m.GetLabelToPath()) != len(target.GetLabelToPath()) {
+		return false
+	}
+	for k, v := range m.GetLabelToPath() {
+
+		if strings.Compare(v, target.GetLabelToPath()[k]) != 0 {
+			return false
+		}
+
+	}
+
+	return true
+}
+
+// Equal function
 func (m *GlooOptions_AWSOptions) Equal(that interface{}) bool {
 	if that == nil {
 		return m == nil
@@ -1334,6 +1536,26 @@ func (m *GlooOptions_AWSOptions) Equal(that interface{}) bool {
 		return m == nil
 	} else if m == nil {
 		return false
+	}
+
+	if h, ok := interface{}(m.GetPropagateOriginalRouting()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetPropagateOriginalRouting()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetPropagateOriginalRouting(), target.GetPropagateOriginalRouting()) {
+			return false
+		}
+	}
+
+	if h, ok := interface{}(m.GetCredentialRefreshDelay()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetCredentialRefreshDelay()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetCredentialRefreshDelay(), target.GetCredentialRefreshDelay()) {
+			return false
+		}
 	}
 
 	switch m.CredentialsFetcher.(type) {
@@ -1493,6 +1715,51 @@ func (m *GatewayOptions_ValidationOptions) Equal(that interface{}) bool {
 		if !proto.Equal(m.GetValidationServerGrpcMaxSizeBytes(), target.GetValidationServerGrpcMaxSizeBytes()) {
 			return false
 		}
+	}
+
+	return true
+}
+
+// Equal function
+func (m *GraphqlOptions_SchemaChangeValidationOptions) Equal(that interface{}) bool {
+	if that == nil {
+		return m == nil
+	}
+
+	target, ok := that.(*GraphqlOptions_SchemaChangeValidationOptions)
+	if !ok {
+		that2, ok := that.(GraphqlOptions_SchemaChangeValidationOptions)
+		if ok {
+			target = &that2
+		} else {
+			return false
+		}
+	}
+	if target == nil {
+		return m == nil
+	} else if m == nil {
+		return false
+	}
+
+	if h, ok := interface{}(m.GetRejectBreakingChanges()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetRejectBreakingChanges()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetRejectBreakingChanges(), target.GetRejectBreakingChanges()) {
+			return false
+		}
+	}
+
+	if len(m.GetProcessingRules()) != len(target.GetProcessingRules()) {
+		return false
+	}
+	for idx, v := range m.GetProcessingRules() {
+
+		if v != target.GetProcessingRules()[idx] {
+			return false
+		}
+
 	}
 
 	return true

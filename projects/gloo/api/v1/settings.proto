@@ -14,6 +14,7 @@ import "github.com/solo-io/solo-kit/api/v1/ref.proto";
 
 import "github.com/solo-io/gloo/projects/gloo/api/v1/extensions.proto";
 import "github.com/solo-io/gloo/projects/gloo/api/v1/enterprise/options/ratelimit/ratelimit.proto";
+import "github.com/solo-io/gloo/projects/gloo/api/v1/enterprise/options/caching/caching.proto";
 import "github.com/solo-io/gloo/projects/gloo/api/v1/enterprise/options/extauth/v1/extauth.proto";
 import "github.com/solo-io/gloo/projects/gloo/api/v1/enterprise/options/rbac/rbac.proto";
 import "github.com/solo-io/gloo/projects/gloo/api/v1/circuit_breaker.proto";
@@ -113,6 +114,11 @@ message Settings {
         // this can be used to run multiple instances of Gloo against the same Consul cluster
         // defaults to `gloo`
         string root_key = 9;
+
+        // Optional: The name of a Vault Secrets Engine to which Vault should route traffic.
+        // For more info see https://learn.hashicorp.com/tutorials/vault/getting-started-secrets-engines.
+        // Defaults to 'secret'
+        string path_prefix = 10;
     }
 
     // Use [HashiCorp Consul Key-Value](https://www.consul.io/api/kv.html/) as storage for config data.
@@ -299,6 +305,19 @@ message Settings {
          // be individually tagged; servicesInstances with the tlsTagName tag are directed to the TLS upstream, while those
          // without the tlsTagName tag are sorted into the non-TLS upstream.
          bool splitTlsServices = 19;
+
+        // These are the same consistency modes offered by Consul. For more information please review https://www.consul.io/api-docs/features/consistency.
+        // For more information please review https://pkg.go.dev/github.com/hashicorp/consul/api#QueryOptions.
+        enum ConsulConsistencyModes{
+            // This is strongly consistent. Sets the RequireConsistent in the consul api to true.
+            ConsistentMode = 0;
+            // This will set (clears) both the AllowStale and the RequireConsistent in the consul api to false.
+            DefaultMode = 2;
+            // Allows stale reads when set. This will set the AllowStale in the consul api.
+            StaleMode = 1;
+        }
+        // Sets the consistency mode. The default is the ConsistentMode.
+        ConsulConsistencyModes consistencyMode = 20;
     }
 
     ConsulUpstreamDiscoveryConfiguration consulDiscovery = 30;
@@ -354,6 +373,12 @@ message Settings {
     // If an auth server name is not supplied on a route, the default auth server will be applied.
     map<string, enterprise.gloo.solo.io.Settings> named_extauth = 33;
 
+    // Enterprise-only: Settings for the caching server itself
+    // This may eventually be able to be set at a per listener level.
+	// At this time is used for plugin translation via the init.Params.
+    caching.options.gloo.solo.io.Settings caching_server = 36;
+
+
     // Metadata contains the object metadata for this resource
     core.solo.io.Metadata metadata = 14;
 
@@ -386,6 +411,24 @@ message Settings {
 
         // Options to configure Gloo's integration with [Kubernetes](https://www.kubernetes.io/).
         GrafanaIntegration grafanaIntegration = 1;
+
+
+        message MetricLabels {
+            // Each (key, value) pair in the map defines a label to be applied. Keys specify the name of the label
+            // (e.g. "namespace"). Values specify the jsonpath (https://kubernetes.io/docs/reference/kubectl/jsonpath/)
+            // string corresponding to the field of a resource to use as the label value (e.g. "{.metadata.namespace}").
+            // For example, if labelToPath = {name: '{.metadata.name}', namespace: '{.metadata.namespace}'} for
+            // Upstream.v1.gateway.solo.io, the following metric would be produced:
+            // validation_gateway_solo_io_upstream_config_status{name="default-petstore-8080",namespace="gloo-system"} 0
+            map<string, string> labelToPath = 1;
+        }
+
+        // Enable metrics that track the configuration status of various resource types.
+        // Each (key, value) pair in the map defines a metric for a particular resource type. Configuration status
+        // metrics are not recorded by default; metrics are recorded only for the resources specified in this map.
+        // Keys specify the resource type (GroupVersionKind) to track for status changes
+        // (e.g. "VirtualService.v1.gateway.solo.io"). Values specify the labels to set on the metric.
+        map<string, MetricLabels> configStatusMetricLabels = 2;
     }
 
     // Provides settings related to the observability deployment (enterprise only)
@@ -395,6 +438,11 @@ message Settings {
     // When these properties are defined on an upstream, this configuration will be ignored
     UpstreamOptions upstreamOptions = 32;
 
+    // Enterprise-only: Settings for the Gloo Edge Enterprise Console (UI)
+    ConsoleOptions console_options = 35;
+
+    // Enterprise-only: GraphQL settings
+    GraphqlOptions graphql_options = 37;
 }
 
 // Default configuration to use for upstreams, when not provided by a specific upstream
@@ -452,11 +500,23 @@ message GlooOptions {
             // and therefore must be explicitly specified via the uri
             envoy.config.filter.http.aws_lambda.v2.AWSLambdaConfig.ServiceAccountCredentials service_account_credentials = 2;
         }
+
+        // Send downstream path and method as `x-envoy-original-path` and
+        // `x-envoy-original-method` headers on the request to AWS lambda. 
+        // Defaults to false.
+        google.protobuf.BoolValue propagate_original_routing = 3;
+
+        // Sets cadence for refreshing credentials for Service Account.
+        // Does nothing if Service account is not set.
+        // Does not affect the default filewatch for service account only augments it.
+        // Defaults to not refreshing on time period. Suggested is 15 minutes.
+        google.protobuf.Duration credential_refresh_delay = 4;
     }
 
     AWSOptions aws_options = 5;
 
     // Policy for how Gloo should handle invalid config
+    // [#next-free-field: 15]
     message InvalidConfigPolicy {
 
         // if set to `true`, Gloo removes any routes from the provided configuration
@@ -515,6 +575,15 @@ message GlooOptions {
     // hostname with the configured frequency to update endpoints with any changes to DNS resolution.
     // Defaults to 10s.
     google.protobuf.Duration failover_upstream_dns_polling_interval = 13;
+
+    // By default gloo adds a series of filters to envoy to ensure that new routes are picked up
+    // Even if the listener previously did not have a filter on the chain previously.
+    // When set to true unused filters are not added to the chain by default.
+    // Defaults to false
+    google.protobuf.BoolValue remove_unused_filters = 14;
+
+    // Where the `gloo` proxy debug server should bind. Defaults to `gloo:9966`
+    string proxy_debug_bind_addr = 15;
 }
 
 
@@ -577,10 +646,10 @@ message GatewayOptions {
 
         reserved 10;
 
-        // By default, gRPC validation messages between gateway and gloo pods have a max message size of 4 MB.
+        // By default, gRPC validation messages between gateway and gloo pods have a max message size of 100 MB.
         // Setting this value sets the gRPC max message size in bytes for the gloo validation server. This should
         // only be changed if necessary.
-        // If not included, the gRPC max message size will be the default of 4 MB.
+        // If not included, the gRPC max message size will be the default of 100 MB.
         google.protobuf.Int32Value validation_server_grpc_max_size_bytes = 11;
     }
 
@@ -603,4 +672,61 @@ message GatewayOptions {
     // Default configuration to use for VirtualServices, when not provided by a specific virtual service
     // When these properties are defined on a specific VirtualService, this configuration will be ignored
     VirtualServiceOptions virtual_service_options = 7;
+
+    // Set this to persist the Proxy CRD to etcd By default, proxies are kept in memory to improve performance.
+    // Proxies can be persisted to etcd to allow external tools and other pods to read the contents the Proxy CRD.
+    google.protobuf.BoolValue persist_proxy_spec = 8;
+
+    // This is set based on the install mode. It indicates to gloo whether or not it should run the gateway
+    // translations and validation.
+    google.protobuf.BoolValue enable_gateway_controller = 9;
+}
+
+// Settings used by the Enterprise Console (UI)
+message ConsoleOptions {
+    // If true, then custom resources can only be viewed in read-only mode in the UI.
+    // If false, then resources can be created, updated, and deleted via the UI.
+    // Currently, create/update/delete operations are only supported for GraphQL resources.
+    // This feature requires a Gloo Edge Enterprise license with GraphQL enabled.
+    // Defaults to true.
+    google.protobuf.BoolValue read_only = 1;
+
+    // Whether to enable the GraphQL API Explorer. This feature requires a Gloo Edge Enterprise license with GraphQL enabled.
+    // Defaults to true.
+    google.protobuf.BoolValue api_explorer_enabled = 2;
+}
+
+// GraphQL settings used by the control plane and UI.
+message GraphqlOptions {
+
+    // Options for how to validate changes to schema definitions.
+    SchemaChangeValidationOptions schema_change_validation_options = 1;
+
+    message SchemaChangeValidationOptions {
+        // Schema definition updates can be considered safe, dangerous, or breaking.
+        // If this field is set to true, then breaking schema updates will be rejected.
+        // Defaults to false.
+        google.protobuf.BoolValue reject_breaking_changes = 1;
+
+        // We use [GraphQL Inspector](https://www.graphql-inspector.com/docs/essentials/diff) to detect breaking changes
+        // to GraphQL schemas. This field allows for passing [processing rules](https://www.graphql-inspector.com/docs/essentials/diff#rules)
+        // to GraphQL Inspector to customize how various change types are handled.
+        repeated ProcessingRule processing_rules = 2;
+
+        enum ProcessingRule {
+            RULE_UNSPECIFIED = 0;
+
+            // Turn every dangerous change into a breaking change.
+            RULE_DANGEROUS_TO_BREAKING = 1;
+
+            // Treat the removal of a deprecated field as a dangerous change, instead of a breaking change.
+            RULE_DEPRECATED_FIELD_REMOVAL_DANGEROUS = 2;
+
+            // Ignore description changes.
+            RULE_IGNORE_DESCRIPTION_CHANGES = 3;
+
+            // Ignore breaking changes on parts of the schema that are not reachable starting from the root types.
+            RULE_IGNORE_UNREACHABLE = 4;
+        }
+    }
 }

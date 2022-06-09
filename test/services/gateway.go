@@ -1,9 +1,13 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"net"
+	"sync/atomic"
 	"time"
+
+	"github.com/solo-io/gloo/pkg/utils/settingsutil"
 
 	"github.com/solo-io/gloo/pkg/utils/statusutils"
 
@@ -11,8 +15,6 @@ import (
 	extauthExt "github.com/solo-io/gloo/projects/gloo/pkg/syncer/extauth"
 	ratelimitExt "github.com/solo-io/gloo/projects/gloo/pkg/syncer/ratelimit"
 	"github.com/solo-io/gloo/projects/gloo/pkg/syncer/setup"
-
-	gatewaysyncer "github.com/solo-io/gloo/projects/gateway/pkg/syncer"
 
 	"github.com/solo-io/gloo/projects/gateway/pkg/translator"
 
@@ -26,9 +28,6 @@ import (
 	skkube "github.com/solo-io/solo-kit/pkg/api/v1/resources/common/kubernetes"
 
 	corecache "github.com/solo-io/solo-kit/pkg/api/v1/clients/kube/cache"
-
-	"context"
-	"sync/atomic"
 
 	"github.com/solo-io/go-utils/contextutils"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients"
@@ -49,7 +48,6 @@ import (
 	. "github.com/onsi/ginkgo"
 	"github.com/onsi/ginkgo/config"
 	. "github.com/onsi/gomega"
-	"github.com/solo-io/gloo/pkg/utils/settingsutil"
 	fds_syncer "github.com/solo-io/gloo/projects/discovery/pkg/fds/syncer"
 	uds_syncer "github.com/solo-io/gloo/projects/discovery/pkg/uds/syncer"
 	"github.com/solo-io/gloo/projects/gloo/pkg/defaults"
@@ -127,15 +125,12 @@ func RunGlooGatewayUdsFds(ctx context.Context, runOptions *RunOptions) TestClien
 		WatchNamespaces:    runOptions.NsToWatch,
 		DiscoveryNamespace: runOptions.NsToWrite,
 	}
-
 	ctx = settingsutil.WithSettings(ctx, settings)
-
 	glooOpts := defaultGlooOpts(ctx, runOptions)
 
 	glooOpts.ControlPlane.BindAddr.(*net.TCPAddr).Port = int(runOptions.GlooPort)
 	glooOpts.ValidationServer.BindAddr.(*net.TCPAddr).Port = int(runOptions.ValidationPort)
 
-	glooOpts.Settings = runOptions.Settings
 	if glooOpts.Settings == nil {
 		glooOpts.Settings = &gloov1.Settings{}
 	}
@@ -145,7 +140,6 @@ func RunGlooGatewayUdsFds(ctx context.Context, runOptions *RunOptions) TestClien
 	if glooOpts.Settings.GetGloo().GetRestXdsBindAddr() == "" {
 		glooOpts.Settings.GetGloo().RestXdsBindAddr = fmt.Sprintf("0.0.0.0:%v", int(runOptions.RestXdsPort))
 	}
-
 	runOptions.Extensions.SyncerExtensions = []syncer.TranslatorSyncerExtensionFactory{
 		ratelimitExt.NewTranslatorSyncerExtension,
 		extauthExt.NewTranslatorSyncerExtension,
@@ -153,13 +147,8 @@ func RunGlooGatewayUdsFds(ctx context.Context, runOptions *RunOptions) TestClien
 
 	glooOpts.ControlPlane.StartGrpcServer = true
 	glooOpts.ValidationServer.StartGrpcServer = true
+	glooOpts.GatewayControllerEnabled = !runOptions.WhatToRun.DisableGateway
 	go setup.RunGlooWithExtensions(glooOpts, runOptions.Extensions, make(chan struct{}))
-
-	// gloo is dependency of gateway, needs to run second if we want to test validation
-	if !runOptions.WhatToRun.DisableGateway {
-		opts := defaultTestConstructOpts(ctx, runOptions)
-		go gatewaysyncer.RunGateway(opts)
-	}
 
 	if !runOptions.WhatToRun.DisableFds {
 		go func() {
@@ -217,27 +206,31 @@ func defaultTestConstructOpts(ctx context.Context, runOptions *RunOptions) trans
 	meta := runOptions.Settings.GetMetadata()
 
 	var validation *translator.ValidationOpts
-	if runOptions.Settings != nil && runOptions.Settings.GetGateway() != nil && runOptions.Settings.GetGateway().GetValidation() != nil {
-		validation = &translator.ValidationOpts{}
-		if runOptions.Settings.GetGateway().GetValidation().GetProxyValidationServerAddr() != "" {
-			validation.ProxyValidationServerAddress = runOptions.Settings.GetGateway().GetValidation().GetProxyValidationServerAddr()
+	if runOptions.Settings.GetGateway().GetValidation().GetProxyValidationServerAddr() != "" {
+		if validation == nil {
+			validation = &translator.ValidationOpts{}
 		}
-		if runOptions.Settings.GetGateway().GetValidation().GetAllowWarnings() != nil {
-			validation.AllowWarnings = runOptions.Settings.GetGateway().GetValidation().GetAllowWarnings().GetValue()
-
-		}
-		if runOptions.Settings.GetGateway().GetValidation().GetAlwaysAccept() != nil {
-			validation.AlwaysAcceptResources = runOptions.Settings.GetGateway().GetValidation().GetAlwaysAccept().GetValue()
-		}
-
+		validation.ProxyValidationServerAddress = runOptions.Settings.GetGateway().GetValidation().GetProxyValidationServerAddr()
 	}
-
+	if runOptions.Settings.GetGateway().GetValidation().GetAllowWarnings() != nil {
+		if validation == nil {
+			validation = &translator.ValidationOpts{}
+		}
+		validation.AllowWarnings = runOptions.Settings.GetGateway().GetValidation().GetAllowWarnings().GetValue()
+	}
+	if runOptions.Settings.GetGateway().GetValidation().GetAlwaysAccept() != nil {
+		if validation == nil {
+			validation = &translator.ValidationOpts{}
+		}
+		validation.AlwaysAcceptResources = runOptions.Settings.GetGateway().GetValidation().GetAlwaysAccept().GetValue()
+	}
 	return translator.Opts{
 		GlooNamespace:           meta.GetNamespace(),
 		WriteNamespace:          runOptions.NsToWrite,
 		WatchNamespaces:         runOptions.NsToWatch,
 		StatusReporterNamespace: statusutils.GetStatusReporterNamespaceOrDefault(defaults.GlooSystem),
 		Gateways:                f,
+		MatchableHttpGateways:   f,
 		VirtualServices:         f,
 		RouteTables:             f,
 		VirtualHostOptions:      f,
@@ -247,8 +240,9 @@ func defaultTestConstructOpts(ctx context.Context, runOptions *RunOptions) trans
 			Ctx:         ctx,
 			RefreshRate: time.Minute,
 		},
-		Validation: validation,
-		DevMode:    false,
+		Validation:             validation,
+		DevMode:                false,
+		ConfigStatusMetricOpts: runOptions.Settings.GetObservabilityOptions().GetConfigStatusMetricLabels(),
 	}
 }
 
@@ -284,7 +278,25 @@ func defaultGlooOpts(ctx context.Context, runOptions *RunOptions) bootstrap.Opts
 		kubeCoreCache, err = cache.NewKubeCoreCacheWithOptions(ctx, runOptions.KubeClient, time.Hour, runOptions.NsToWatch)
 		Expect(err).NotTo(HaveOccurred())
 	}
-
+	var validationOpts *translator.ValidationOpts
+	if runOptions.Settings.GetGateway().GetValidation().GetProxyValidationServerAddr() != "" {
+		if validationOpts == nil {
+			validationOpts = &translator.ValidationOpts{}
+		}
+		validationOpts.ProxyValidationServerAddress = runOptions.Settings.GetGateway().GetValidation().GetProxyValidationServerAddr()
+	}
+	if runOptions.Settings.GetGateway().GetValidation().GetAllowWarnings() != nil {
+		if validationOpts == nil {
+			validationOpts = &translator.ValidationOpts{}
+		}
+		validationOpts.AllowWarnings = runOptions.Settings.GetGateway().GetValidation().GetAllowWarnings().GetValue()
+	}
+	if runOptions.Settings.GetGateway().GetValidation().GetAlwaysAccept() != nil {
+		if validationOpts == nil {
+			validationOpts = &translator.ValidationOpts{}
+		}
+		validationOpts.AlwaysAcceptResources = runOptions.Settings.GetGateway().GetValidation().GetAlwaysAccept().GetValue()
+	}
 	return bootstrap.Opts{
 		Settings:                runOptions.Settings,
 		WriteNamespace:          runOptions.NsToWrite,
@@ -296,7 +308,13 @@ func defaultGlooOpts(ctx context.Context, runOptions *RunOptions) bootstrap.Opts
 		Artifacts:               f,
 		AuthConfigs:             f,
 		RateLimitConfigs:        f,
-		GraphQLSchemas:          f,
+		GraphQLApis:             f,
+		Gateways:                f,
+		MatchableHttpGateways:   f,
+		VirtualServices:         f,
+		RouteTables:             f,
+		RouteOptions:            f,
+		VirtualHostOptions:      f,
 		KubeServiceClient:       newServiceClient(ctx, f, runOptions),
 		WatchNamespaces:         runOptions.NsToWatch,
 		WatchOpts: clients.WatchOpts{
@@ -311,7 +329,10 @@ func defaultGlooOpts(ctx context.Context, runOptions *RunOptions) bootstrap.Opts
 			IP:   net.ParseIP("0.0.0.0"),
 			Port: 8081,
 		}, true),
-
+		ProxyDebugServer: setup.NewProxyDebugServer(ctx, grpcServer, &net.TCPAddr{
+			IP:   net.ParseIP("0.0.0.0"),
+			Port: 8001,
+		}, false),
 		KubeClient:    runOptions.KubeClient,
 		KubeCoreCache: kubeCoreCache,
 		DevMode:       true,
@@ -319,6 +340,8 @@ func defaultGlooOpts(ctx context.Context, runOptions *RunOptions) bootstrap.Opts
 			ConsulWatcher: runOptions.ConsulClient,
 			DnsServer:     runOptions.ConsulDnsAddress,
 		},
+		GatewayControllerEnabled: true,
+		ValidationOpts:           validationOpts,
 	}
 }
 

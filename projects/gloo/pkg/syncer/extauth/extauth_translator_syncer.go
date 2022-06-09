@@ -8,6 +8,7 @@ import (
 	"github.com/rotisserie/eris"
 
 	gloov1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
+	gloov1snap "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/gloosnapshot"
 	"github.com/solo-io/gloo/projects/gloo/pkg/syncer"
 	"github.com/solo-io/go-utils/contextutils"
 	envoycache "github.com/solo-io/solo-kit/pkg/api/v1/control-plane/cache"
@@ -21,8 +22,8 @@ var (
 )
 
 const (
-	Name              = "extauth"
-	ExtAuthServerRole = "extauth"
+	Name       = "extauth"
+	ServerRole = "extauth"
 )
 
 var (
@@ -48,7 +49,7 @@ func NewTranslatorSyncerExtension(
 
 func (s *TranslatorSyncerExtension) Sync(
 	ctx context.Context,
-	snap *gloov1.ApiSnapshot,
+	snap *gloov1snap.ApiSnapshot,
 	settings *gloov1.Settings,
 	xdsCache envoycache.SnapshotCache,
 	reports reporter.ResourceReports,
@@ -58,7 +59,7 @@ func (s *TranslatorSyncerExtension) Sync(
 
 	getEnterpriseOnlyErr := func() (string, error) {
 		logger.Error(ErrEnterpriseOnly.Error())
-		return ExtAuthServerRole, ErrEnterpriseOnly
+		return ServerRole, ErrEnterpriseOnly
 	}
 
 	if settings.GetNamedExtauth() != nil {
@@ -102,5 +103,5 @@ func (s *TranslatorSyncerExtension) Sync(
 		}
 	}
 
-	return ExtAuthServerRole, nil
+	return ServerRole, nil
 }

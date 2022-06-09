@@ -1,3 +1,8 @@
+##########################################################################################
+# run-ci-regression-tests - runs a set of regression tests. Set KUBE2E_TESTS = (gateway, gloo, gloomtls, glooctl, helm, ingress)
+# run-tests - runs tests (see https://github.com/solo-io/gloo/blob/master/test/e2e/README.md)
+# 
+##########################################################################################
 #----------------------------------------------------------------------------------
 # Base
 #----------------------------------------------------------------------------------
@@ -18,6 +23,7 @@ SOURCES := $(shell find . -name "*.go" | grep -v test.go)
 RELEASE := "false"
 CREATE_TEST_ASSETS := "false"
 CREATE_ASSETS := "true"
+RUN_REGRESSION_TESTS=false
 
 ifneq ($(TEST_ASSET_ID),)
 	CREATE_TEST_ASSETS := "true"
@@ -50,7 +56,7 @@ else
   endif
 endif
 
-ENVOY_GLOO_IMAGE ?= quay.io/solo-io/envoy-gloo:1.20.0-patch1
+ENVOY_GLOO_IMAGE ?= quay.io/solo-io/envoy-gloo:1.21.1-patch1
 
 # The full SHA of the currently checked out commit
 CHECKED_OUT_SHA := $(shell git rev-parse HEAD)
@@ -82,10 +88,17 @@ print-git-info:
 LDFLAGS := "-X github.com/solo-io/gloo/pkg/version.Version=$(VERSION)"
 GCFLAGS := all="-N -l"
 
+UNAME_M := $(shell uname -m)
 # Define Architecture. Default: amd64
 # If GOARCH is unset, docker-build will fail
-ifeq ($(GOARCH),)
-	GOARCH := amd64
+GOARCH ?= amd64
+ifneq ($(or $(filter $(UNAME_M), arm64), $(filter $(UNAME_M), aarch64)), )
+	GOARCH=arm64
+	PLATFORM=--platform=linux/amd64
+endif
+
+ifeq ($(GOOS),)
+	GOOS := $(shell uname -s | tr '[:upper:]' '[:lower:]')
 endif
 
 GO_BUILD_FLAGS := GO111MODULE=on CGO_ENABLED=0 GOARCH=$(GOARCH)
@@ -120,7 +133,7 @@ fmt-changed:
 # must be a seperate target so that make waits for it to complete before moving on
 .PHONY: mod-download
 mod-download:
-	go mod download
+	go mod download all
 
 DEPSGOBIN=$(shell pwd)/_output/.bin
 
@@ -145,10 +158,13 @@ install-go-tools: mod-download
 
 .PHONY: run-tests
 run-tests:
-	$(DEPSGOBIN)/ginkgo -ldflags=$(LDFLAGS) -r -failFast -trace -progress -race -compilers=4 -failOnPending -noColor $(TEST_PKG)
+ifneq ($(RELEASE), "true")
+	RUN_REGRESSION_TESTS=$(RUN_REGRESSION_TESTS) $(DEPSGOBIN)/ginkgo -ldflags=$(LDFLAGS) -r -failFast -trace -progress -race -compilers=4 -failOnPending -noColor $(TEST_PKG)
+endif
 
 .PHONY: run-ci-regression-tests
 run-ci-regression-tests: TEST_PKG=./test/kube2e/...
+run-ci-regression-tests: RUN_REGRESSION_TESTS=true
 run-ci-regression-tests: install-go-tools run-tests
 
 .PHONY: check-format
@@ -231,7 +247,7 @@ MOCK_RESOURCE_INFO := \
 generate-client-mocks:
 	@$(foreach INFO, $(MOCK_RESOURCE_INFO), \
 		echo Generating mock for $(word 3,$(subst :, , $(INFO)))...; \
-		GOBIN=$(DEPSGOBIN) mockgen -destination=projects/$(word 1,$(subst :, , $(INFO)))/pkg/mocks/mock_$(word 2,$(subst :, , $(INFO)))_client.go \
+		GOBIN=$(DEPSGOBIN) $(DEPSGOBIN)/mockgen -destination=projects/$(word 1,$(subst :, , $(INFO)))/pkg/mocks/mock_$(word 2,$(subst :, , $(INFO)))_client.go \
 		-package=mocks \
 		github.com/solo-io/gloo/projects/$(word 1,$(subst :, , $(INFO)))/pkg/api/v1 \
 		$(word 3,$(subst :, , $(INFO))) \
@@ -249,8 +265,9 @@ $(OUTPUT_DIR)/glooctl: $(SOURCES)
 $(OUTPUT_DIR)/glooctl-linux-$(GOARCH): $(SOURCES)
 	$(GO_BUILD_FLAGS) GOOS=linux go build -ldflags=$(LDFLAGS) -gcflags=$(GCFLAGS) -o $@ $(CLI_DIR)/cmd/main.go
 
+# NOTE: the output of the file is hard coded to amd64 regardless of GOARCH
 $(OUTPUT_DIR)/glooctl-darwin-$(GOARCH): $(SOURCES)
-	$(GO_BUILD_FLAGS) GOOS=darwin go build -ldflags=$(LDFLAGS) -gcflags=$(GCFLAGS) -o $@ $(CLI_DIR)/cmd/main.go
+	$(GO_BUILD_FLAGS) GOOS=darwin go build -ldflags=$(LDFLAGS) -gcflags=$(GCFLAGS) -o $(OUTPUT_DIR)/glooctl-darwin-amd64 $(CLI_DIR)/cmd/main.go
 
 $(OUTPUT_DIR)/glooctl-windows-$(GOARCH).exe: $(SOURCES)
 	$(GO_BUILD_FLAGS) GOOS=windows go build -ldflags=$(LDFLAGS) -gcflags=$(GCFLAGS) -o $@ $(CLI_DIR)/cmd/main.go
@@ -632,6 +649,9 @@ docker: discovery-docker gateway-docker gloo-docker \
 		gloo-envoy-wrapper-docker certgen-docker sds-docker \
 		ingress-docker access-logger-docker
 
+.PHONY: docker-push-local-arm
+docker-push-local-arm: docker docker-push
+
 # Depends on DOCKER_IMAGES, which is set to docker if RELEASE is "true", otherwise empty (making this a no-op).
 # This prevents executing the dependent targets if RELEASE is not true, while still enabling `make docker-build`
 # to be used for local testing.
@@ -659,7 +679,6 @@ CLUSTER_NAME ?= kind
 
 .PHONY: push-kind-images
 push-kind-images: docker
-	kind load docker-image $(IMAGE_REPO)/gateway:$(VERSION) --name $(CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REPO)/ingress:$(VERSION) --name $(CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REPO)/discovery:$(VERSION) --name $(CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REPO)/gloo:$(VERSION) --name $(CLUSTER_NAME)
@@ -668,6 +687,15 @@ push-kind-images: docker
 	kind load docker-image $(IMAGE_REPO)/access-logger:$(VERSION) --name $(CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REPO)/sds:$(VERSION) --name $(CLUSTER_NAME)
 
+.PHONY: push-docker-images-arm-to-kind-registry
+push-docker-images-arm-to-kind-registry:
+	docker push $(IMAGE_REPO)/ingress:$(VERSION)
+	docker push $(IMAGE_REPO)/discovery:$(VERSION)
+	docker push $(IMAGE_REPO)/gloo:$(VERSION)
+	docker push $(IMAGE_REPO)/gloo-envoy-wrapper:$(VERSION)
+	docker push $(IMAGE_REPO)/certgen:$(VERSION)
+	docker push $(IMAGE_REPO)/access-logger:$(VERSION)
+	docker push $(IMAGE_REPO)/sds:$(VERSION)
 
 #----------------------------------------------------------------------------------
 # Build assets for Kube2e tests
@@ -703,13 +731,17 @@ ifeq ($(shell uname), Darwin)
 else
 	machine ?= Linux
 endif
+TRIVY_ARCH:=64bit
+ifeq ($(GOARCH), arm64)
+	TRIVY_ARCH:=ARM64
+endif
 
 # Local run for trivy security checks
 .PHONY: security-checks
 security-checks:
 	mkdir -p $(SCAN_DIR)/$(VERSION)
 
-	curl -Ls "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_${machine}-64bit.tar.gz" | tar zx '*trivy' || { echo "Download/extract failed for trivy."; exit 1; };
+	curl -Ls "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_${machine}-${TRIVY_ARCH}.tar.gz" | tar zx '*trivy' || { echo "Download/extract failed for trivy."; exit 1; };
 
 	./trivy --exit-code 0 --severity HIGH,CRITICAL --no-progress --format template --template "@hack/utils/security_scan_report/markdown.tpl" -o $(SCAN_DIR)/$(VERSION)/gateway_cve_report.docgen $(IMAGE_REPO)/gateway:$(VERSION) && \
 	./trivy --exit-code 0 --severity HIGH,CRITICAL --no-progress --format template --template "@hack/utils/security_scan_report/markdown.tpl" -o $(SCAN_DIR)/$(VERSION)/ingress_cve_report.docgen $(IMAGE_REPO)/ingress:$(VERSION) && \

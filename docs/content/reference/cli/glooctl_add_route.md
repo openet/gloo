@@ -21,6 +21,7 @@ glooctl add route [flags]
 ### Options
 
 ```
+      --aws-alb-unwrap                    Sets if gloo should handle responses as if it was an ALB. Appropriately handles the response body and sets headers.
   -a, --aws-function-name string          logical name of the AWS lambda to invoke with this route. use if destination is an AWS upstream
       --aws-unescape                      unescape JSON returned by this lambda function (useful if the response is not intended to be JSON formatted, e.g. in the case of static content (images, HTML, etc.) being served by Lambda
       --cluster-scoped-vs-client          search for *-domain virtual services outside gloo system namespace to add route to
@@ -53,6 +54,7 @@ glooctl add route [flags]
 ```
   -c, --config string              set the path to the glooctl config file (default "<home_directory>/.gloo/glooctl-config.yaml")
       --consul-address string      address of the Consul server. Use with --use-consul (default "127.0.0.1:8500")
+      --consul-allow-stale-reads   Allows reading using Consul's stale consistency mode.
       --consul-datacenter string   Datacenter to use. If not provided, the default agent datacenter is used. Use with --use-consul
       --consul-root-key string     key prefix for for Consul key-value storage. (default "gloo")
       --consul-scheme string       URI scheme for the Consul server. Use with --use-consul (default "http")

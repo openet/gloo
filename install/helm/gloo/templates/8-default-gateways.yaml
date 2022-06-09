@@ -3,13 +3,14 @@
 {{- $spec := (index . 2) }}
 {{- with (first .) }}
 {{- $gatewaySettings := $spec.gatewaySettings }}
+{{ $data := dict "release" .Release "values" .Values }}
+{{- if $gatewaySettings.enabled }}
 apiVersion: gateway.solo.io/v1
 kind: Gateway
 metadata:
   name: {{ $name | kebabcase }}
-  namespace: {{ .Release.Namespace }}
-  labels:
-    app: gloo
+  namespace: {{ $spec.namespace | default .Release.Namespace }}
+{{- include "gloo.customResourceLabelsAndAnnotations" $data }}
 spec:
   {{- if $gatewaySettings.ipv4Only }}
   bindAddress: "0.0.0.0"
@@ -17,6 +18,9 @@ spec:
   bindAddress: "::"
   {{- end }}
   bindPort: {{ $spec.podTemplate.httpPort }}
+{{- if $gatewaySettings.httpHybridGateway }}
+{{ toYaml $gatewaySettings.httpHybridGateway | indent 2}}
+{{- end }}
 {{- if $gatewaySettings.customHttpGateway}}
   httpGateway:
 {{ toYaml $gatewaySettings.customHttpGateway | indent 4}}
@@ -45,6 +49,7 @@ spec:
   ssl: false
   proxyNames:
   - {{ $name | kebabcase }}
+{{- end }}{{/* $gatewaySettings.enabled */}}
 {{- end }}{{/* with */}}
 {{- end }}{{/* define "defaultGateway.gateway" */}}
 
@@ -54,13 +59,14 @@ spec:
 {{- $spec := (index . 2) }}
 {{- with (first .) }}
 {{- $gatewaySettings := $spec.gatewaySettings }}
+{{ $data := dict "release" .Release "values" .Values }}
+{{- if $gatewaySettings.enabled }}
 apiVersion: gateway.solo.io/v1
 kind: Gateway
 metadata:
   name: {{ $name | kebabcase }}-ssl
   namespace: {{ .Release.Namespace }}
-  labels:
-    app: gloo
+{{- include "gloo.customResourceLabelsAndAnnotations" $data }}
 spec:
   {{- if $gatewaySettings.ipv4Only }}
   bindAddress: "0.0.0.0"
@@ -68,9 +74,12 @@ spec:
   bindAddress: "::"
   {{- end }}
   bindPort: {{ $spec.podTemplate.httpsPort }}
+{{- if $gatewaySettings.httpsHybridGateway }}
+{{ toYaml $gatewaySettings.httpsHybridGateway | indent 2}}
+{{- end }}
 {{- if $gatewaySettings.customHttpsGateway }}
   httpGateway:
-{{ toYaml $gatewaySettings.customHttpsGateway | indent 6}}
+{{ toYaml $gatewaySettings.customHttpsGateway | indent 4}}
 {{- else if $spec.tracing }}
 {{- if $spec.tracing.provider }}
   httpGateway:
@@ -96,6 +105,7 @@ spec:
   ssl: true
   proxyNames:
   - {{ $name | kebabcase }}
+{{- end }}{{/* $gatewaySettings.enabled */}}
 {{- end }}{{/* with */}}
 {{- end }}{{/* define "defaultGatway.sslGateway" */}}
 
@@ -104,13 +114,14 @@ spec:
 {{- $spec := (index . 2) }}
 {{- with (first .) }}
 {{- $gatewaySettings := $spec.gatewaySettings }}
+{{ $data := dict "release" .Release "values" .Values }}
+{{- if $gatewaySettings.enabled }}
 apiVersion: gateway.solo.io/v1
 kind: Gateway
 metadata:
   name: {{ $name | kebabcase }}-failover
-  namespace: {{ .Release.Namespace }}
-  labels:
-    app: gloo
+  namespace: {{ $spec.namespace | default .Release.Namespace }}
+{{- include "gloo.customResourceLabelsAndAnnotations" $data }}
 spec:
 {{- if $gatewaySettings.ipv4Only }}
   bindAddress: "0.0.0.0"
@@ -129,6 +140,7 @@ spec:
         forwardSniClusterName: {}
   proxyNames:
   - {{ $name | kebabcase }}
+{{- end }}{{/* $gatewaySettings.enabled */}}
 {{- end }}{{/* with */}}
 {{- end }}{{/* define "defaultGateway.failoverGateway" */}}
 

@@ -3,23 +3,21 @@ package syncer_test
 import (
 	"context"
 
-	"github.com/solo-io/gloo/pkg/utils/statusutils"
+	"github.com/solo-io/gloo/projects/gloo/pkg/xds"
 
-	envoy_config_cluster_v3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
-	envoy_config_endpoint_v3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
-	envoy_config_listener_v3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/solo-io/gloo/pkg/utils/statusutils"
+	"github.com/solo-io/gloo/projects/gateway/pkg/utils/metrics"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/grpc/validation"
 	v1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
+	v1snap "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/gloosnapshot"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
 	. "github.com/solo-io/gloo/projects/gloo/pkg/syncer"
-	"github.com/solo-io/gloo/projects/gloo/pkg/xds"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/factory"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/memory"
 	envoycache "github.com/solo-io/solo-kit/pkg/api/v1/control-plane/cache"
-	"github.com/solo-io/solo-kit/pkg/api/v1/control-plane/resource"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
 	"github.com/solo-io/solo-kit/pkg/api/v2/reporter"
@@ -31,8 +29,8 @@ var _ = Describe("Translate Proxy", func() {
 	var (
 		xdsCache       *MockXdsCache
 		sanitizer      *MockXdsSanitizer
-		syncer         v1.ApiSyncer
-		snap           *v1.ApiSnapshot
+		syncer         v1snap.ApiSyncer
+		snap           *v1snap.ApiSnapshot
 		settings       *v1.Settings
 		upstreamClient clients.ResourceClient
 		proxyClient    v1.ProxyClient
@@ -42,6 +40,7 @@ var _ = Describe("Translate Proxy", func() {
 		ns             = "any-ns"
 		ref            = "syncer-test"
 		statusClient   resources.StatusClient
+		statusMetrics  metrics.ConfigStatusMetrics
 	)
 
 	BeforeEach(func() {
@@ -69,12 +68,14 @@ var _ = Describe("Translate Proxy", func() {
 		settings = &v1.Settings{}
 
 		statusClient = statusutils.GetStatusClientFromEnvOrDefault(ns)
+		statusMetrics, err = metrics.NewConfigStatusMetrics(metrics.GetDefaultConfigStatusOptions())
+		Expect(err).NotTo(HaveOccurred())
 
 		rep := reporter.NewReporter(ref, statusClient, proxyClient.BaseClient(), upstreamClient)
 
-		xdsHasher := &xds.ProxyKeyHasher{}
-		syncer = NewTranslatorSyncer(&mockTranslator{true, false, nil}, xdsCache, xdsHasher, sanitizer, rep, false, nil, settings)
-		snap = &v1.ApiSnapshot{
+		xdsHasher := xds.NewNodeRoleHasher()
+		syncer = NewTranslatorSyncer(&mockTranslator{true, false, nil}, xdsCache, xdsHasher, sanitizer, rep, false, nil, settings, statusMetrics, nil, proxyClient, "")
+		snap = &v1snap.ApiSnapshot{
 			Proxies: v1.ProxyList{
 				proxy,
 			},
@@ -102,7 +103,7 @@ var _ = Describe("Translate Proxy", func() {
 		Expect(err).NotTo(HaveOccurred())
 		snap.Proxies[0] = p1
 
-		syncer = NewTranslatorSyncer(&mockTranslator{false, false, nil}, xdsCache, xdsHasher, sanitizer, rep, false, nil, settings)
+		syncer = NewTranslatorSyncer(&mockTranslator{false, false, nil}, xdsCache, xdsHasher, sanitizer, rep, false, nil, settings, statusMetrics, nil, proxyClient, "")
 
 		err = syncer.Sync(context.Background(), snap)
 		Expect(err).NotTo(HaveOccurred())
@@ -132,167 +133,15 @@ var _ = Describe("Translate Proxy", func() {
 		Expect(sanitizer.Called).To(BeTrue())
 		Expect(xdsCache.SetSnap).To(BeEquivalentTo(sanitizer.Snap))
 	})
-
-	It("uses listeners and routes from the previous snapshot when sanitization fails", func() {
-		sanitizer.Err = errors.Errorf("we ran out of coffee")
-
-		oldXdsSnap := xds.NewSnapshotFromResources(
-			envoycache.NewResources("", nil),
-			envoycache.NewResources("", nil),
-			envoycache.NewResources("", nil),
-			envoycache.NewResources("old listeners from before the war", []envoycache.Resource{
-				resource.NewEnvoyResource(&envoy_config_listener_v3.Listener{}),
-			}),
-		)
-
-		// return this old snapshot when the syncer asks for it
-		xdsCache.GetSnap = oldXdsSnap
-		err := syncer.Sync(context.Background(), snap)
-		Expect(err).NotTo(HaveOccurred())
-
-		Expect(sanitizer.Called).To(BeTrue())
-		Expect(xdsCache.Called).To(BeTrue())
-
-		oldListeners := oldXdsSnap.GetResources(resource.ListenerTypeV3)
-		newListeners := xdsCache.SetSnap.GetResources(resource.ListenerTypeV3)
-
-		Expect(oldListeners).To(Equal(newListeners))
-
-		oldRoutes := oldXdsSnap.GetResources(resource.RouteTypeV3)
-		newRoutes := xdsCache.SetSnap.GetResources(resource.RouteTypeV3)
-
-		Expect(oldRoutes).To(Equal(newRoutes))
-	})
-
 })
 
-var _ = Describe("Empty cache", func() {
+var _ = Describe("Translate multiple proxies with errors", func() {
 
 	var (
 		xdsCache       *MockXdsCache
 		sanitizer      *MockXdsSanitizer
-		syncer         v1.ApiSyncer
-		settings       *v1.Settings
-		upstreamClient clients.ResourceClient
-		proxyClient    v1.ProxyClient
-		ctx            context.Context
-		cancel         context.CancelFunc
-		proxy          *v1.Proxy
-		snapshot       envoycache.Snapshot
-		proxyName      = "proxy-name"
-		ns             = "any-ns"
-		ref            = "syncer-test"
-		statusClient   resources.StatusClient
-	)
-
-	BeforeEach(func() {
-		var err error
-		xdsCache = &MockXdsCache{}
-		sanitizer = &MockXdsSanitizer{}
-		ctx, cancel = context.WithCancel(context.Background())
-
-		resourceClientFactory := &factory.MemoryResourceClientFactory{
-			Cache: memory.NewInMemoryResourceCache(),
-		}
-
-		proxyClient, _ = v1.NewProxyClient(ctx, resourceClientFactory)
-
-		upstreamClient, err = resourceClientFactory.NewResourceClient(ctx, factory.NewResourceClientParams{ResourceType: &v1.Upstream{}})
-		Expect(err).NotTo(HaveOccurred())
-
-		proxy = &v1.Proxy{
-			Metadata: &core.Metadata{
-				Namespace: ns,
-				Name:      proxyName,
-			},
-		}
-
-		settings = &v1.Settings{}
-
-		statusClient = statusutils.GetStatusClientFromEnvOrDefault(ns)
-
-		rep := reporter.NewReporter(ref, statusClient, proxyClient.BaseClient(), upstreamClient)
-
-		xdsHasher := &xds.ProxyKeyHasher{}
-
-		snapshot = xds.NewEndpointsSnapshotFromResources(
-			envoycache.NewResources("current endpoint", []envoycache.Resource{
-				resource.NewEnvoyResource(&envoy_config_endpoint_v3.ClusterLoadAssignment{
-					ClusterName: "coffee",
-				}),
-			}),
-			envoycache.NewResources("current cluster", []envoycache.Resource{
-				resource.NewEnvoyResource(&envoy_config_cluster_v3.Cluster{
-					Name:                 "coffee",
-					ClusterDiscoveryType: &envoy_config_cluster_v3.Cluster_Type{Type: envoy_config_cluster_v3.Cluster_EDS},
-					LbPolicy:             envoy_config_cluster_v3.Cluster_ROUND_ROBIN,
-					DnsLookupFamily:      envoy_config_cluster_v3.Cluster_V4_ONLY,
-					EdsClusterConfig:     &envoy_config_cluster_v3.Cluster_EdsClusterConfig{},
-				}),
-			}),
-		)
-		syncer = NewTranslatorSyncer(&mockTranslator{true, false, snapshot}, xdsCache, xdsHasher, sanitizer, rep, false, nil, settings)
-
-		_, err = proxyClient.Write(proxy, clients.WriteOpts{})
-		Expect(err).NotTo(HaveOccurred())
-
-		proxies, err := proxyClient.List(proxy.GetMetadata().Namespace, clients.ListOpts{})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(proxies).To(HaveLen(1))
-		Expect(proxies[0]).To(BeAssignableToTypeOf(&v1.Proxy{}))
-
-	})
-
-	AfterEach(func() { cancel() })
-
-	It("only updates endpoints and clusters when sanitization fails and there is no previous snapshot", func() {
-		sanitizer.Err = errors.Errorf("we ran out of coffee")
-
-		apiSnap := v1.ApiSnapshot{
-			Proxies: v1.ProxyList{
-				proxy,
-			},
-		}
-
-		// old snapshot is not set
-		xdsCache.GetSnap = nil
-		err := syncer.Sync(context.Background(), &apiSnap)
-		Expect(err).NotTo(HaveOccurred())
-
-		Expect(sanitizer.Called).To(BeTrue())
-		Expect(xdsCache.Called).To(BeTrue())
-
-		// Don't update listener and routes
-		newListeners := xdsCache.SetSnap.GetResources(resource.ListenerTypeV3)
-		Expect(newListeners.Items).To(BeNil())
-		newRoutes := xdsCache.SetSnap.GetResources(resource.RouteTypeV3)
-		Expect(newRoutes.Items).To(BeNil())
-
-		// update endpoints and clusters
-		newEndpoints := xdsCache.SetSnap.GetResources(resource.EndpointTypeV3)
-		Expect(newEndpoints).To(Equal(snapshot.GetResources(resource.EndpointTypeV3)))
-		newClusters := xdsCache.SetSnap.GetResources(resource.ClusterTypeV3)
-		Expect(newClusters).To(Equal(snapshot.GetResources(resource.ClusterTypeV3)))
-
-		proxies, err := proxyClient.List(proxy.GetMetadata().Namespace, clients.ListOpts{})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(proxies).To(HaveLen(1))
-		Expect(proxies[0]).To(BeAssignableToTypeOf(&v1.Proxy{}))
-		Expect(statusClient.GetStatus(proxies[0])).To(Equal(&core.Status{
-			State:      2,
-			Reason:     "1 error occurred:\n\t* hi, how ya doin'?\n\n",
-			ReportedBy: ref,
-		}))
-	})
-})
-
-var _ = Describe("Translate mulitple proxies with errors", func() {
-
-	var (
-		xdsCache       *MockXdsCache
-		sanitizer      *MockXdsSanitizer
-		syncer         v1.ApiSyncer
-		snap           *v1.ApiSnapshot
+		syncer         v1snap.ApiSyncer
+		snap           *v1snap.ApiSnapshot
 		settings       *v1.Settings
 		proxyClient    v1.ProxyClient
 		upstreamClient v1.UpstreamClient
@@ -301,6 +150,7 @@ var _ = Describe("Translate mulitple proxies with errors", func() {
 		ns             = "any-ns"
 		ref            = "syncer-test"
 		statusClient   resources.StatusClient
+		statusMetrics  metrics.ConfigStatusMetrics
 	)
 
 	proxiesShouldHaveErrors := func(proxies v1.ProxyList, numProxies int) {
@@ -370,12 +220,14 @@ var _ = Describe("Translate mulitple proxies with errors", func() {
 		settings = &v1.Settings{}
 
 		statusClient = statusutils.GetStatusClientFromEnvOrDefault(ns)
+		statusMetrics, err = metrics.NewConfigStatusMetrics(metrics.GetDefaultConfigStatusOptions())
+		Expect(err).NotTo(HaveOccurred())
 
 		rep := reporter.NewReporter(ref, statusClient, proxyClient.BaseClient(), usClient)
 
-		xdsHasher := &xds.ProxyKeyHasher{}
-		syncer = NewTranslatorSyncer(&mockTranslator{true, true, nil}, xdsCache, xdsHasher, sanitizer, rep, false, nil, settings)
-		snap = &v1.ApiSnapshot{
+		xdsHasher := xds.NewNodeRoleHasher()
+		syncer = NewTranslatorSyncer(&mockTranslator{true, true, nil}, xdsCache, xdsHasher, sanitizer, rep, false, nil, settings, statusMetrics, nil, proxyClient, "")
+		snap = &v1snap.ApiSnapshot{
 			Proxies: v1.ProxyList{
 				proxy1,
 				proxy2,
