@@ -334,6 +334,15 @@ func (m *UpstreamOptions) Clone() proto.Message {
 		target.SslParameters = proto.Clone(m.GetSslParameters()).(*SslParameters)
 	}
 
+	if m.GetGlobalAnnotations() != nil {
+		target.GlobalAnnotations = make(map[string]string, len(m.GetGlobalAnnotations()))
+		for k, v := range m.GetGlobalAnnotations() {
+
+			target.GlobalAnnotations[k] = v
+
+		}
+	}
+
 	return target
 }
 
@@ -473,6 +482,12 @@ func (m *GatewayOptions) Clone() proto.Message {
 		target.EnableGatewayController = h.Clone().(*github_com_golang_protobuf_ptypes_wrappers.BoolValue)
 	} else {
 		target.EnableGatewayController = proto.Clone(m.GetEnableGatewayController()).(*github_com_golang_protobuf_ptypes_wrappers.BoolValue)
+	}
+
+	if h, ok := interface{}(m.GetIsolateVirtualHostsBySslConfig()).(clone.Cloner); ok {
+		target.IsolateVirtualHostsBySslConfig = h.Clone().(*github_com_golang_protobuf_ptypes_wrappers.BoolValue)
+	} else {
+		target.IsolateVirtualHostsBySslConfig = proto.Clone(m.GetIsolateVirtualHostsBySslConfig()).(*github_com_golang_protobuf_ptypes_wrappers.BoolValue)
 	}
 
 	return target

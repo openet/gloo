@@ -265,6 +265,9 @@ spec:
                   enableGatewayController:
                     nullable: true
                     type: boolean
+                  isolateVirtualHostsBySslConfig:
+                    nullable: true
+                    type: boolean
                   persistProxySpec:
                     nullable: true
                     type: boolean
@@ -599,6 +602,10 @@ spec:
                 type: string
               upstreamOptions:
                 properties:
+                  globalAnnotations:
+                    additionalProperties:
+                      type: string
+                    type: object
                   sslParameters:
                     properties:
                       cipherSuites:

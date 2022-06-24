@@ -546,12 +546,14 @@ When these properties are defined on a specific upstream, this configuration wil
 
 ```yaml
 "sslParameters": .gloo.solo.io.SslParameters
+"globalAnnotations": map<string, string>
 
 ```
 
 | Field | Type | Description |
 | ----- | ---- | ----------- | 
 | `sslParameters` | [.gloo.solo.io.SslParameters](../ssl.proto.sk/#sslparameters) | Default ssl parameter configuration to use for upstreams. |
+| `globalAnnotations` | `map<string, string>` | Annotations to apply to all upstreams. |
 
 
 
@@ -682,6 +684,7 @@ Settings specific to the Gateway controller
 "virtualServiceOptions": .gloo.solo.io.VirtualServiceOptions
 "persistProxySpec": .google.protobuf.BoolValue
 "enableGatewayController": .google.protobuf.BoolValue
+"isolateVirtualHostsBySslConfig": .google.protobuf.BoolValue
 
 ```
 
@@ -695,6 +698,7 @@ Settings specific to the Gateway controller
 | `virtualServiceOptions` | [.gloo.solo.io.VirtualServiceOptions](../settings.proto.sk/#virtualserviceoptions) | Default configuration to use for VirtualServices, when not provided by a specific virtual service When these properties are defined on a specific VirtualService, this configuration will be ignored. |
 | `persistProxySpec` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Set this to persist the Proxy CRD to etcd By default, proxies are kept in memory to improve performance. Proxies can be persisted to etcd to allow external tools and other pods to read the contents the Proxy CRD. |
 | `enableGatewayController` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | This is set based on the install mode. It indicates to gloo whether or not it should run the gateway translations and validation. |
+| `isolateVirtualHostsBySslConfig` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | If set, group virtual hosts by matching ssl config, and isolate them on separate filter chains The default behavior is to aggregate all virtual hosts, and expose them on identical filter chains, each with a FilterChainMatch that corresponds to the ssl config. Individual Gateways can override this behavior by configuring the "gateway.solo.io/isolate_vhost" annotation to be a truthy ("true", "false") value. |
 
 
 

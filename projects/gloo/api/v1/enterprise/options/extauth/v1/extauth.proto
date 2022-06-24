@@ -384,6 +384,8 @@ message HeaderConfiguration {
     string id_token_header = 1;
     // If set, the access token will be forward upstream using this header name.
     string access_token_header = 2;
+    // If true, adds the "Bearer" prefix to the upstream access token header value.
+    google.protobuf.BoolValue use_bearer_schema_for_authorization = 3;
 }
 
 // OIDC configuration is discovered at <issuerUrl>/.well-known/openid-configuration
@@ -447,6 +449,11 @@ message JwksOnDemandCacheRefreshPolicy {
         // we will stop fetching from the IdP for the remainder of the polling interval.
         uint32 max_idp_req_per_polling_interval = 3;
     }
+}
+
+message AutoMapFromMetadata {
+    // The namespace from which to map metadata
+    string namespace = 1;
 }
 
 
@@ -544,6 +551,12 @@ message OidcAuthorizationCode {
 
     // If set, CallbackPath will be evaluated as a regular expression
     bool parse_callback_path_as_regex = 17;
+
+    // If specified, authEndpointQueryParams and tokenEndpointQueryParams will be populated using dynamic metadata values.
+    // By default parameters will be extracted from the solo_authconfig_oidc namespace
+    // this behavior can be overridden by explicitly specifying a namespace
+    AutoMapFromMetadata auto_map_from_metadata = 18;
+    
 }
 
 // Defines how JSON Web Token (JWT) access tokens are validated.
@@ -1035,6 +1048,11 @@ message ExtAuthConfig {
 
         // If set, CallbackPath will be evaluated as a regular expression
         bool parse_callback_path_as_regex = 17;
+    
+        // If specified, authEndpointQueryParams and tokenEndpointQueryParams will be populated using dynamic metadata values.
+        // By default parameters will be extracted from the solo_authconfig_oidc namespace
+        // this behavior can be overridden by explicitly specifying a namespace
+        AutoMapFromMetadata auto_map_from_metadata = 18;
     }
 
     message AccessTokenValidationConfig {

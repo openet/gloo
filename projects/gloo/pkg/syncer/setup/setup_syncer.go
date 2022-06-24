@@ -64,9 +64,9 @@ import (
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/kube"
 	corecache "github.com/solo-io/solo-kit/pkg/api/v1/clients/kube/cache"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/memory"
-	"github.com/solo-io/solo-kit/pkg/api/v1/control-plane/resource"
 	"github.com/solo-io/solo-kit/pkg/api/v1/control-plane/server"
 	xdsserver "github.com/solo-io/solo-kit/pkg/api/v1/control-plane/server"
+	"github.com/solo-io/solo-kit/pkg/api/v1/control-plane/types"
 	"github.com/solo-io/solo-kit/pkg/api/v2/reporter"
 	"github.com/solo-io/solo-kit/pkg/errors"
 	"github.com/solo-io/solo-kit/pkg/utils/prototime"
@@ -687,21 +687,22 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitte
 		opts.ProxyDebugServer.StartGrpcServer = false
 	}
 	gwOpts := gwtranslator.Opts{
-		GlooNamespace:                 opts.WriteNamespace,
-		WriteNamespace:                opts.WriteNamespace,
-		StatusReporterNamespace:       opts.StatusReporterNamespace,
-		WatchNamespaces:               opts.WatchNamespaces,
-		Gateways:                      opts.Gateways,
-		VirtualServices:               opts.VirtualServices,
-		RouteTables:                   opts.RouteTables,
-		Proxies:                       opts.Proxies,
-		RouteOptions:                  opts.RouteOptions,
-		VirtualHostOptions:            opts.VirtualHostOptions,
-		WatchOpts:                     opts.WatchOpts,
-		DevMode:                       opts.DevMode,
-		ReadGatewaysFromAllNamespaces: opts.ReadGatwaysFromAllNamespaces,
-		Validation:                    opts.ValidationOpts,
-		ConfigStatusMetricOpts:        nil,
+		GlooNamespace:                  opts.WriteNamespace,
+		WriteNamespace:                 opts.WriteNamespace,
+		StatusReporterNamespace:        opts.StatusReporterNamespace,
+		WatchNamespaces:                opts.WatchNamespaces,
+		Gateways:                       opts.Gateways,
+		VirtualServices:                opts.VirtualServices,
+		RouteTables:                    opts.RouteTables,
+		Proxies:                        opts.Proxies,
+		RouteOptions:                   opts.RouteOptions,
+		VirtualHostOptions:             opts.VirtualHostOptions,
+		WatchOpts:                      opts.WatchOpts,
+		DevMode:                        opts.DevMode,
+		ReadGatewaysFromAllNamespaces:  opts.ReadGatwaysFromAllNamespaces,
+		Validation:                     opts.ValidationOpts,
+		ConfigStatusMetricOpts:         nil,
+		IsolateVirtualHostsBySslConfig: opts.Settings.GetGateway().GetIsolateVirtualHostsBySslConfig().GetValue(),
 	}
 	var (
 		ignoreProxyValidationFailure bool
@@ -743,7 +744,6 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitte
 	gwValidationSyncer := gwvalidation.NewValidator(gwvalidation.NewValidatorConfig(
 		gatewayTranslator,
 		validator.Validate,
-		gwOpts.WriteNamespace,
 		ignoreProxyValidationFailure,
 		allowWarnings,
 	))
@@ -910,7 +910,7 @@ func startRestXdsServer(opts bootstrap.Opts) {
 		contextutils.LoggerFrom(opts.WatchOpts.Ctx),
 		opts.ControlPlane.XDSServer,
 		map[string]string{
-			resource.FetchEndpointsV3: resource.EndpointTypeV3,
+			types.FetchEndpointsV3: types.EndpointTypeV3,
 		},
 	)
 	restXdsAddr := opts.Settings.GetGloo().GetRestXdsBindAddr()

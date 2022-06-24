@@ -482,6 +482,17 @@ func (m *UpstreamOptions) Equal(that interface{}) bool {
 		}
 	}
 
+	if len(m.GetGlobalAnnotations()) != len(target.GetGlobalAnnotations()) {
+		return false
+	}
+	for k, v := range m.GetGlobalAnnotations() {
+
+		if strings.Compare(v, target.GetGlobalAnnotations()[k]) != 0 {
+			return false
+		}
+
+	}
+
 	return true
 }
 
@@ -736,6 +747,16 @@ func (m *GatewayOptions) Equal(that interface{}) bool {
 		}
 	} else {
 		if !proto.Equal(m.GetEnableGatewayController(), target.GetEnableGatewayController()) {
+			return false
+		}
+	}
+
+	if h, ok := interface{}(m.GetIsolateVirtualHostsBySslConfig()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetIsolateVirtualHostsBySslConfig()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetIsolateVirtualHostsBySslConfig(), target.GetIsolateVirtualHostsBySslConfig()) {
 			return false
 		}
 	}

@@ -11,6 +11,7 @@ import (
 	gomock "github.com/golang/mock/gomock"
 	v1 "github.com/solo-io/gloo/projects/gateway/pkg/api/v1"
 	v10 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
+	gloosnapshot "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/gloosnapshot"
 	reporter "github.com/solo-io/solo-kit/pkg/api/v2/reporter"
 )
 
@@ -38,16 +39,16 @@ func (m *MockTranslator) EXPECT() *MockTranslatorMockRecorder {
 }
 
 // Translate mocks base method.
-func (m *MockTranslator) Translate(arg0 context.Context, arg1, arg2 string, arg3 *v1.ApiSnapshot, arg4 v1.GatewayList) (*v10.Proxy, reporter.ResourceReports) {
+func (m *MockTranslator) Translate(arg0 context.Context, arg1 string, arg2 *gloosnapshot.ApiSnapshot, arg3 v1.GatewayList) (*v10.Proxy, reporter.ResourceReports) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Translate", arg0, arg1, arg2, arg3, arg4)
+	ret := m.ctrl.Call(m, "Translate", arg0, arg1, arg2, arg3)
 	ret0, _ := ret[0].(*v10.Proxy)
 	ret1, _ := ret[1].(reporter.ResourceReports)
 	return ret0, ret1
 }
 
 // Translate indicates an expected call of Translate.
-func (mr *MockTranslatorMockRecorder) Translate(arg0, arg1, arg2, arg3, arg4 interface{}) *gomock.Call {
+func (mr *MockTranslatorMockRecorder) Translate(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Translate", reflect.TypeOf((*MockTranslator)(nil).Translate), arg0, arg1, arg2, arg3, arg4)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Translate", reflect.TypeOf((*MockTranslator)(nil).Translate), arg0, arg1, arg2, arg3)
 }
