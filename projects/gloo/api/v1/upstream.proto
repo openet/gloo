@@ -53,7 +53,7 @@ message Upstream {
     // if this upstream is created or modified by Discovery, metadata about the operation will be placed here.
     DiscoveryMetadata discovery_metadata = 3;
 
-    // SslConfig contains the options necessary to configure an upstream to use TLS origination
+    // SslConfig contains the options necessary to configure envoy to originate TLS to an upstream.
     UpstreamSslConfig ssl_config = 4;
 
     // Circuit breakers for this upstream. if not set, the defaults ones from the Gloo settings will be used.
@@ -111,14 +111,26 @@ message Upstream {
     // watermark callbacks will fire to stop the flow of data to the codec buffers.
     // Requires UseHttp2 to be true to be acknowledged.
     google.protobuf.UInt32Value initial_stream_window_size = 19;
+
     // (UInt32Value) Similar to initial_stream_window_size, but for connection-level flow-control window.
     // Currently, this has the same minimum/maximum/default as initial_stream_window_size.
     // Requires UseHttp2 to be true to be acknowledged.
     google.protobuf.UInt32Value initial_connection_window_size = 20;
+
     // (UInt32Value) Maximum concurrent streams allowed for peer on one HTTP/2 connection.
     // Valid values range from 1 to 2147483647 (2^31 - 1) and defaults to 2147483647.
     // Requires UseHttp2 to be true to be acknowledged.
     google.protobuf.UInt32Value max_concurrent_streams = 24;
+
+    // Allows invalid HTTP messaging and headers. When this option is disabled (default), then
+    // the whole HTTP/2 connection is terminated upon receiving invalid HEADERS frame. However,
+    // when this option is enabled, only the offending stream is terminated.
+    //
+    // This overrides any HCM :ref:`stream_error_on_invalid_http_messaging
+    // <envoy_v3_api_field_extensions.filters.network.http_connection_manager.v3.HttpConnectionManager.stream_error_on_invalid_http_message>`
+    //
+    // See `RFC7540, sec. 8.1 <https://tools.ietf.org/html/rfc7540#section-8.1>`_ for details.
+    google.protobuf.BoolValue override_stream_error_on_invalid_http_message = 26;
 
     // Tells envoy that the upstream is an HTTP proxy (e.g., another proxy in a DMZ) that supports HTTP Connect.
     // This configuration sets the hostname used as part of the HTTP Connect request.
@@ -136,6 +148,14 @@ message Upstream {
     // Note: if setting this field to a hostname rather than IP:PORT, you may want to also set `host_rewrite` on the route
     google.protobuf.StringValue http_proxy_hostname = 21;
 
+    // HttpConnectSslConfig contains the options necessary to configure envoy to originate TLS to an HTTP Connect proxy.
+    // If you also want to ensure the bytes proxied by the HTTP Connect proxy are encrypted, you should also
+    // specify `ssl_config`.
+    UpstreamSslConfig http_connect_ssl_config = 27;
+
+    // HttpConnectHeaders specifies the headers sent with the initial HTTP Connect request.
+    repeated HeaderValue http_connect_headers = 28;
+
     // (bool) If set to true, Envoy will ignore the health value of a host when processing its removal from service discovery.
     // This means that if active health checking is used, Envoy will not wait for the endpoint to go unhealthy before removing it.
     google.protobuf.BoolValue ignore_health_on_host_removal = 22;
@@ -145,4 +165,12 @@ message Upstream {
 message DiscoveryMetadata {
     // Labels inherited from the original upstream (e.g. Kubernetes labels)
     map<string, string> labels = 1;
+}
+
+// Header name/value pair.
+message HeaderValue {
+    // Header name.
+    string key = 1;
+    // Header value.
+    string value = 2;
 }

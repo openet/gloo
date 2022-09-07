@@ -28,8 +28,7 @@ func (p *plugin) Name() string {
 	return ExtensionName
 }
 
-func (p *plugin) Init(params plugins.InitParams) error {
-	return nil
+func (p *plugin) Init(_ plugins.InitParams) {
 }
 
 func (p *plugin) ProcessListener(params plugins.Params, in *v1.Listener, out *envoy_config_listener_v3.Listener) error {
@@ -56,7 +55,19 @@ func (p *plugin) ProcessListener(params plugins.Params, in *v1.Listener, out *en
 func shouldIncludeTlsInspectorListenerFilter(in *v1.Listener) bool {
 	return includeTlsInspectorForListener(in) ||
 		includeTlsInspectorForTcpListener(in.GetTcpListener()) ||
-		includeTlsInspectorForHybridListener(in.GetHybridListener())
+		includeTlsInspectorForHybridListener(in.GetHybridListener()) ||
+		includeTlsInspectorForAggregateListener(in.GetAggregateListener())
+}
+
+func includeTlsInspectorForAggregateListener(in *v1.AggregateListener) bool {
+	// check all httpFilterChains for a matcher-specified ssl config
+	for _, filterChain := range in.GetHttpFilterChains() {
+		if filterChain.GetMatcher().GetSslConfig() != nil {
+			return true
+		}
+	}
+
+	return false
 }
 
 func includeTlsInspectorForListener(in *v1.Listener) bool {

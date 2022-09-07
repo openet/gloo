@@ -34,6 +34,7 @@ spec:
         prometheus.io/path: /metrics
         prometheus.io/port: "9091"
         prometheus.io/scrape: "true"
+        gloo.solo.io/oss-image-tag: {{ .Values.gloo.deployment.ossImageTag }}
         {{- end}}
         {{- if .Values.gloo.deployment.extraGlooAnnotations }}
         {{- range $key, $value := .Values.gloo.deployment.extraGlooAnnotations }}
@@ -247,11 +248,6 @@ spec:
           periodSeconds: 10
           failureThreshold: 3
 {{- end }}
-  {{- if and .Values.gateway.validation.enabled .Values.gateway.enabled }}
-        volumeMounts:
-          - mountPath: /etc/gateway/validation-certs
-            name: validation-certs
-  {{- end }} {{/* if .Values.gateway.validation.enabled */}}
 {{- end }}{{/* if not .Values.global.glooMtls.enabled */}}
 {{- end }} {{/* define "gloo.deploymentSpec "*/}}
 

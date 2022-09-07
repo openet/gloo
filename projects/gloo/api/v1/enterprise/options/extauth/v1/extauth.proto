@@ -72,6 +72,12 @@ message AuthConfig {
     // An example config might be: `( basic1 || basic2 || (oidc1 && !oidc2) )`
     // The boolean expression is evaluated left to right but honors parenthesis and short-circuiting.
     google.protobuf.StringValue boolean_expr = 10;
+
+    // How the service should handle a redirect response from an OIDC issuer. In the default false mode,
+    // the redirect will be considered a successful response, and the client will receive a 302 with a location header.
+    // If this is set to true, the client will instead receive a 401 unauthorized response. This is useful in cases where
+    // API calls are being made or other such occurrences where the client cannot handle the redirect.
+    bool fail_on_redirect = 11;
 }
 
 // Auth configurations defined on virtual hosts, routes, and weighted destinations will be unmarshalled to this message.
@@ -311,10 +317,37 @@ message RedisOptions {
     // size of the connection pool. can leave unset for default.
     // defaults to 10 connections per every CPU
     int32 pool_size = 3;
+	// enabled with a socket type of TLS. this is the tls cert mount path for this particular host.
+	// the generic secret can include the keys 'ca.crt', 'tls.crt', and 'tls.key'.
+	// the secret can contain the root-ca ,'ca.crt', at minimum. If a
+	// certificate is needed, both the 'tls.crt' and 'tls.key' need to be included.
+	// reference this to equal the 'mountPath' on the 'redis.certs[x].mountPath' in the helm chart values.
+	// an example of a mount path is '/certs'.
+    string tls_cert_mount_path = 4;
+    // redis socket types
+    enum SocketType {
+        // TCP connection socket, this is the default.
+        TCP = 0;
+        // TLS connection socket.
+        TLS = 1;
+    }
+    // the socket type, default is TCP.
+    SocketType socket_type = 5;
 }
 
 message UserSession {
     message InternalSession {
+        // When set, refresh expired id-tokens using the refresh-token. Defaults to false.
+        // Explicitly set to true to enable refreshing.
+        google.protobuf.BoolValue allow_refreshing = 1;
+        // Prefix to append to cookie keys, such as for separate domain and subdomain prefixes.
+        // Cookie keys are stored in the form `<key_prefix>_<cookie_name>`.
+        // For more information, see https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#attributes
+        string key_prefix = 2;
+        // Domain used to validate against requests in order to ensure that request host name matches target domain.
+        // If the target domain is provided will prevent requests that do not match the target domain according to
+        // the domain matching specifications in RFC 6265. For more information, see https://datatracker.ietf.org/doc/html/rfc6265#section-5.1.3
+        string target_domain = 3;
     }
     message RedisSession {
         // Options to connect to redis
@@ -331,6 +364,10 @@ message UserSession {
         // tokens after they have already expired. To refresh tokens, you must also set
         // 'allowRefreshing' to 'true'; otherwise, this field is ignored.
         google.protobuf.Duration pre_expiry_buffer = 5;
+        // Domain used to validate against requests in order to ensure that request host name matches target domain.
+        // If the target domain is provided will prevent requests that do not match the target domain according to
+        // the domain matching specifications in RFC 6265. For more information, see https://datatracker.ietf.org/doc/html/rfc6265#section-5.1.3
+        string target_domain = 6;
     }
 
     // should we fail auth flow when failing to get a session from redis, or allow it to continue,
@@ -353,7 +390,7 @@ message UserSession {
         enum SameSite {
             // Default Mode is the same as LaxMode but will not show up in the Cookie Header. This value is ignored.
             DefaultMode = 0;
-            // Cookies are not sent on normal cross-site subrequests, but are sent when 
+            // Cookies are not sent on normal cross-site subrequests, but are sent when
             // navigating to the origin site.
             LaxMode = 1;
             // Only be sent in a first-party context and not be sent along with requests
@@ -421,6 +458,9 @@ message DiscoveryOverride {
 
     // url of the provider token revocation endpoint
     string revocation_endpoint = 10;
+
+    // url of the provider end session endpoint
+    string end_session_endpoint = 11;
 }
 
 // The json web key set (JWKS) (https://tools.ietf.org/html/rfc7517) is discovered at an interval
@@ -454,6 +494,18 @@ message JwksOnDemandCacheRefreshPolicy {
 message AutoMapFromMetadata {
     // The namespace from which to map metadata
     string namespace = 1;
+}
+
+message EndSessionProperties {
+    // The Method used to make the request.
+    enum MethodType {
+        // Uses GET method when making the request
+        GetMethod = 0;
+        // Uses POST method when making the request
+        PostMethod = 1;
+    }
+    // The method type used by the end session endpoint, defaults to GET.
+    MethodType methodType = 1;
 }
 
 
@@ -556,7 +608,11 @@ message OidcAuthorizationCode {
     // By default parameters will be extracted from the solo_authconfig_oidc namespace
     // this behavior can be overridden by explicitly specifying a namespace
     AutoMapFromMetadata auto_map_from_metadata = 18;
-    
+
+    // If specified, these are properties defined for the end session endpoint
+    // specifications. Noted [here](https://openid.net/specs/openid-connect-rpinitiated-1_0.html)
+    // in the OIDC documentation.
+    EndSessionProperties end_session_properties = 19;
 }
 
 // Defines how JSON Web Token (JWT) access tokens are validated.
@@ -637,7 +693,7 @@ message IntrospectionValidation {
 }
 
 message AccessTokenValidation {
-    
+
     oneof validation_type {
         // The URL for the [OAuth2.0 Token Introspection](https://tools.ietf.org/html/rfc7662) endpoint.
         // If provided, the (opaque) access token provided or received from the oauth authorization endpoint
@@ -749,9 +805,9 @@ message OpaAuth {
 }
 
 message OpaAuthOptions {
-    // Decreases OPA latency by speeding up conversion of input to the OPA engine. 
-    // If this is set to true, only http_request and state fields which are a scalar, map, or string array 
-    // are included in the request input. All other fields are dropped. Dropped fields will not be evaluated by the OPA engine. 
+    // Decreases OPA latency by speeding up conversion of input to the OPA engine.
+    // If this is set to true, only http_request and state fields which are a scalar, map, or string array
+    // are included in the request input. All other fields are dropped. Dropped fields will not be evaluated by the OPA engine.
     // By default, this is set to false and all fields are evaluated by OPA.
     bool fast_input_conversion = 1;
 }
@@ -795,6 +851,11 @@ message Ldap {
 
     // Use to set a custom filter when searching a member. Defaults to "(uid=*)".
     string searchFilter = 6;
+
+    // Disables group checking, regardless of the value for allowedGroups,
+    // and disables validation for the membership attribute of the user entry.
+    // Group checking is enabled by default.
+    bool disable_group_checking = 7;
 }
 
 // Authorizes requests by querying a custom extauth server.
@@ -1048,11 +1109,16 @@ message ExtAuthConfig {
 
         // If set, CallbackPath will be evaluated as a regular expression
         bool parse_callback_path_as_regex = 17;
-    
+
         // If specified, authEndpointQueryParams and tokenEndpointQueryParams will be populated using dynamic metadata values.
         // By default parameters will be extracted from the solo_authconfig_oidc namespace
         // this behavior can be overridden by explicitly specifying a namespace
         AutoMapFromMetadata auto_map_from_metadata = 18;
+
+        // If specified, these are properties defined for the end session endpoint
+        // specifications. Noted [here](https://openid.net/specs/openid-connect-rpinitiated-1_0.html)
+        // in the OIDC documentation.
+        EndSessionProperties end_session_properties = 19;
     }
 
     message AccessTokenValidationConfig {
@@ -1276,6 +1342,12 @@ message ExtAuthConfig {
     // An example config might be: `( basic1 || basic2 || (oidc1 && !oidc2) )`
     // The boolean expression is evaluated left to right but honors parenthesis and short-circuiting.
     google.protobuf.StringValue boolean_expr = 10;
+
+    // How the service should handle a redirect response from an OIDC issuer. In the default false mode,
+    // the redirect will be considered a successful response, and the client will receive a 302 with a location header.
+    // If this is set to true, the client will instead receive a 401 unauthorized response. This is useful in cases where
+    // API calls are being made or other such occurrences where the client cannot handle the redirect.
+    bool fail_on_redirect = 11;
 }
 
 /*

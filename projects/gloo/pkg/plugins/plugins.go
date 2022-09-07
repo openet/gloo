@@ -25,7 +25,7 @@ type Plugin interface {
 	//		we need to be able to cancel that go-routine on the next translation
 	//	2. Plugins are built with the assumption that they will be short lived, only for the
 	//		duration of a single translation loop
-	Init(params InitParams) error
+	Init(params InitParams)
 }
 
 /*

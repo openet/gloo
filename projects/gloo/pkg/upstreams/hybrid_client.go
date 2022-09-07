@@ -29,7 +29,8 @@ const (
 func NewHybridUpstreamClient(
 	upstreamClient v1.UpstreamClient,
 	serviceClient skkube.ServiceClient,
-	consulClient consul.ConsulWatcher) (v1.UpstreamClient, error) {
+	consulClient consul.ConsulWatcher,
+	settings *v1.Settings) (v1.UpstreamClient, error) {
 
 	clientMap := make(map[string]v1.UpstreamClient)
 
@@ -43,7 +44,7 @@ func NewHybridUpstreamClient(
 	}
 
 	if consulClient != nil {
-		clientMap[sourceConsul] = consul.NewConsulUpstreamClient(consulClient, nil)
+		clientMap[sourceConsul] = consul.NewConsulUpstreamClient(consulClient, settings.GetConsulDiscovery())
 	}
 
 	return &hybridUpstreamClient{
@@ -145,10 +146,11 @@ func (c *hybridUpstreamClient) Watch(namespace string, opts clients.WatchOpts) (
 	go func() {
 		var previousHash uint64
 
-		syncFunc := func() {
+		// return success for the sync (ie if there still needs changes its a false)
+		syncFunc := func() bool {
 			currentHash := current.hash()
 			if currentHash == previousHash {
-				return
+				return true
 			}
 			toSend := current.clone()
 
@@ -158,13 +160,14 @@ func (c *hybridUpstreamClient) Watch(namespace string, opts clients.WatchOpts) (
 			default:
 				contextutils.LoggerFrom(ctx).Debugw("failed to push hybrid upstream list to "+
 					"channel (must be full), retrying in 1s", zap.Uint64("list hash", currentHash))
+				return false
 			}
+			return true
 		}
 
 		// First time - sync the current state
-		syncFunc()
+		needsSync := syncFunc()
 		timer := time.NewTicker(time.Second * 1)
-		var needsSync bool
 
 		for {
 			select {
@@ -181,8 +184,8 @@ func (c *hybridUpstreamClient) Watch(namespace string, opts clients.WatchOpts) (
 				}
 			case <-timer.C:
 				if needsSync {
-					syncFunc()
-					needsSync = false
+
+					needsSync = !syncFunc()
 				}
 			}
 		}

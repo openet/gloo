@@ -58,6 +58,10 @@ func (m *UpstreamSpec) Clone() proto.Message {
 
 	target.RoleArn = m.GetRoleArn()
 
+	target.AwsAccountId = m.GetAwsAccountId()
+
+	target.DisableRoleChaining = m.GetDisableRoleChaining()
+
 	return target
 }
 
@@ -95,6 +99,8 @@ func (m *DestinationSpec) Clone() proto.Message {
 	target.ResponseTransformation = m.GetResponseTransformation()
 
 	target.UnwrapAsAlb = m.GetUnwrapAsAlb()
+
+	target.UnwrapAsApiGateway = m.GetUnwrapAsApiGateway()
 
 	return target
 }

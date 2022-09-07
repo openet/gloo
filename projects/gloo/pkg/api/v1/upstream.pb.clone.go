@@ -148,10 +148,35 @@ func (m *Upstream) Clone() proto.Message {
 		target.MaxConcurrentStreams = proto.Clone(m.GetMaxConcurrentStreams()).(*github_com_golang_protobuf_ptypes_wrappers.UInt32Value)
 	}
 
+	if h, ok := interface{}(m.GetOverrideStreamErrorOnInvalidHttpMessage()).(clone.Cloner); ok {
+		target.OverrideStreamErrorOnInvalidHttpMessage = h.Clone().(*github_com_golang_protobuf_ptypes_wrappers.BoolValue)
+	} else {
+		target.OverrideStreamErrorOnInvalidHttpMessage = proto.Clone(m.GetOverrideStreamErrorOnInvalidHttpMessage()).(*github_com_golang_protobuf_ptypes_wrappers.BoolValue)
+	}
+
 	if h, ok := interface{}(m.GetHttpProxyHostname()).(clone.Cloner); ok {
 		target.HttpProxyHostname = h.Clone().(*github_com_golang_protobuf_ptypes_wrappers.StringValue)
 	} else {
 		target.HttpProxyHostname = proto.Clone(m.GetHttpProxyHostname()).(*github_com_golang_protobuf_ptypes_wrappers.StringValue)
+	}
+
+	if h, ok := interface{}(m.GetHttpConnectSslConfig()).(clone.Cloner); ok {
+		target.HttpConnectSslConfig = h.Clone().(*UpstreamSslConfig)
+	} else {
+		target.HttpConnectSslConfig = proto.Clone(m.GetHttpConnectSslConfig()).(*UpstreamSslConfig)
+	}
+
+	if m.GetHttpConnectHeaders() != nil {
+		target.HttpConnectHeaders = make([]*HeaderValue, len(m.GetHttpConnectHeaders()))
+		for idx, v := range m.GetHttpConnectHeaders() {
+
+			if h, ok := interface{}(v).(clone.Cloner); ok {
+				target.HttpConnectHeaders[idx] = h.Clone().(*HeaderValue)
+			} else {
+				target.HttpConnectHeaders[idx] = proto.Clone(v).(*HeaderValue)
+			}
+
+		}
 	}
 
 	if h, ok := interface{}(m.GetIgnoreHealthOnHostRemoval()).(clone.Cloner); ok {
@@ -267,6 +292,21 @@ func (m *DiscoveryMetadata) Clone() proto.Message {
 
 		}
 	}
+
+	return target
+}
+
+// Clone function
+func (m *HeaderValue) Clone() proto.Message {
+	var target *HeaderValue
+	if m == nil {
+		return target
+	}
+	target = &HeaderValue{}
+
+	target.Key = m.GetKey()
+
+	target.Value = m.GetValue()
 
 	return target
 }

@@ -29,6 +29,15 @@ ifneq ($(TEST_ASSET_ID),)
 	CREATE_TEST_ASSETS := "true"
 endif
 
+# ensure we have a valid version from a forked repo, so community users can submit PRs
+ORIGIN_URL ?= $(shell git remote get-url origin)
+UPSTREAM_ORIGIN_URL ?= git@github.com:solo-io/gloo.git
+UPSTREAM_ORIGIN_URL_HTTPS ?= https://www.github.com/solo-io/gloo.git
+ifeq ($(filter "$(ORIGIN_URL)", "$(UPSTREAM_ORIGIN_URL)" "$(UPSTREAM_ORIGIN_URL_HTTPS)"),)
+	VERSION := 0.0.1-fork
+	CREATE_TEST_ASSETS := "false"
+endif
+
 # If TAGGED_VERSION does not exist, this is not a release in CI
 ifeq ($(TAGGED_VERSION),)
 	# If we want to create test assets, set version to be PR-unique rather than commit-unique for charts and images
@@ -56,7 +65,7 @@ else
   endif
 endif
 
-ENVOY_GLOO_IMAGE ?= quay.io/solo-io/envoy-gloo:1.21.3-patch1
+ENVOY_GLOO_IMAGE ?= quay.io/solo-io/envoy-gloo:1.23.0-patch3
 
 # The full SHA of the currently checked out commit
 CHECKED_OUT_SHA := $(shell git rev-parse HEAD)
@@ -139,7 +148,7 @@ DEPSGOBIN=$(shell pwd)/_output/.bin
 
 # https://github.com/go-modules-by-example/index/blob/master/010_tools/README.md
 .PHONY: install-go-tools
-install-go-tools: mod-download
+install-go-tools: mod-download install-test-tools
 	mkdir -p $(DEPSGOBIN)
 	chmod +x $(shell go list -f '{{ .Dir }}' -m k8s.io/code-generator)/generate-groups.sh
 	GOBIN=$(DEPSGOBIN) go install github.com/solo-io/protoc-gen-ext
@@ -150,8 +159,12 @@ install-go-tools: mod-download
 	GOBIN=$(DEPSGOBIN) go install github.com/cratonica/2goarray
 	GOBIN=$(DEPSGOBIN) go install github.com/golang/mock/gomock
 	GOBIN=$(DEPSGOBIN) go install github.com/golang/mock/mockgen
-	GOBIN=$(DEPSGOBIN) go install github.com/onsi/ginkgo/ginkgo
 	GOBIN=$(DEPSGOBIN) go install github.com/saiskee/gettercheck
+
+.PHONY: install-test-tools
+install-test-tools:
+	mkdir -p $(DEPSGOBIN)
+	GOBIN=$(DEPSGOBIN) go install github.com/onsi/ginkgo/ginkgo
 
 # command to run regression tests with guaranteed access to $(DEPSGOBIN)/ginkgo
 # requires the environment variable KUBE2E_TESTS to be set to the test type you wish to run
@@ -159,13 +172,13 @@ install-go-tools: mod-download
 .PHONY: run-tests
 run-tests:
 ifneq ($(RELEASE), "true")
-	RUN_REGRESSION_TESTS=$(RUN_REGRESSION_TESTS) $(DEPSGOBIN)/ginkgo -ldflags=$(LDFLAGS) -r -failFast -trace -progress -race -compilers=4 -failOnPending -noColor $(TEST_PKG)
+	$(DEPSGOBIN)/ginkgo -ldflags=$(LDFLAGS) -r -failFast -trace -progress -race -compilers=4 -failOnPending -noColor $(TEST_PKG)
 endif
 
 .PHONY: run-ci-regression-tests
-run-ci-regression-tests: TEST_PKG=./test/kube2e/...
-run-ci-regression-tests: RUN_REGRESSION_TESTS=true
-run-ci-regression-tests: install-go-tools run-tests
+run-ci-regression-tests: install-test-tools
+	# We intentionally leave out the `-r` ginkgo flag, since we are specifying the exact package that we want run
+	$(DEPSGOBIN)/ginkgo -ldflags=$(LDFLAGS) -failFast -trace -progress -race -failOnPending -noColor ./test/kube2e/$(KUBE2E_TESTS)
 
 .PHONY: check-format
 check-format:
@@ -284,29 +297,6 @@ glooctl-windows-$(GOARCH): $(OUTPUT_DIR)/glooctl-windows-$(GOARCH).exe
 
 .PHONY: build-cli
 build-cli: glooctl-linux-$(GOARCH) glooctl-darwin-$(GOARCH) glooctl-windows-$(GOARCH)
-
-#----------------------------------------------------------------------------------
-# Gateway
-#----------------------------------------------------------------------------------
-
-GATEWAY_DIR=projects/gateway
-GATEWAY_SOURCES=$(call get_sources,$(GATEWAY_DIR))
-GATEWAY_OUTPUT_DIR=$(OUTPUT_DIR)/$(GATEWAY_DIR)
-
-$(GATEWAY_OUTPUT_DIR)/gateway-linux-$(GOARCH): $(GATEWAY_SOURCES)
-	$(GO_BUILD_FLAGS) GOOS=linux go build -ldflags=$(LDFLAGS) -gcflags=$(GCFLAGS) -o $@ $(GATEWAY_DIR)/cmd/main.go
-
-.PHONY: gateway
-gateway: $(GATEWAY_OUTPUT_DIR)/gateway-linux-$(GOARCH)
-
-$(GATEWAY_OUTPUT_DIR)/Dockerfile.gateway: $(GATEWAY_DIR)/cmd/Dockerfile
-	cp $< $@
-
-.PHONY: gateway-docker
-gateway-docker: $(GATEWAY_OUTPUT_DIR)/gateway-linux-$(GOARCH) $(GATEWAY_OUTPUT_DIR)/Dockerfile.gateway
-	docker build $(GATEWAY_OUTPUT_DIR) -f $(GATEWAY_OUTPUT_DIR)/Dockerfile.gateway \
-		--build-arg GOARCH=$(GOARCH) \
-		-t $(IMAGE_REPO)/gateway:$(VERSION) $(QUAY_EXPIRATION_LABEL)
 
 #----------------------------------------------------------------------------------
 # Ingress
@@ -475,10 +465,27 @@ certgen-docker: $(CERTGEN_OUTPUT_DIR)/certgen-linux-$(GOARCH) $(CERTGEN_OUTPUT_D
 		-t $(IMAGE_REPO)/certgen:$(VERSION) $(QUAY_EXPIRATION_LABEL)
 
 #----------------------------------------------------------------------------------
+# Kubectl - Used in jobs during helm install/upgrade/uninstall
+#----------------------------------------------------------------------------------
+
+KUBECTL_DIR=jobs/kubectl
+KUBECTL_OUTPUT_DIR=$(OUTPUT_DIR)/$(KUBECTL_DIR)
+
+$(KUBECTL_OUTPUT_DIR)/Dockerfile.kubectl: $(KUBECTL_DIR)/Dockerfile
+	mkdir -p $(KUBECTL_OUTPUT_DIR)
+	cp $< $@
+
+.PHONY: kubectl-docker
+kubectl-docker: $(KUBECTL_OUTPUT_DIR)/Dockerfile.kubectl
+	docker build $(KUBECTL_OUTPUT_DIR) -f $(KUBECTL_OUTPUT_DIR)/Dockerfile.kubectl \
+		--build-arg GOARCH=$(GOARCH) \
+		-t $(IMAGE_REPO)/kubectl:$(VERSION) $(QUAY_EXPIRATION_LABEL)
+
+#----------------------------------------------------------------------------------
 # Build All
 #----------------------------------------------------------------------------------
 .PHONY: build
-build: gloo glooctl gateway discovery envoyinit certgen ingress
+build: gloo glooctl discovery envoyinit certgen ingress
 
 #----------------------------------------------------------------------------------
 # Deployment Manifests / Helm
@@ -502,7 +509,7 @@ generate-helm-files: $(OUTPUT_DIR)/.helm-prepared
 HELM_PREPARED_INPUT := $(HELM_DIR)/generate.go $(wildcard $(HELM_DIR)/generate/*.go)
 $(OUTPUT_DIR)/.helm-prepared: $(HELM_PREPARED_INPUT)
 	mkdir -p $(HELM_SYNC_DIR)/charts
-	go run $(HELM_DIR)/generate.go --version $(VERSION) --generate-helm-docs
+	IMAGE_REPO=$(IMAGE_REPO) go run $(HELM_DIR)/generate.go --version $(VERSION) --generate-helm-docs
 	touch $@
 
 .PHONY: package-chart
@@ -607,47 +614,47 @@ endif
 .PHONY: docker-push-retag
 docker-push-retag:
 ifeq ($(RELEASE), "true")
-	docker tag $(RETAG_IMAGE_REGISTRY)/gateway:$(VERSION) $(IMAGE_REPO)/gateway:$(VERSION) && \
 	docker tag $(RETAG_IMAGE_REGISTRY)/ingress:$(VERSION) $(IMAGE_REPO)/ingress:$(VERSION) && \
 	docker tag $(RETAG_IMAGE_REGISTRY)/discovery:$(VERSION) $(IMAGE_REPO)/discovery:$(VERSION) && \
 	docker tag $(RETAG_IMAGE_REGISTRY)/gloo:$(VERSION) $(IMAGE_REPO)/gloo:$(VERSION) && \
 	docker tag $(RETAG_IMAGE_REGISTRY)/gloo-envoy-wrapper:$(VERSION) $(IMAGE_REPO)/gloo-envoy-wrapper:$(VERSION) && \
 	docker tag $(RETAG_IMAGE_REGISTRY)/certgen:$(VERSION) $(IMAGE_REPO)/certgen:$(VERSION) && \
+	docker tag $(RETAG_IMAGE_REGISTRY)/kubectl:$(VERSION) $(IMAGE_REPO)/kubectl:$(VERSION) && \
 	docker tag $(RETAG_IMAGE_REGISTRY)/sds:$(VERSION) $(IMAGE_REPO)/sds:$(VERSION) && \
 	docker tag $(RETAG_IMAGE_REGISTRY)/access-logger:$(VERSION) $(IMAGE_REPO)/access-logger:$(VERSION)
 
-	docker tag $(RETAG_IMAGE_REGISTRY)/gateway:$(VERSION)-extended $(IMAGE_REPO)/gateway:$(VERSION)-extended && \
 	docker tag $(RETAG_IMAGE_REGISTRY)/ingress:$(VERSION)-extended $(IMAGE_REPO)/ingress:$(VERSION)-extended && \
 	docker tag $(RETAG_IMAGE_REGISTRY)/discovery:$(VERSION)-extended $(IMAGE_REPO)/discovery:$(VERSION)-extended && \
 	docker tag $(RETAG_IMAGE_REGISTRY)/gloo:$(VERSION)-extended $(IMAGE_REPO)/gloo:$(VERSION)-extended && \
 	docker tag $(RETAG_IMAGE_REGISTRY)/gloo-envoy-wrapper:$(VERSION)-extended $(IMAGE_REPO)/gloo-envoy-wrapper:$(VERSION)-extended && \
 	docker tag $(RETAG_IMAGE_REGISTRY)/certgen:$(VERSION)-extended $(IMAGE_REPO)/certgen:$(VERSION)-extended && \
+	docker tag $(RETAG_IMAGE_REGISTRY)/kubectl:$(VERSION)-extended $(IMAGE_REPO)/kubectl:$(VERSION)-extended && \
 	docker tag $(RETAG_IMAGE_REGISTRY)/sds:$(VERSION)-extended $(IMAGE_REPO)/sds:$(VERSION)-extended && \
 	docker tag $(RETAG_IMAGE_REGISTRY)/access-logger:$(VERSION)-extended $(IMAGE_REPO)/access-logger:$(VERSION)-extended
 
-	docker push $(IMAGE_REPO)/gateway:$(VERSION) && \
 	docker push $(IMAGE_REPO)/ingress:$(VERSION) && \
 	docker push $(IMAGE_REPO)/discovery:$(VERSION) && \
 	docker push $(IMAGE_REPO)/gloo:$(VERSION) && \
 	docker push $(IMAGE_REPO)/gloo-envoy-wrapper:$(VERSION) && \
 	docker push $(IMAGE_REPO)/certgen:$(VERSION) && \
+	docker push $(IMAGE_REPO)/kubectl:$(VERSION) && \
 	docker push $(IMAGE_REPO)/sds:$(VERSION) && \
 	docker push $(IMAGE_REPO)/access-logger:$(VERSION)
 
-	docker push $(IMAGE_REPO)/gateway:$(VERSION)-extended && \
 	docker push $(IMAGE_REPO)/ingress:$(VERSION)-extended && \
 	docker push $(IMAGE_REPO)/discovery:$(VERSION)-extended && \
 	docker push $(IMAGE_REPO)/gloo:$(VERSION)-extended && \
 	docker push $(IMAGE_REPO)/gloo-envoy-wrapper:$(VERSION)-extended && \
 	docker push $(IMAGE_REPO)/certgen:$(VERSION)-extended && \
+	docker push $(IMAGE_REPO)/kubectl:$(VERSION)-extended && \
 	docker push $(IMAGE_REPO)/sds:$(VERSION)-extended && \
 	docker push $(IMAGE_REPO)/access-logger:$(VERSION)-extended
 endif
 
 .PHONY: docker docker-push
-docker: discovery-docker gateway-docker gloo-docker \
+docker: discovery-docker gloo-docker \
 		gloo-envoy-wrapper-docker certgen-docker sds-docker \
-		ingress-docker access-logger-docker
+		ingress-docker access-logger-docker kubectl-docker
 
 .PHONY: docker-push-local-arm
 docker-push-local-arm: docker docker-push
@@ -659,12 +666,12 @@ docker-push-local-arm: docker docker-push
 .PHONY: docker-push
 docker-push: $(DOCKER_IMAGES)
 ifeq ($(CREATE_ASSETS), "true")
-	docker push $(IMAGE_REPO)/gateway:$(VERSION) && \
 	docker push $(IMAGE_REPO)/ingress:$(VERSION) && \
 	docker push $(IMAGE_REPO)/discovery:$(VERSION) && \
 	docker push $(IMAGE_REPO)/gloo:$(VERSION) && \
 	docker push $(IMAGE_REPO)/gloo-envoy-wrapper:$(VERSION) && \
 	docker push $(IMAGE_REPO)/certgen:$(VERSION) && \
+	docker push $(IMAGE_REPO)/kubectl:$(VERSION) && \
 	docker push $(IMAGE_REPO)/sds:$(VERSION) && \
 	docker push $(IMAGE_REPO)/access-logger:$(VERSION)
 endif
@@ -684,6 +691,7 @@ push-kind-images: docker
 	kind load docker-image $(IMAGE_REPO)/gloo:$(VERSION) --name $(CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REPO)/gloo-envoy-wrapper:$(VERSION) --name $(CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REPO)/certgen:$(VERSION) --name $(CLUSTER_NAME)
+	kind load docker-image $(IMAGE_REPO)/kubectl:$(VERSION) --name $(CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REPO)/access-logger:$(VERSION) --name $(CLUSTER_NAME)
 	kind load docker-image $(IMAGE_REPO)/sds:$(VERSION) --name $(CLUSTER_NAME)
 
@@ -694,6 +702,7 @@ push-docker-images-arm-to-kind-registry:
 	docker push $(IMAGE_REPO)/gloo:$(VERSION)
 	docker push $(IMAGE_REPO)/gloo-envoy-wrapper:$(VERSION)
 	docker push $(IMAGE_REPO)/certgen:$(VERSION)
+	docker push $(IMAGE_REPO)/kubectl:$(VERSION)
 	docker push $(IMAGE_REPO)/access-logger:$(VERSION)
 	docker push $(IMAGE_REPO)/sds:$(VERSION)
 
@@ -725,40 +734,14 @@ build-test-chart:
 
 TRIVY_VERSION ?= $(shell curl --silent "https://api.github.com/repos/aquasecurity/trivy/releases/latest" | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
 SCAN_DIR ?= $(OUTPUT_DIR)/scans
-
-ifeq ($(shell uname), Darwin)
-	machine ?= macOS
-else
-	machine ?= Linux
-endif
-TRIVY_ARCH:=64bit
-ifeq ($(GOARCH), arm64)
-	TRIVY_ARCH:=ARM64
-endif
-
-# Local run for trivy security checks
-.PHONY: security-checks
-security-checks:
-	mkdir -p $(SCAN_DIR)/$(VERSION)
-
-	curl -Ls "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_${machine}-${TRIVY_ARCH}.tar.gz" | tar zx '*trivy' || { echo "Download/extract failed for trivy."; exit 1; };
-
-	./trivy --exit-code 0 --severity HIGH,CRITICAL --no-progress --format template --template "@hack/utils/security_scan_report/markdown.tpl" -o $(SCAN_DIR)/$(VERSION)/gateway_cve_report.docgen $(IMAGE_REPO)/gateway:$(VERSION) && \
-	./trivy --exit-code 0 --severity HIGH,CRITICAL --no-progress --format template --template "@hack/utils/security_scan_report/markdown.tpl" -o $(SCAN_DIR)/$(VERSION)/ingress_cve_report.docgen $(IMAGE_REPO)/ingress:$(VERSION) && \
-	./trivy --exit-code 0 --severity HIGH,CRITICAL --no-progress --format template --template "@hack/utils/security_scan_report/markdown.tpl" -o $(SCAN_DIR)/$(VERSION)/discovery_cve_report.docgen $(IMAGE_REPO)/discovery:$(VERSION) && \
-	./trivy --exit-code 0 --severity HIGH,CRITICAL --no-progress --format template --template "@hack/utils/security_scan_report/markdown.tpl" -o $(SCAN_DIR)/$(VERSION)/gloo_cve_report.docgen $(IMAGE_REPO)/gloo:$(VERSION) && \
-	./trivy --exit-code 0 --severity HIGH,CRITICAL --no-progress --format template --template "@hack/utils/security_scan_report/markdown.tpl" -o $(SCAN_DIR)/$(VERSION)/gloo-envoy-wrapper_cve_report.docgen $(IMAGE_REPO)/gloo-envoy-wrapper:$(VERSION) && \
-	./trivy --exit-code 0 --severity HIGH,CRITICAL --no-progress --format template --template "@hack/utils/security_scan_report/markdown.tpl" -o $(SCAN_DIR)/$(VERSION)/certgen_cve_report.docgen $(IMAGE_REPO)/certgen:$(VERSION) && \
-	./trivy --exit-code 0 --severity HIGH,CRITICAL --no-progress --format template --template "@hack/utils/security_scan_report/markdown.tpl" -o $(SCAN_DIR)/$(VERSION)/sds_cve_report.docgen $(IMAGE_REPO)/sds:$(VERSION) && \
-	./trivy --exit-code 0 --severity HIGH,CRITICAL --no-progress --format template --template "@hack/utils/security_scan_report/markdown.tpl" -o $(SCAN_DIR)/$(VERSION)/access-logger_cve_report.docgen $(IMAGE_REPO)/access-logger:$(VERSION)
-
 SCAN_BUCKET ?= solo-gloo-security-scans
 
 .PHONY: run-security-scans
 run-security-scan:
 	# Run security scan on gloo and solo-projects
 	# Generates scan files to _output/scans directory
-	GO111MODULE=on go run docs/cmd/generate_docs.go run-security-scan
+	GO111MODULE=on go run docs/cmd/generate_docs.go run-security-scan -r gloo -a github-issue-latest
+	GO111MODULE=on go run docs/cmd/generate_docs.go run-security-scan -r glooe -a github-issue-latest
 
 .PHONY: publish-security-scan
 publish-security-scan:

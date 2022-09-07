@@ -154,8 +154,12 @@ func readValuesTemplate() (*generate.HelmConfig, error) {
 	}
 	// adding in for arm64 registry work around
 	if runtime.GOARCH == "arm64" && os.Getenv("RUNNING_REGRESSION_TESTS") == "true" {
+		imageRepo := "localhost:5000"
+		if envImageRepo := os.Getenv("IMAGE_REPO"); envImageRepo != "" {
+			imageRepo = envImageRepo
+		}
 		configImage := config.Global.Image
-		reg := "localhost:5000"
+		reg := imageRepo
 		always := "Always"
 		configImage.Registry = &reg
 		configImage.PullPolicy = &always
@@ -170,9 +174,12 @@ func generateValuesConfig(version, repositoryPrefix, globalPullPolicy string) (*
 	}
 
 	cfg.Gloo.Deployment.Image.Tag = &version
+	// this will be overwritten in solo-projects
+	cfg.Gloo.Deployment.OssImageTag = &version
 	cfg.Discovery.Deployment.Image.Tag = &version
-	cfg.Gateway.Deployment.Image.Tag = &version
 	cfg.Gateway.CertGenJob.Image.Tag = &version
+	cfg.Gateway.RolloutJob.Image.Tag = &version
+	cfg.Gateway.CleanupJob.Image.Tag = &version
 
 	cfg.AccessLogger.Image.Tag = &version
 

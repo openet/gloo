@@ -181,12 +181,10 @@ var _ = Describe("Translator", func() {
 	}
 	BeforeEach(beforeEach)
 
-	JustBeforeEach(func() {
-		pluginRegistryFactory := func(ctx context.Context) plugins.PluginRegistry {
-			return registry.NewPluginRegistry(registeredPlugins)
-		}
+	justBeforeEach := func() {
+		pluginRegistry := registry.NewPluginRegistry(registeredPlugins)
 
-		translator = NewTranslator(glooutils.NewSslConfigTranslator(), settings, pluginRegistryFactory)
+		translator = NewTranslatorWithHasher(glooutils.NewSslConfigTranslator(), settings, pluginRegistry, MustEnvoyCacheResourcesListToFnvHash)
 		httpListener := &v1.Listener{
 			Name:        "http-listener",
 			BindAddress: "127.0.0.1",
@@ -345,19 +343,18 @@ var _ = Describe("Translator", func() {
 				hybridListener,
 			},
 		}
-	})
+	}
+	JustBeforeEach(justBeforeEach)
 
 	translateWithError := func() *validation.ProxyReport {
-		_, errs, report, err := translator.Translate(params, proxy)
-		ExpectWithOffset(1, err).NotTo(HaveOccurred())
+		_, errs, report := translator.Translate(params, proxy)
 		ExpectWithOffset(1, errs.Validate()).To(HaveOccurred())
 		return report
 	}
 
 	// returns md5 Sum of current snapshot
 	translate := func() {
-		snap, errs, report, err := translator.Translate(params, proxy)
-		ExpectWithOffset(1, err).NotTo(HaveOccurred())
+		snap, errs, report := translator.Translate(params, proxy)
 		ExpectWithOffset(1, errs.Validate()).NotTo(HaveOccurred())
 		ExpectWithOffset(1, snap).NotTo(BeNil())
 		ExpectWithOffset(1, report).To(Equal(validationutils.MakeReport(proxy)))
@@ -374,7 +371,7 @@ var _ = Describe("Translator", func() {
 
 		hcmFilter := listener.FilterChains[0].Filters[0]
 		hcmCfg = &envoyhttp.HttpConnectionManager{}
-		err = ParseTypedConfig(hcmFilter, hcmCfg)
+		err := ParseTypedConfig(hcmFilter, hcmCfg)
 		ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 		routes := snap.GetResources(types.RouteTypeV3)
@@ -393,9 +390,7 @@ var _ = Describe("Translator", func() {
 		proxyClone := proto.Clone(proxy).(*v1.Proxy)
 		proxyClone.GetListeners()[0].GetHttpListener().GetVirtualHosts()[0].Name = "invalid.name"
 
-		snap, errs, report, err := translator.Translate(params, proxyClone)
-
-		Expect(err).NotTo(HaveOccurred())
+		snap, errs, report := translator.Translate(params, proxyClone)
 		Expect(errs.Validate()).NotTo(HaveOccurred())
 		Expect(snap).NotTo(BeNil())
 		Expect(report).To(Equal(validationutils.MakeReport(proxy)))
@@ -413,9 +408,7 @@ var _ = Describe("Translator", func() {
 		proxyClone := proto.Clone(proxy).(*v1.Proxy)
 		proxyClone.GetListeners()[2].GetHybridListener().GetMatchedListeners()[1].GetHttpListener().GetVirtualHosts()[0].Name = "invalid.name"
 
-		snap, errs, report, err := translator.Translate(params, proxyClone)
-
-		Expect(err).NotTo(HaveOccurred())
+		snap, errs, report := translator.Translate(params, proxyClone)
 		Expect(errs.Validate()).NotTo(HaveOccurred())
 		Expect(snap).NotTo(BeNil())
 		Expect(report).To(Equal(validationutils.MakeReport(proxy)))
@@ -435,9 +428,7 @@ var _ = Describe("Translator", func() {
 
 		proxyClone.GetListeners()[0].Options = &v1.ListenerOptions{PerConnectionBufferLimitBytes: &wrappers.UInt32Value{Value: 4096}}
 
-		snap, errs, report, err := translator.Translate(params, proxyClone)
-
-		Expect(err).NotTo(HaveOccurred())
+		snap, errs, report := translator.Translate(params, proxyClone)
 		Expect(errs.Validate()).NotTo(HaveOccurred())
 		Expect(snap).NotTo(BeNil())
 		Expect(report).To(Equal(validationutils.MakeReport(proxy)))
@@ -462,9 +453,7 @@ var _ = Describe("Translator", func() {
 					},
 				}
 
-			_, errs, _, err := translator.Translate(params, proxyClone)
-
-			Expect(err).To(BeNil())
+			_, errs, _ := translator.Translate(params, proxyClone)
 			Expect(errs.Validate()).To(HaveOccurred())
 			Expect(errs.Validate().Error()).To(ContainSubstring("VirtualHost Error: ProcessingError. Reason: auth config not found:"))
 		})
@@ -480,9 +469,7 @@ var _ = Describe("Translator", func() {
 					},
 				}
 
-			_, errs, _, err := translator.Translate(params, proxyClone)
-
-			Expect(err).To(BeNil())
+			_, errs, _ := translator.Translate(params, proxyClone)
 			Expect(errs.Validate()).To(HaveOccurred())
 			Expect(errs.Validate().Error()).To(ContainSubstring("VirtualHost Error: ProcessingError. Reason: auth config not found:"))
 		})
@@ -515,8 +502,7 @@ var _ = Describe("Translator", func() {
 			}
 		})
 		It("should error when path match is missing", func() {
-			_, errs, report, err := translator.Translate(params, proxy)
-			Expect(err).NotTo(HaveOccurred())
+			_, errs, report := translator.Translate(params, proxy)
 			Expect(errs.Validate()).To(HaveOccurred())
 			invalidMatcherName := fmt.Sprintf("%s-route-0", virtualHostName)
 			Expect(errs.Validate().Error()).To(ContainSubstring(fmt.Sprintf("Route Error: InvalidMatcherError. Reason: no path specifier provided. Route Name: %s", invalidMatcherName)))
@@ -540,8 +526,7 @@ var _ = Describe("Translator", func() {
 					},
 				},
 			}
-			_, errs, report, err := translator.Translate(params, proxy)
-			Expect(err).NotTo(HaveOccurred())
+			_, errs, report := translator.Translate(params, proxy)
 			Expect(errs.Validate()).To(HaveOccurred())
 			invalidMatcherName := fmt.Sprintf("%s-route-0", virtualHostName)
 			processingErrorName := fmt.Sprintf("%s-route-0-%s-matcher-0", virtualHostName, routes[0].Name)
@@ -1111,8 +1096,7 @@ var _ = Describe("Translator", func() {
 				},
 			}
 
-			snap, errs, report, err := translator.Translate(params, proxy)
-			Expect(err).NotTo(HaveOccurred())
+			snap, errs, report := translator.Translate(params, proxy)
 			Expect(errs.Validate()).NotTo(HaveOccurred())
 			Expect(snap).NotTo(BeNil())
 			Expect(report).To(Equal(validationutils.MakeReport(proxy)))
@@ -1315,6 +1299,7 @@ var _ = Describe("Translator", func() {
 
 			// reset modified global variables
 			beforeEach()
+			justBeforeEach()
 
 			By("add the upstreams in the opposite order and compare the version and http filters")
 
@@ -1381,7 +1366,7 @@ var _ = Describe("Translator", func() {
 			})
 
 			It("should warn about invalid http header name", func() {
-				_, _, report, _ := translator.Translate(params, proxy)
+				_, _, report := translator.Translate(params, proxy)
 				routeReportWarning := report.GetListenerReports()[0].GetHttpListenerReport().GetVirtualHostReports()[0].GetRouteReports()[0].GetWarnings()[0]
 				reason := routeReportWarning.GetReason()
 				Expect(reason).To(Equal("invalid:-cluster is an invalid HTTP header name"))
@@ -1421,7 +1406,7 @@ var _ = Describe("Translator", func() {
 				},
 				Destinations: []*v1.WeightedDestination{
 					{
-						Weight: 1,
+						Weight: &wrappers.UInt32Value{Value: 1},
 						Destination: &v1.Destination{
 							DestinationType: &v1.Destination_Upstream{
 								Upstream: upstream.Metadata.Ref(),
@@ -1429,7 +1414,7 @@ var _ = Describe("Translator", func() {
 						},
 					},
 					{
-						Weight: 1,
+						Weight: &wrappers.UInt32Value{Value: 1},
 						Destination: &v1.Destination{
 							DestinationType: &v1.Destination_Upstream{
 								Upstream: upstream2.Metadata.Ref(),
@@ -1471,9 +1456,8 @@ var _ = Describe("Translator", func() {
 		It("should error on invalid ref in upstream groups", func() {
 			upstreamGroup.Destinations[0].Destination.GetUpstream().Name = "notexist"
 
-			_, errs, report, err := translator.Translate(params, proxy)
-			Expect(err).NotTo(HaveOccurred())
-			err = errs.Validate()
+			_, errs, report := translator.Translate(params, proxy)
+			err := errs.Validate()
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("destination # 1: upstream not found: list did not find upstream gloo-system.notexist"))
 
@@ -1521,9 +1505,7 @@ var _ = Describe("Translator", func() {
 		})
 
 		It("should set a ClusterSpecifier on the referring route", func() {
-			snap, _, _, err := translator.Translate(params, proxy)
-			Expect(err).NotTo(HaveOccurred())
-
+			snap, _, _ := translator.Translate(params, proxy)
 			routes := snap.GetResources(types.RouteTypeV3)
 			routesProto := routes.Items["http-listener-routes"]
 
@@ -1749,8 +1731,7 @@ var _ = Describe("Translator", func() {
 			})
 
 			It("should error the route", func() {
-				_, errs, report, err := translator.Translate(params, proxy)
-				Expect(err).NotTo(HaveOccurred())
+				_, errs, report := translator.Translate(params, proxy)
 				Expect(errs.Validate()).To(HaveOccurred())
 				Expect(errs.Validate().Error()).To(ContainSubstring("route has a subset config, but none of the subsets in the upstream match it"))
 				processingErrorName := fmt.Sprintf("%s-route-0-matcher-0", virtualHostName)
@@ -1785,8 +1766,7 @@ var _ = Describe("Translator", func() {
 			})
 
 			It("should warn a route when a destination is missing", func() {
-				_, errs, report, err := translator.Translate(params, proxy)
-				Expect(err).NotTo(HaveOccurred())
+				_, errs, report := translator.Translate(params, proxy)
 				Expect(errs.Validate()).NotTo(HaveOccurred())
 				Expect(errs.ValidateStrict()).To(HaveOccurred())
 				Expect(errs.ValidateStrict().Error()).To(ContainSubstring("*v1.Upstream { notexist.do } not found"))
@@ -2198,7 +2178,7 @@ var _ = Describe("Translator", func() {
 
 			routes := proxy.GetListeners()[0].GetHttpListener().GetVirtualHosts()[0].GetRoutes()
 			proxy.GetListeners()[0].GetHttpListener().GetVirtualHosts()[0].Routes = append(routes, invalidLambdaRoute)
-			_, resourceReport, _, _ := translator.Translate(params, proxy)
+			_, resourceReport, _ := translator.Translate(params, proxy)
 			Expect(resourceReport.Validate()).To(HaveOccurred())
 			Expect(resourceReport.Validate().Error()).To(ContainSubstring("a route references nonexistentLambdaFunc AWS lambda which does not exist on the route's upstream"))
 		})
@@ -2233,7 +2213,7 @@ var _ = Describe("Translator", func() {
 
 			routes := proxy.GetListeners()[0].GetHttpListener().GetVirtualHosts()[0].GetRoutes()
 			proxy.GetListeners()[0].GetHttpListener().GetVirtualHosts()[0].Routes = append(routes, invalidLambdaRoute)
-			_, resourceReport, _, _ := translator.Translate(params, proxy)
+			_, resourceReport, _ := translator.Translate(params, proxy)
 			Expect(resourceReport.Validate()).To(HaveOccurred())
 			Expect(resourceReport.Validate().Error()).To(ContainSubstring("a route references nonexistentLambdaFunc AWS lambda which does not exist on the route's upstream"))
 		})
@@ -2244,10 +2224,11 @@ var _ = Describe("Translator", func() {
 
 		var (
 			multiActionRouteWithNoWeightPassedDest *v1.Route
-			multiActionRouteWithZeroWeightDest     *v1.Route
-			multiActionRouteWithOneValidDest       *v1.Route
+			multiActionRouteOneDest                *v1.Route
+			multiActionRouteZeroAndFiveAsWeights   *v1.Route
 			expectedErrorString                    string
-			weightedDestValidWeight                *v1.WeightedDestination
+			weightedDestFiveWeight                 *v1.WeightedDestination
+			weightedDestZeroWeight                 *v1.WeightedDestination
 		)
 
 		BeforeEach(func() {
@@ -2255,20 +2236,20 @@ var _ = Describe("Translator", func() {
 			testUpstream2 := createStaticUpstream("test2", "gloo-system")
 
 			weightedDestNoWeightPassed := createWeightedDestination(false, 0, testUpstream1)
-			weightedDestWeightOfZero := createWeightedDestination(true, 0, testUpstream1)
-			weightedDestValidWeight = createWeightedDestination(true, 5, testUpstream2)
+			weightedDestZeroWeight = createWeightedDestination(true, 0, testUpstream1)
+			weightedDestFiveWeight = createWeightedDestination(true, 5, testUpstream2)
 
-			multiActionRouteWithNoWeightPassedDest = createMultiActionRoute("NoWeightPassedDest", matcher, []*v1.WeightedDestination{weightedDestNoWeightPassed, weightedDestValidWeight})
-			multiActionRouteWithZeroWeightDest = createMultiActionRoute("NegativeWeightDest", matcher, []*v1.WeightedDestination{weightedDestWeightOfZero, weightedDestValidWeight})
-			multiActionRouteWithOneValidDest = createMultiActionRoute("OneValidDest", matcher, []*v1.WeightedDestination{weightedDestValidWeight})
+			multiActionRouteOneDest = createMultiActionRoute("OneDest", matcher, []*v1.WeightedDestination{weightedDestFiveWeight})
+			multiActionRouteZeroAndFiveAsWeights = createMultiActionRoute("TwoDest", matcher, []*v1.WeightedDestination{weightedDestFiveWeight, weightedDestZeroWeight})
+			multiActionRouteWithNoWeightPassedDest = createMultiActionRoute("NoWeightPassedDest", matcher, []*v1.WeightedDestination{weightedDestNoWeightPassed, weightedDestNoWeightPassed})
 
-			expectedErrorString = fmt.Sprintf("Incorrect configuration for Weighted Destination for upstream: %s - Weighted Destinations require a weight that is greater than 0", "test1")
+			expectedErrorString = fmt.Sprintf("Incorrect configuration for Weighted Destination for route - Weighted Destinations require a total weight that is greater than or equal to 1")
 		})
 
 		//Positive Tests
 		It("Should translate single routes when multiRoute is passed and only one destination is specified", func() {
-			proxy.Listeners[0].GetHttpListener().GetVirtualHosts()[0].Routes = []*v1.Route{multiActionRouteWithOneValidDest}
-			snap, resourceReport, _, _ := translator.Translate(params, proxy)
+			proxy.Listeners[0].GetHttpListener().GetVirtualHosts()[0].Routes = []*v1.Route{multiActionRouteOneDest}
+			snap, resourceReport, _ := translator.Translate(params, proxy)
 			Expect(resourceReport.ValidateStrict()).To(HaveOccurred())
 
 			// A weighted route to the service has been configured
@@ -2287,30 +2268,60 @@ var _ = Describe("Translator", func() {
 			Expect(ok).To(BeTrue())
 
 			//DataFromWeightedCluster
-			totalWeight := weightedDestValidWeight.Weight
-			expectedClusterName := weightedDestValidWeight.Destination.GetUpstream().Name + "_" + weightedDestValidWeight.Destination.GetUpstream().Namespace
+			totalWeight := weightedDestFiveWeight.Weight
+			expectedClusterName := weightedDestFiveWeight.Destination.GetUpstream().Name + "_" + weightedDestFiveWeight.Destination.GetUpstream().Namespace
+
+			//There is only one route with a weight of 5 so total weight for the cluster should be 5
+			Expect(clusterAction.WeightedClusters.TotalWeight.GetValue()).To(Equal(totalWeight.GetValue()))
+			clusters := clusterAction.WeightedClusters.Clusters
+			Expect(clusters).To(HaveLen(1))
+			Expect(clusters[0].Weight.GetValue()).To(Equal(totalWeight.GetValue()))
+			Expect(clusters[0].Name).To(Equal(expectedClusterName))
+		})
+
+		It("Should translate 0 weight destinations if there are other destinations with weights over 0", func() {
+			proxy.Listeners[0].GetHttpListener().GetVirtualHosts()[0].Routes = []*v1.Route{multiActionRouteZeroAndFiveAsWeights}
+			snap, resourceReport, _ := translator.Translate(params, proxy)
+			Expect(resourceReport.ValidateStrict()).To(HaveOccurred())
+
+			// A weighted route to the service has been configured
+			routes := snap.GetResources(types.RouteTypeV3)
+			Expect(routes.Items).To(HaveKey("http-listener-routes"))
+			routeResource := routes.Items["http-listener-routes"]
+			routeConfiguration = routeResource.ResourceProto().(*envoy_config_route_v3.RouteConfiguration)
+			Expect(routeConfiguration).NotTo(BeNil())
+			Expect(routeConfiguration.VirtualHosts).To(HaveLen(1))
+			Expect(routeConfiguration.VirtualHosts[0].Domains).To(HaveLen(1))
+			Expect(routeConfiguration.VirtualHosts[0].Domains[0]).To(Equal("*"))
+			Expect(routeConfiguration.VirtualHosts[0].Routes).To(HaveLen(1))
+			routeAction, ok := routeConfiguration.VirtualHosts[0].Routes[0].Action.(*envoy_config_route_v3.Route_Route)
+			Expect(ok).To(BeTrue())
+			clusterAction, ok := routeAction.Route.ClusterSpecifier.(*envoy_config_route_v3.RouteAction_WeightedClusters)
+			Expect(ok).To(BeTrue())
+
+			totalWeight := weightedDestFiveWeight.Weight.GetValue() + weightedDestZeroWeight.Weight.GetValue()
+			clusterNameFiveWeight := weightedDestFiveWeight.Destination.GetUpstream().Name + "_" + weightedDestFiveWeight.Destination.GetUpstream().Namespace
+			clusterNameZeroWeight := weightedDestZeroWeight.Destination.GetUpstream().Name + "_" + weightedDestZeroWeight.Destination.GetUpstream().Namespace
 
 			//There is only one route with a weight of 5 so total weight for the cluster should be 5
 			Expect(clusterAction.WeightedClusters.TotalWeight.GetValue()).To(Equal(totalWeight))
 			clusters := clusterAction.WeightedClusters.Clusters
-			Expect(clusters).To(HaveLen(1))
-			Expect(clusters[0].Weight.GetValue()).To(Equal(totalWeight))
-			Expect(clusters[0].Name).To(Equal(expectedClusterName))
+			Expect(clusters).To(HaveLen(2))
+
+			for _, c := range clusters {
+				switch c.Name {
+				case clusterNameFiveWeight:
+					Expect(c.Weight.GetValue()).To(Equal(uint32(5)))
+				case clusterNameZeroWeight:
+					Expect(c.Weight.GetValue()).To(Equal(uint32(0)))
+				}
+			}
 		})
 
 		//Negative Tests
-		It("Should report an error when a weighted destination is passed with no weight", func() {
+		It("Should report an error when total weight is 0 - nil and 0 weights passed", func() {
 			proxy.Listeners[0].GetHttpListener().GetVirtualHosts()[0].Routes = []*v1.Route{multiActionRouteWithNoWeightPassedDest}
-			_, errs, _, err := translator.Translate(params, proxy)
-			Expect(err).To(BeNil())
-			Expect(errs.Validate()).To(HaveOccurred())
-			Expect(errs.Validate().Error()).To(ContainSubstring(expectedErrorString))
-		})
-
-		It("Should report an error when a weighted destination is passed with weight less than 1", func() {
-			proxy.Listeners[0].GetHttpListener().GetVirtualHosts()[0].Routes = []*v1.Route{multiActionRouteWithZeroWeightDest}
-			_, errs, _, err := translator.Translate(params, proxy)
-			Expect(err).To(BeNil())
+			_, errs, _ := translator.Translate(params, proxy)
 			Expect(errs.Validate()).To(HaveOccurred())
 			Expect(errs.Validate().Error()).To(ContainSubstring(expectedErrorString))
 		})
@@ -2587,9 +2598,7 @@ var _ = Describe("Translator", func() {
 				SslSecrets: invalidSslSecretRef,
 			}}
 
-			_, errs, _, err := translator.Translate(params, proxyClone)
-
-			Expect(err).To(BeNil())
+			_, errs, _ := translator.Translate(params, proxyClone)
 			Expect(errs.Validate()).To(HaveOccurred())
 			Expect(errs.Validate().Error()).To(ContainSubstring("Listener Error: SSLConfigError. Reason: SSL secret not found: list did not find secret"))
 		})
@@ -2718,27 +2727,19 @@ var _ = Describe("Translator", func() {
 
 		Context("failure", func() {
 			It("should fail with an upstream with no tls config", func() {
-				_, errs, _, err := translator.Translate(params, proxy)
-
-				Expect(err).To(BeNil())
+				_, errs, _ := translator.Translate(params, proxy)
 				Expect(errs.Validate()).To(HaveOccurred())
 			})
 
 			It("should fail with only private key", func() {
-
 				tlsConf.PrivateKey = gloohelpers.PrivateKey()
-				_, errs, _, err := translator.Translate(params, proxy)
-
-				Expect(err).To(BeNil())
+				_, errs, _ := translator.Translate(params, proxy)
 				Expect(errs.Validate()).To(HaveOccurred())
 			})
+
 			It("should fail with only cert chain", func() {
-
 				tlsConf.CertChain = gloohelpers.Certificate()
-
-				_, errs, _, err := translator.Translate(params, proxy)
-
-				Expect(err).To(BeNil())
+				_, errs, _ := translator.Translate(params, proxy)
 				Expect(errs.Validate()).To(HaveOccurred())
 			})
 		})
@@ -2890,7 +2891,6 @@ var _ = Describe("Translator", func() {
 				Expect(report.Errors).NotTo(BeNil())
 				Expect(report.Errors).To(HaveLen(1))
 				Expect(report.Errors[0].Type).To(Equal(validation.ListenerReport_Error_SSLConfigError))
-				Expect(listener.GetListenerFilters()[0].GetName()).To(Equal(wellknown.TlsInspector))
 			})
 			It("should combine sni matches", func() {
 				prep([]*v1.SslConfig{
@@ -3179,7 +3179,7 @@ var _ = Describe("Translator", func() {
 						SniDomains: []string{"a.com"},
 					},
 				})
-				_, errs, _, _ := translator.Translate(params, proxy)
+				_, errs, _ := translator.Translate(params, proxy)
 				proxyKind := resources.Kind(proxy)
 				_, reports := errs.Find(proxyKind, proxy.Metadata.Ref())
 				Expect(reports.Errors.Error()).To(ContainSubstring("Tried to apply multiple filter chains with the" +
@@ -3221,7 +3221,7 @@ var _ = Describe("Translator", func() {
 						},
 					},
 				})
-				_, errs, _, _ := translator.Translate(params, proxy)
+				_, errs, _ := translator.Translate(params, proxy)
 				proxyKind := resources.Kind(proxy)
 				_, reports := errs.Find(proxyKind, proxy.Metadata.Ref())
 				Expect(reports.Errors.Error()).To(ContainSubstring("Tried to apply multiple filter chains with the" +
@@ -3308,7 +3308,6 @@ var _ = Describe("Translator", func() {
 		Expect(report.VirtualHostReports[0].Errors).To(BeEmpty(), "The virtual host with domain * should not have an error")
 		Expect(report.VirtualHostReports[1].Errors).NotTo(BeEmpty(), "The virtual host with an empty domain should report errors")
 		Expect(report.VirtualHostReports[1].Errors[0].Type).To(Equal(validation.VirtualHostReport_Error_EmptyDomainError), "The error reported for the virtual host with empty domain should be the EmptyDomainError")
-		Expect(listener.GetListenerFilters()[0].GetName()).To(Equal(wellknown.TlsInspector))
 	})
 
 	It("clusterSpecifier is set even when there is an error setting the route action", func() {
@@ -3322,7 +3321,7 @@ var _ = Describe("Translator", func() {
 							Multi: &v1.MultiDestination{
 								Destinations: []*v1.WeightedDestination{
 									{
-										Weight: 1,
+										Weight: &wrappers.UInt32Value{Value: 1},
 										Destination: &v1.Destination{
 											DestinationType: &v1.Destination_Upstream{
 												Upstream: &core.ResourceRef{
@@ -3344,7 +3343,7 @@ var _ = Describe("Translator", func() {
 				},
 			},
 		}
-		snap, resourceReport, _, _ := translator.Translate(params, proxy)
+		snap, resourceReport, _ := translator.Translate(params, proxy)
 		Expect(resourceReport.ValidateStrict()).To(HaveOccurred())
 		routes := snap.GetResources(types.RouteTypeV3)
 		routesProto := routes.Items["http-listener-routes"]
@@ -3358,9 +3357,7 @@ var _ = Describe("Translator", func() {
 			// Set the value
 			upstream.IgnoreHealthOnHostRemoval = upstreamValue
 
-			snap, errs, report, err := translator.Translate(params, proxy)
-
-			Expect(err).NotTo(HaveOccurred())
+			snap, errs, report := translator.Translate(params, proxy)
 			Expect(errs.Validate()).NotTo(HaveOccurred())
 			Expect(snap).NotTo(BeNil())
 			Expect(report).To(Equal(validationutils.MakeReport(proxy)))
@@ -3493,8 +3490,7 @@ func (p *routePluginMock) Name() string {
 	return "route_plugin_mock"
 }
 
-func (p *routePluginMock) Init(params plugins.InitParams) error {
-	return nil
+func (p *routePluginMock) Init(_ plugins.InitParams) {
 }
 
 func (p *routePluginMock) ProcessRoute(params plugins.RouteParams, in *v1.Route, out *envoy_config_route_v3.Route) error {
@@ -3513,8 +3509,7 @@ func (e *endpointPluginMock) Name() string {
 	return "endpoint_plugin_mock"
 }
 
-func (e *endpointPluginMock) Init(params plugins.InitParams) error {
-	return nil
+func (e *endpointPluginMock) Init(params plugins.InitParams) {
 }
 
 func createStaticUpstream(name, namespace string) *v1.Upstream {
@@ -3539,7 +3534,7 @@ func createStaticUpstream(name, namespace string) *v1.Upstream {
 func createWeightedDestination(isWeightIncluded bool, weight uint32, upstream *v1.Upstream) *v1.WeightedDestination {
 	if isWeightIncluded {
 		return &v1.WeightedDestination{
-			Weight: weight,
+			Weight: &wrappers.UInt32Value{Value: weight},
 			Destination: &v1.Destination{
 				DestinationType: &v1.Destination_Upstream{
 					Upstream: &core.ResourceRef{

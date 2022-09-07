@@ -1220,6 +1220,10 @@ spec:
                                                       type: object
                                                   type: object
                                                 type: array
+                                              headersToRemove:
+                                                items:
+                                                  type: string
+                                                type: array
                                               ignoreErrorOnParse:
                                                 type: boolean
                                               mergeExtractorsToBody:
@@ -1303,6 +1307,10 @@ spec:
                                                           type: string
                                                       type: object
                                                   type: object
+                                                type: array
+                                              headersToRemove:
+                                                items:
+                                                  type: string
                                                 type: array
                                               ignoreErrorOnParse:
                                                 type: boolean
@@ -1407,6 +1415,10 @@ spec:
                                                           type: string
                                                       type: object
                                                   type: object
+                                                type: array
+                                              headersToRemove:
+                                                items:
+                                                  type: string
                                                 type: array
                                               ignoreErrorOnParse:
                                                 type: boolean
@@ -1544,6 +1556,10 @@ spec:
                                                       type: object
                                                   type: object
                                                 type: array
+                                              headersToRemove:
+                                                items:
+                                                  type: string
+                                                type: array
                                               ignoreErrorOnParse:
                                                 type: boolean
                                               mergeExtractorsToBody:
@@ -1627,6 +1643,10 @@ spec:
                                                           type: string
                                                       type: object
                                                   type: object
+                                                type: array
+                                              headersToRemove:
+                                                items:
+                                                  type: string
                                                 type: array
                                               ignoreErrorOnParse:
                                                 type: boolean
@@ -1731,6 +1751,10 @@ spec:
                                                           type: string
                                                       type: object
                                                   type: object
+                                                type: array
+                                              headersToRemove:
+                                                items:
+                                                  type: string
                                                 type: array
                                               ignoreErrorOnParse:
                                                 type: boolean
@@ -1846,6 +1870,10 @@ spec:
                                             type: object
                                         type: object
                                       type: array
+                                    headersToRemove:
+                                      items:
+                                        type: string
+                                      type: array
                                     ignoreErrorOnParse:
                                       type: boolean
                                     mergeExtractorsToBody:
@@ -1929,6 +1957,10 @@ spec:
                                                 type: string
                                             type: object
                                         type: object
+                                      type: array
+                                    headersToRemove:
+                                      items:
+                                        type: string
                                       type: array
                                     ignoreErrorOnParse:
                                       type: boolean
@@ -2095,6 +2127,8 @@ spec:
                                                 type: boolean
                                               unwrapAsAlb:
                                                 type: boolean
+                                              unwrapAsApiGateway:
+                                                type: boolean
                                             type: object
                                           azure:
                                             properties:
@@ -2190,6 +2224,10 @@ spec:
                                                               type: string
                                                           type: object
                                                       type: object
+                                                    type: array
+                                                  headersToRemove:
+                                                    items:
+                                                      type: string
                                                     type: array
                                                   ignoreErrorOnParse:
                                                     type: boolean
@@ -2493,6 +2531,10 @@ spec:
                                                                     type: object
                                                                 type: object
                                                               type: array
+                                                            headersToRemove:
+                                                              items:
+                                                                type: string
+                                                              type: array
                                                             ignoreErrorOnParse:
                                                               type: boolean
                                                             mergeExtractorsToBody:
@@ -2576,6 +2618,10 @@ spec:
                                                                         type: string
                                                                     type: object
                                                                 type: object
+                                                              type: array
+                                                            headersToRemove:
+                                                              items:
+                                                                type: string
                                                               type: array
                                                             ignoreErrorOnParse:
                                                               type: boolean
@@ -2680,6 +2726,10 @@ spec:
                                                                         type: string
                                                                     type: object
                                                                 type: object
+                                                              type: array
+                                                            headersToRemove:
+                                                              items:
+                                                                type: string
                                                               type: array
                                                             ignoreErrorOnParse:
                                                               type: boolean
@@ -2817,6 +2867,10 @@ spec:
                                                                     type: object
                                                                 type: object
                                                               type: array
+                                                            headersToRemove:
+                                                              items:
+                                                                type: string
+                                                              type: array
                                                             ignoreErrorOnParse:
                                                               type: boolean
                                                             mergeExtractorsToBody:
@@ -2900,6 +2954,10 @@ spec:
                                                                         type: string
                                                                     type: object
                                                                 type: object
+                                                              type: array
+                                                            headersToRemove:
+                                                              items:
+                                                                type: string
                                                               type: array
                                                             ignoreErrorOnParse:
                                                               type: boolean
@@ -3005,6 +3063,10 @@ spec:
                                                                     type: object
                                                                 type: object
                                                               type: array
+                                                            headersToRemove:
+                                                              items:
+                                                                type: string
+                                                              type: array
                                                             ignoreErrorOnParse:
                                                               type: boolean
                                                             mergeExtractorsToBody:
@@ -3097,6 +3159,10 @@ spec:
                                                           type: object
                                                       type: object
                                                     type: array
+                                                  headersToRemove:
+                                                    items:
+                                                      type: string
+                                                    type: array
                                                   ignoreErrorOnParse:
                                                     type: boolean
                                                   mergeExtractorsToBody:
@@ -3181,6 +3247,10 @@ spec:
                                                           type: object
                                                       type: object
                                                     type: array
+                                                  headersToRemove:
+                                                    items:
+                                                      type: string
+                                                    type: array
                                                   ignoreErrorOnParse:
                                                     type: boolean
                                                   mergeExtractorsToBody:
@@ -3204,7 +3274,9 @@ spec:
                                         type: object
                                     type: object
                                   weight:
-                                    format: int32
+                                    maximum: 4294967295
+                                    minimum: 0
+                                    nullable: true
                                     type: integer
                                 type: object
                               type: array
@@ -3238,6 +3310,8 @@ spec:
                                     responseTransformation:
                                       type: boolean
                                     unwrapAsAlb:
+                                      type: boolean
+                                    unwrapAsApiGateway:
                                       type: boolean
                                   type: object
                                 azure:
@@ -3334,6 +3408,10 @@ spec:
                                                     type: string
                                                 type: object
                                             type: object
+                                          type: array
+                                        headersToRemove:
+                                          items:
+                                            type: string
                                           type: array
                                         ignoreErrorOnParse:
                                           type: boolean

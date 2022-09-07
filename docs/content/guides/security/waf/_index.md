@@ -15,13 +15,13 @@ and uses a set of rules to determine access to the web application. In enterpris
 deployed to an application or group of applications to provide a layer of protection between the applications and the 
 end users.
 
-Gloo Edge supports the popular Web Application Firewall framework/ruleset [ModSecurity](https://www.github.com/SpiderLabs/ModSecurity) 3.0.3.
+Gloo Edge supports the popular Web Application Firewall framework/ruleset [ModSecurity](https://www.github.com/SpiderLabs/ModSecurity) 3.0.4.
 
 ## **WAF in Gloo Edge**
 Gloo Edge Enterprise includes the ability to enable the ModSecurity Web Application Firewall for any incoming and outgoing HTTP connections. There is support for configuring rule sets based on the OWASP Core Rule Set as well as custom rule sets. More information on available rule sets, and the rules language generally, can be found [here](https://www.modsecurity.org/rules.html).
 
 ## **Why ModSecurity**
-API Gateways act as a control point for the outside world to access the various application services running in your environment. A Web Application Firewall offers a standard way to inspect and handle all incoming traffic. ModSecurity is one such firewall. ModSecurity uses a simple rules language to interpret and process incoming http traffic. There are many rule sets publically available, such as the [OWASP Core Rule Set](https://github.com/coreruleset/coreruleset).
+API Gateways act as a control point for the outside world to access the various application services running in your environment. A Web Application Firewall offers a standard way to inspect and handle all incoming traffic. ModSecurity is one such firewall. ModSecurity uses a simple rules language to interpret and process incoming http traffic. There are many rule sets publicly available, such as the [OWASP Core Rule Set](https://github.com/coreruleset/coreruleset).
 
 ### Configuring WAF in Gloo Edge
 ModSecurity rule sets are defined in gloo in one of 3 places:
@@ -116,7 +116,7 @@ spec:
 
 Once this config has been accepted run the following to test that the rule has been applied
 ```bash
-curl -v -H user-agent:scammer $(glooctl proxy url)/sample-route-1
+curl -v -H User-Agent: scammer $(glooctl proxy url)/sample-route-1
 ```
 should respond with
 ```

@@ -29,6 +29,7 @@ weight: 5
 - [OAuth](#oauth)
 - [OAuth2](#oauth2)
 - [RedisOptions](#redisoptions)
+- [SocketType](#sockettype)
 - [UserSession](#usersession)
 - [InternalSession](#internalsession)
 - [RedisSession](#redissession)
@@ -38,6 +39,8 @@ weight: 5
 - [DiscoveryOverride](#discoveryoverride)
 - [JwksOnDemandCacheRefreshPolicy](#jwksondemandcacherefreshpolicy)
 - [AutoMapFromMetadata](#automapfrommetadata)
+- [EndSessionProperties](#endsessionproperties)
+- [MethodType](#methodtype)
 - [OidcAuthorizationCode](#oidcauthorizationcode)
 - [JwtValidation](#jwtvalidation)
 - [RemoteJwks](#remotejwks)
@@ -95,6 +98,7 @@ format that will be included in the extauth snapshot.
 "metadata": .core.solo.io.Metadata
 "configs": []enterprise.gloo.solo.io.AuthConfig.Config
 "booleanExpr": .google.protobuf.StringValue
+"failOnRedirect": bool
 
 ```
 
@@ -104,6 +108,7 @@ format that will be included in the extauth snapshot.
 | `metadata` | [.core.solo.io.Metadata](../../../../../../../../../../solo-kit/api/v1/metadata.proto.sk/#metadata) | Metadata contains the object metadata for this resource. |
 | `configs` | [[]enterprise.gloo.solo.io.AuthConfig.Config](../extauth.proto.sk/#config) | List of auth configs to be checked for requests on a route referencing this auth config, By default, every config must be authorized for the entire request to be authorized. This behavior can be changed by defining names for each config and defining `boolean_expr` below. State is shared between successful requests on the chain, i.e., the headers returned from each successful auth service get appended into the final auth response. |
 | `booleanExpr` | [.google.protobuf.StringValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/string-value) | How to handle processing of named configs within an auth config chain. An example config might be: `( basic1 || basic2 || (oidc1 && !oidc2) )` The boolean expression is evaluated left to right but honors parenthesis and short-circuiting. |
+| `failOnRedirect` | `bool` | How the service should handle a redirect response from an OIDC issuer. In the default false mode, the redirect will be considered a successful response, and the client will receive a 302 with a location header. If this is set to true, the client will instead receive a 401 unauthorized response. This is useful in cases where API calls are being made or other such occurrences where the client cannot handle the redirect. |
 
 
 
@@ -475,6 +480,8 @@ Deprecated: Prefer OAuth2
 "host": string
 "db": int
 "poolSize": int
+"tlsCertMountPath": string
+"socketType": .enterprise.gloo.solo.io.RedisOptions.SocketType
 
 ```
 
@@ -483,6 +490,22 @@ Deprecated: Prefer OAuth2
 | `host` | `string` | address of the redis. can be address:port or unix://path/to/unix.sock. |
 | `db` | `int` | db to use. can leave unset for db 0. |
 | `poolSize` | `int` | size of the connection pool. can leave unset for default. defaults to 10 connections per every CPU. |
+| `tlsCertMountPath` | `string` | enabled with a socket type of TLS. this is the tls cert mount path for this particular host. the generic secret can include the keys 'ca.crt', 'tls.crt', and 'tls.key'. the secret can contain the root-ca ,'ca.crt', at minimum. If a certificate is needed, both the 'tls.crt' and 'tls.key' need to be included. reference this to equal the 'mountPath' on the 'redis.certs[x].mountPath' in the helm chart values. an example of a mount path is '/certs'. |
+| `socketType` | [.enterprise.gloo.solo.io.RedisOptions.SocketType](../extauth.proto.sk/#sockettype) | the socket type, default is TCP. |
+
+
+
+
+---
+### SocketType
+
+ 
+redis socket types
+
+| Name | Description |
+| ----- | ----------- | 
+| `TCP` | TCP connection socket, this is the default. |
+| `TLS` | TLS connection socket. |
 
 
 
@@ -516,11 +539,17 @@ Deprecated: Prefer OAuth2
 
 
 ```yaml
+"allowRefreshing": .google.protobuf.BoolValue
+"keyPrefix": string
+"targetDomain": string
 
 ```
 
 | Field | Type | Description |
 | ----- | ---- | ----------- | 
+| `allowRefreshing` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | When set, refresh expired id-tokens using the refresh-token. Defaults to false. Explicitly set to true to enable refreshing. |
+| `keyPrefix` | `string` | Prefix to append to cookie keys, such as for separate domain and subdomain prefixes. Cookie keys are stored in the form `<key_prefix>_<cookie_name>`. For more information, see https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie#attributes. |
+| `targetDomain` | `string` | Domain used to validate against requests in order to ensure that request host name matches target domain. If the target domain is provided will prevent requests that do not match the target domain according to the domain matching specifications in RFC 6265. For more information, see https://datatracker.ietf.org/doc/html/rfc6265#section-5.1.3. |
 
 
 
@@ -536,6 +565,7 @@ Deprecated: Prefer OAuth2
 "cookieName": string
 "allowRefreshing": .google.protobuf.BoolValue
 "preExpiryBuffer": .google.protobuf.Duration
+"targetDomain": string
 
 ```
 
@@ -546,6 +576,7 @@ Deprecated: Prefer OAuth2
 | `cookieName` | `string` | Cookie name to set and store the session id. If empty the default "__session" is used. |
 | `allowRefreshing` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | When set, refresh expired id-tokens using the refresh-token. Defaults to true. Explicitly set to false to disable refreshing. |
 | `preExpiryBuffer` | [.google.protobuf.Duration](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/duration) | Specifies a time buffer in which an id-token will be refreshed prior to its actual expiration. Defaults to 2 seconds. A duration of 0 will only refresh tokens after they have already expired. To refresh tokens, you must also set 'allowRefreshing' to 'true'; otherwise, this field is ignored. |
+| `targetDomain` | `string` | Domain used to validate against requests in order to ensure that request host name matches target domain. If the target domain is provided will prevent requests that do not match the target domain according to the domain matching specifications in RFC 6265. For more information, see https://datatracker.ietf.org/doc/html/rfc6265#section-5.1.3. |
 
 
 
@@ -633,6 +664,7 @@ https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
 "authMethods": []string
 "claims": []string
 "revocationEndpoint": string
+"endSessionEndpoint": string
 
 ```
 
@@ -648,6 +680,7 @@ https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata
 | `authMethods` | `[]string` | list of client authentication methods supported by the provider token endpoint. |
 | `claims` | `[]string` | list of claim types that the provider supports. |
 | `revocationEndpoint` | `string` | url of the provider token revocation endpoint. |
+| `endSessionEndpoint` | `string` | url of the provider end session endpoint. |
 
 
 
@@ -699,6 +732,37 @@ not yet in the local cache.
 
 
 ---
+### EndSessionProperties
+
+
+
+```yaml
+"methodType": .enterprise.gloo.solo.io.EndSessionProperties.MethodType
+
+```
+
+| Field | Type | Description |
+| ----- | ---- | ----------- | 
+| `methodType` | [.enterprise.gloo.solo.io.EndSessionProperties.MethodType](../extauth.proto.sk/#methodtype) | The method type used by the end session endpoint, defaults to GET. |
+
+
+
+
+---
+### MethodType
+
+ 
+The Method used to make the request.
+
+| Name | Description |
+| ----- | ----------- | 
+| `GetMethod` | Uses GET method when making the request |
+| `PostMethod` | Uses POST method when making the request |
+
+
+
+
+---
 ### OidcAuthorizationCode
 
 
@@ -722,6 +786,7 @@ not yet in the local cache.
 "sessionIdHeaderName": string
 "parseCallbackPathAsRegex": bool
 "autoMapFromMetadata": .enterprise.gloo.solo.io.AutoMapFromMetadata
+"endSessionProperties": .enterprise.gloo.solo.io.EndSessionProperties
 
 ```
 
@@ -745,6 +810,7 @@ not yet in the local cache.
 | `sessionIdHeaderName` | `string` | If set, the randomly generated session id will be sent to the token endpoint as part of the code exchange The session id is used as the key for sessions in Redis. |
 | `parseCallbackPathAsRegex` | `bool` | If set, CallbackPath will be evaluated as a regular expression. |
 | `autoMapFromMetadata` | [.enterprise.gloo.solo.io.AutoMapFromMetadata](../extauth.proto.sk/#automapfrommetadata) | If specified, authEndpointQueryParams and tokenEndpointQueryParams will be populated using dynamic metadata values. By default parameters will be extracted from the solo_authconfig_oidc namespace this behavior can be overridden by explicitly specifying a namespace. |
+| `endSessionProperties` | [.enterprise.gloo.solo.io.EndSessionProperties](../extauth.proto.sk/#endsessionproperties) | If specified, these are properties defined for the end session endpoint specifications. Noted [here](https://openid.net/specs/openid-connect-rpinitiated-1_0.html) in the OIDC documentation. |
 
 
 
@@ -1036,6 +1102,7 @@ Authenticates and authorizes requests by querying an LDAP server. Gloo makes the
 "allowedGroups": []string
 "pool": .enterprise.gloo.solo.io.Ldap.ConnectionPool
 "searchFilter": string
+"disableGroupChecking": bool
 
 ```
 
@@ -1047,6 +1114,7 @@ Authenticates and authorizes requests by querying an LDAP server. Gloo makes the
 | `allowedGroups` | `[]string` | In order for the request to be authenticated, the membership attribute (e.g. *memberOf*) on the user entry must contain at least of one of the group DNs specified via this option. E.g. []string{ "cn=managers,ou=groups,dc=solo,dc=io", "cn=developers,ou=groups,dc=solo,dc=io" }. |
 | `pool` | [.enterprise.gloo.solo.io.Ldap.ConnectionPool](../extauth.proto.sk/#connectionpool) | Use this property to tune the pool of connections to the LDAP server that Gloo maintains. |
 | `searchFilter` | `string` | Use to set a custom filter when searching a member. Defaults to "(uid=*)". |
+| `disableGroupChecking` | `bool` | Disables group checking, regardless of the value for allowedGroups, and disables validation for the membership attribute of the user entry. Group checking is enabled by default. |
 
 
 
@@ -1212,6 +1280,7 @@ JSON marshalling.
 "authConfigRefName": string
 "configs": []enterprise.gloo.solo.io.ExtAuthConfig.Config
 "booleanExpr": .google.protobuf.StringValue
+"failOnRedirect": bool
 
 ```
 
@@ -1220,6 +1289,7 @@ JSON marshalling.
 | `authConfigRefName` | `string` |  |
 | `configs` | [[]enterprise.gloo.solo.io.ExtAuthConfig.Config](../extauth.proto.sk/#config) | List of auth configs to be checked for requests on a route referencing this auth config, By default, every config must be authorized for the entire request to be authorized. This behavior can be changed by defining names for each config and defining `boolean_expr` below. State is shared between successful requests on the chain, i.e., the headers returned from each successful auth service get appended into the final auth response. |
 | `booleanExpr` | [.google.protobuf.StringValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/string-value) | How to handle processing of named configs within an auth config chain. An example config might be: `( basic1 || basic2 || (oidc1 && !oidc2) )` The boolean expression is evaluated left to right but honors parenthesis and short-circuiting. |
+| `failOnRedirect` | `bool` | How the service should handle a redirect response from an OIDC issuer. In the default false mode, the redirect will be considered a successful response, and the client will receive a 302 with a location header. If this is set to true, the client will instead receive a 401 unauthorized response. This is useful in cases where API calls are being made or other such occurrences where the client cannot handle the redirect. |
 
 
 
@@ -1278,6 +1348,7 @@ Deprecated, prefer OAuth2Config
 "sessionIdHeaderName": string
 "parseCallbackPathAsRegex": bool
 "autoMapFromMetadata": .enterprise.gloo.solo.io.AutoMapFromMetadata
+"endSessionProperties": .enterprise.gloo.solo.io.EndSessionProperties
 
 ```
 
@@ -1301,6 +1372,7 @@ Deprecated, prefer OAuth2Config
 | `sessionIdHeaderName` | `string` | If set, the randomly generated session id will be sent to the token endpoint as part of the code exchange The session id is used as the key for sessions in Redis. |
 | `parseCallbackPathAsRegex` | `bool` | If set, CallbackPath will be evaluated as a regular expression. |
 | `autoMapFromMetadata` | [.enterprise.gloo.solo.io.AutoMapFromMetadata](../extauth.proto.sk/#automapfrommetadata) | If specified, authEndpointQueryParams and tokenEndpointQueryParams will be populated using dynamic metadata values. By default parameters will be extracted from the solo_authconfig_oidc namespace this behavior can be overridden by explicitly specifying a namespace. |
+| `endSessionProperties` | [.enterprise.gloo.solo.io.EndSessionProperties](../extauth.proto.sk/#endsessionproperties) | If specified, these are properties defined for the end session endpoint specifications. Noted [here](https://openid.net/specs/openid-connect-rpinitiated-1_0.html) in the OIDC documentation. |
 
 
 

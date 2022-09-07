@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/core/selectors"
+
 	"github.com/solo-io/solo-kit/pkg/api/v2/reporter"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
@@ -18,11 +20,13 @@ import (
 	v1 "github.com/solo-io/gloo/projects/gateway/pkg/api/v1"
 	"github.com/solo-io/gloo/projects/gateway/pkg/defaults"
 	. "github.com/solo-io/gloo/projects/gateway/pkg/translator"
+	envoytrace_gloo "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/config/trace/v3"
 	gloov1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/core/matchers"
 	gloov1snap "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/gloosnapshot"
 	hcm "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/hcm"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/tcp"
+	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/tracing"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
 	"github.com/solo-io/solo-kit/pkg/utils/prototime"
 )
@@ -294,26 +298,29 @@ var _ = Describe("Hybrid Translator", func() {
 
 			Context("anscestry override logic", func() {
 				var (
-					parent   *v1.DelegatedHttpGateway
-					child    *v1.MatchableHttpGateway
-					ssl_true *gloov1.SslConfig = &gloov1.SslConfig{
-						OneWayTls: &wrapperspb.BoolValue{
-							Value: true,
-						},
-					}
-					ssl_false *gloov1.SslConfig = &gloov1.SslConfig{
+					parent *v1.DelegatedHttpGateway
+					child  *v1.MatchableHttpGateway
+
+					sslNil  *gloov1.SslConfig
+					sslZero = &gloov1.SslConfig{
 						OneWayTls: &wrapperspb.BoolValue{
 							Value: false,
 						},
 					}
-					ssl_empty *gloov1.SslConfig                  = &gloov1.SslConfig{}
-					hcm_true  *hcm.HttpConnectionManagerSettings = &hcm.HttpConnectionManagerSettings{
-						SkipXffAppend: true,
+					sslEmpty *gloov1.SslConfig = &gloov1.SslConfig{}
+					sslSet   *gloov1.SslConfig = &gloov1.SslConfig{
+						OneWayTls: &wrapperspb.BoolValue{
+							Value: true,
+						},
 					}
-					hcm_false *hcm.HttpConnectionManagerSettings = &hcm.HttpConnectionManagerSettings{
-						SkipXffAppend: false,
-					}
-					hcm_empty *hcm.HttpConnectionManagerSettings = &hcm.HttpConnectionManagerSettings{}
+				)
+
+				type DesiredResult int64
+				const (
+					False DesiredResult = iota
+					True
+					Nil
+					Error
 				)
 
 				BeforeEach(func() {
@@ -324,10 +331,9 @@ var _ = Describe("Hybrid Translator", func() {
 								GatewayType: &v1.Gateway_HybridGateway{
 									HybridGateway: &v1.HybridGateway{
 										DelegatedHttpGateways: &v1.DelegatedHttpGateway{
-											SelectionType: &v1.DelegatedHttpGateway_Ref{
-												Ref: &core.ResourceRef{
-													Name:      "name",
-													Namespace: ns,
+											SelectionType: &v1.DelegatedHttpGateway_Selector{
+												Selector: &selectors.Selector{
+													Namespaces: []string{ns},
 												},
 											},
 										},
@@ -357,6 +363,7 @@ var _ = Describe("Hybrid Translator", func() {
 							createVirtualService("name1", ns, false),
 							createVirtualService("name2", ns, false),
 							createVirtualService("name3", ns+"-other-namespace", false),
+							createVirtualService("name1", ns, true),
 						},
 					}
 
@@ -364,76 +371,182 @@ var _ = Describe("Hybrid Translator", func() {
 					child = snap.HttpGateways[0]
 				})
 
-				DescribeTable("anscestry override tests", func(child_ssl *gloov1.SslConfig, parent_ssl *gloov1.SslConfig, child_hcm *hcm.HttpConnectionManagerSettings, parent_hcm *hcm.HttpConnectionManagerSettings, prevent_child_overrides bool) {
-					parent.PreventChildOverrides = prevent_child_overrides
-					// config setting
-					child.GetMatcher().SslConfig = child_ssl
-					parent.SslConfig = parent_ssl
-					child.GetHttpGateway().GetOptions().HttpConnectionManagerSettings = child_hcm
-					parent.HttpConnectionManagerSettings = parent_hcm
+				Context("SslConfig", func() {
+					DescribeTable("SslConfig anscestry override tests", func(childSsl, parentSsl *gloov1.SslConfig, preventChildOverrides bool, desiredResult DesiredResult) {
+						parent.PreventChildOverrides = preventChildOverrides
+						// config setting
+						child.GetMatcher().SslConfig = childSsl
+						parent.SslConfig = parentSsl
 
-					// perform translation
-					params := NewTranslatorParams(ctx, snap, reports)
-					hybridTranslator.ComputeListener(params, defaults.GatewayProxyName, snap.Gateways[0])
+						// perform translation
+						params := NewTranslatorParams(ctx, snap, reports)
+						listener := hybridTranslator.ComputeListener(params, defaults.GatewayProxyName, snap.Gateways[0])
 
-					// evaluate results
-					hcm_after := child.GetHttpGateway().GetOptions().GetHttpConnectionManagerSettings()
-					ssl_after := child.GetMatcher().GetSslConfig()
+						if desiredResult == Error {
+							// evaluate results
+							Expect(reports.ValidateStrict()).To(HaveOccurred())
+							Expect(listener).To(BeNil())
+							return
+						} else {
+							// evaluate results
+							Expect(reports.ValidateStrict()).NotTo(HaveOccurred())
+							Expect(listener).NotTo(BeNil())
+						}
 
-					Expect(hcm_after.GetSkipXffAppend()).To(Equal(true))
-					Expect(ssl_after.GetOneWayTls().GetValue()).To(Equal(true))
-				},
-					Entry("PreventChildOverrides, child == nil", // should prefer parent fields
-						nil, ssl_true, nil, hcm_true, true),
-					Entry("PreventChildOverrides, parent == nil", // should prefer child fields
-						ssl_true, nil, hcm_true, nil, true),
-					Entry("PreventChildOverrides, child.subfield != nil && parent.subfield != nil", // should prefer parent.subfield
-						ssl_false, ssl_true, hcm_false, hcm_true, true),
-					Entry("PreventChildOverrides, child.subfield != nil && parent.subfield == nil", // should prefer child.subfield
-						ssl_true, ssl_empty, hcm_true, hcm_empty, true),
-					Entry("PreventChildOverrides, child.subfield == nil && parent.subfield != nil", // should prefer parent.subfield
-						ssl_empty, ssl_true, hcm_empty, hcm_true, true),
-					Entry("!PreventChildOverrides, child == nil", // should prefer parent fields
-						nil, ssl_true, nil, hcm_true, false),
-					Entry("!PreventChildOverrides, parent == nil", // should prefer child fields
-						ssl_true, nil, hcm_true, nil, false),
-					Entry("!PreventChildOverrides, child.subfield != nil && parent.subfield != nil", // should prefer child.subfield
-						ssl_true, ssl_false, hcm_true, hcm_false, false),
-					Entry("!PreventChildOverrides, child.subfield != nil && parent.subfield == nil", // should prefer child.subfield
-						ssl_true, ssl_empty, hcm_true, hcm_empty, false),
-					Entry("!PreventChildOverrides, child.subfield == nil && parent.subfield != nil", // should prefer parent.subfield
-						ssl_empty, ssl_true, hcm_empty, hcm_true, false),
-				)
+						matchedListeners := listener.GetHybridListener().GetMatchedListeners()
+						Expect(matchedListeners).To(HaveLen(1))
 
-				It("Should set child HCM options when child has `nil` options field", func() {
-					// config setting
-					child.GetHttpGateway().Options = nil
-					parent.HttpConnectionManagerSettings = hcm_true
+						singleMatchedListener := matchedListeners[0]
+						Expect(singleMatchedListener).NotTo(BeNil())
 
-					// perform transformation
-					params := NewTranslatorParams(ctx, snap, reports)
-					hybridTranslator.ComputeListener(params, defaults.GatewayProxyName, snap.Gateways[0])
+						sslAfter := singleMatchedListener.GetMatcher().GetSslConfig()
 
-					// evaluate results
-					hcm_after := child.GetHttpGateway().GetOptions().GetHttpConnectionManagerSettings()
-					Expect(hcm_after.GetSkipXffAppend()).To(Equal(true))
+						// assertion ladder is a bit annoying, given that I needed a custom type that could be one of [true, false, nil]
+						if desiredResult == Nil {
+							Expect(sslAfter.GetOneWayTls()).To(BeNil())
+						} else if desiredResult == True {
+							Expect(sslAfter.GetOneWayTls().GetValue()).To(BeTrue())
+						} else if desiredResult == False {
+							Expect(sslAfter.GetOneWayTls().GetValue()).To(BeFalse())
+						}
+					},
+						/*┏(･o･)┛♪┗ (･o･) ┓			┏(･o･)┛♪┗ (･o･) ┓			┏(･o･)┛♪┗ (･o･) ┓			┏(･o･)┛♪┗ (･o･) ┓			┏(･o･)┛♪┗ (･o･) ┓
+						I am sitting here, possibly having descended into madness.  In my madness, I have found it necessary/expedient to construct a 36-entry table.
+						So some explanations are in order.  In general, a field can be affected in any 1 of 4 ways:
+							* nil		| an object not existing/instantiated.							|	ssl = nil
+							* zero		| a zero-value being set on a subfield.  ex: (0, "", false)		|	ssl.OneWayTls.Value = false
+							* empty 	| object exists, but has nil subfield.							|	ssl.OneWayTls = nil
+							* set		| object exists and has populated subfield						|	ssl.OneWayTls.Value = true
+						Since our merge operations take in (childSsl, parentSsl, PreventChildOverrides), this leaves 4*4*2 = 36 possible combinations to test.
+
+						When performing all of said combinations on a _nested_ field, such as ssl.OneWayTls.Value, there are 4 possible results:
+							* True		| ssl.OneWayTls.Value is true
+							* False		| ssl.OneWayTls.Value is false
+							* Nil		| ssl or OneWayTls is nil
+							* Error		| translation failed; when either parent XOR child has ssl defined, we should yield an error on the report
+						(┏(･o･)┛♪┗ (･o･) ┓			┏(･o･)┛♪┗ (･o･) ┓			┏(･o･)┛♪┗ (･o･) ┓			┏(･o･)┛♪┗ (･o･) ┓			┏(･o･)┛♪┗ (･o･) ┓)*/
+						Entry("nil,nil,1", sslNil, sslNil, true, Nil),
+						Entry("nil,nil,0", sslNil, sslNil, false, Nil),
+						Entry("nil,zero,1", sslNil, sslZero, true, Error),
+						Entry("nil,zero,0", sslNil, sslZero, false, Error),
+						Entry("nil,empty,1", sslNil, sslEmpty, true, Error),
+						Entry("nil,empty,0", sslNil, sslEmpty, false, Error),
+						Entry("nil,set,1", sslNil, sslSet, true, Error),
+						Entry("nil,set,0", sslNil, sslSet, false, Error),
+
+						Entry("zero,nil,1", sslZero, sslNil, true, Error),
+						Entry("zero,nil,0", sslZero, sslNil, false, Error),
+						Entry("zero,zero,1", sslZero, sslZero, true, False),
+						Entry("zero,zero,0", sslZero, sslZero, false, False),
+						Entry("zero,empty,1", sslZero, sslEmpty, true, False),
+						Entry("zero,empty,0", sslZero, sslEmpty, false, False),
+						Entry("zero,set,1", sslZero, sslSet, true, True),
+						Entry("zero,set,0", sslZero, sslSet, false, False), // prefer child value; 0-value override
+
+						Entry("empty,nil,1", sslEmpty, sslNil, true, Error),
+						Entry("empty,nil,0", sslEmpty, sslNil, false, Error),
+						Entry("empty,zero,1", sslEmpty, sslZero, true, False),
+						Entry("empty,zero,0", sslEmpty, sslZero, false, False),
+						Entry("empty,empty,1", sslEmpty, sslEmpty, true, Nil),
+						Entry("empty,empty,0", sslEmpty, sslEmpty, false, Nil),
+						Entry("empty,set,1", sslEmpty, sslSet, true, True),
+						Entry("empty,set,0", sslEmpty, sslSet, false, True),
+
+						Entry("set,nil,1", sslSet, sslNil, true, Error),
+						Entry("set,nil,0", sslSet, sslNil, false, Error),
+						Entry("set,zero,1", sslSet, sslZero, true, False), // prefer parent value; 0-value override
+						Entry("set,zero,0", sslSet, sslZero, false, True),
+						Entry("set,empty,1", sslSet, sslEmpty, true, True),
+						Entry("set,empty,0", sslSet, sslEmpty, false, True),
+						Entry("set,set,1", sslSet, sslSet, true, True),
+						Entry("set,set,0", sslSet, sslSet, false, True),
+
+						// extra entries added for code reuse/testing convenience.  Prior examples didn't consider top-level nil fields
+						// a.k.a., extra "should error" examples
+						Entry("-,set,0", nil, sslSet, false, Error),
+						Entry("-,set,1", nil, sslSet, true, Error),
+						Entry("set,-,0", sslSet, nil, false, Error),
+						Entry("set,-,1", sslSet, nil, true, Error),
+					)
 				})
 
-				It("Should overwrite nested nil child fields", func() {
-					// config setting
-					child.GetMatcher().SslConfig = ssl_empty
-					parent.SslConfig = ssl_empty
-					parent.GetSslConfig().TransportSocketConnectTimeout = &duration.Duration{
-						Seconds: 10,
-					}
+				Context("HttpConnectionManagerSettings", func() {
+					// while the test for SslConfig seeks to represent a, frankly, hysterical amount of edge conditions, this test
+					// takes a more "throw it at the wall" approach. Notably, it tests more object types than just wrapperspb.BoolValue
+					It("Should merge complicated config of various object types with PreventChildOverrides=false", func() {
+						// config setting
+						parent.PreventChildOverrides = false
+						child.GetHttpGateway().GetOptions().HttpConnectionManagerSettings = &hcm.HttpConnectionManagerSettings{
+							SkipXffAppend:       &wrapperspb.BoolValue{Value: false},    // prefer 0-value for bool
+							Via:                 &wrapperspb.StringValue{Value: ""},     // prefer 0-value for string
+							XffNumTrustedHops:   &wrapperspb.UInt32Value{Value: 0},      // prefer 0-value for uint32
+							UseRemoteAddress:    nil,                                    // parent should overwrite `nil` fields
+							StreamIdleTimeout:   &duration.Duration{},                   // prefer 0-value for duration
+							MaxRequestHeadersKb: &wrapperspb.UInt32Value{Value: 32},     // demonstrate "regular" override capabilities
+							CodecType:           hcm.HttpConnectionManagerSettings_AUTO, // prefer an enum's 0-value
+							HeaderFormat: &hcm.HttpConnectionManagerSettings_ProperCaseHeaderKeyFormat{ // "one of" overrides should be respected
+								ProperCaseHeaderKeyFormat: &wrapperspb.BoolValue{Value: true},
+							},
+							Tracing: &tracing.ListenerTracingSettings{
+								ProviderConfig: &tracing.ListenerTracingSettings_ZipkinConfig{
+									ZipkinConfig: &envoytrace_gloo.ZipkinConfig{
+										CollectorCluster: &envoytrace_gloo.ZipkinConfig_CollectorUpstreamRef{
+											CollectorUpstreamRef: &core.ResourceRef{
+												Name:      "",
+												Namespace: "",
+											},
+										},
+									},
+								},
+							},
+						}
+						parent.HttpConnectionManagerSettings = &hcm.HttpConnectionManagerSettings{
+							SkipXffAppend:       &wrapperspb.BoolValue{Value: true},
+							Via:                 &wrapperspb.StringValue{Value: "should-not-overwrite"},
+							XffNumTrustedHops:   &wrapperspb.UInt32Value{Value: 32},
+							UseRemoteAddress:    &wrapperspb.BoolValue{Value: true},
+							StreamIdleTimeout:   &duration.Duration{Seconds: 10, Nanos: 32},
+							MaxRequestHeadersKb: &wrapperspb.UInt32Value{Value: 31},
+							CodecType:           hcm.HttpConnectionManagerSettings_HTTP1,
+							HeaderFormat: &hcm.HttpConnectionManagerSettings_PreserveCaseHeaderKeyFormat{
+								PreserveCaseHeaderKeyFormat: &wrapperspb.BoolValue{Value: true},
+							},
+							Tracing: &tracing.ListenerTracingSettings{
+								ProviderConfig: &tracing.ListenerTracingSettings_ZipkinConfig{
+									ZipkinConfig: &envoytrace_gloo.ZipkinConfig{
+										CollectorCluster: &envoytrace_gloo.ZipkinConfig_CollectorUpstreamRef{
+											CollectorUpstreamRef: &core.ResourceRef{
+												Name:      "dummy-name",
+												Namespace: "dummy-namespace",
+											},
+										},
+									},
+								},
+							},
+						}
 
-					// perform transformation
-					params := NewTranslatorParams(ctx, snap, reports)
-					hybridTranslator.ComputeListener(params, defaults.GatewayProxyName, snap.Gateways[0])
+						// perform translation
+						params := NewTranslatorParams(ctx, snap, reports)
+						hybridTranslator.ComputeListener(params, defaults.GatewayProxyName, snap.Gateways[0])
 
-					// evaluate results
-					ssl_after := child.GetMatcher().GetSslConfig()
-					Expect(ssl_after.GetTransportSocketConnectTimeout().GetSeconds()).To(Equal(int64(10)))
+						// evaluate results
+						hcm_after := child.GetHttpGateway().GetOptions().GetHttpConnectionManagerSettings()
+
+						Expect(hcm_after.GetSkipXffAppend().GetValue()).To(Equal(false))
+						Expect(hcm_after.GetVia().GetValue()).To(Equal(""))
+						Expect(hcm_after.GetXffNumTrustedHops().GetValue()).To(Equal(uint32(0)))
+						Expect(hcm_after.GetUseRemoteAddress().GetValue()).To(Equal(true))
+						Expect(hcm_after.GetStreamIdleTimeout().GetNanos()).To(Equal(int32(0)))
+						Expect(hcm_after.GetStreamIdleTimeout().GetSeconds()).To(Equal(int64(0)))
+						Expect(hcm_after.MaxRequestHeadersKb.GetValue()).To(Equal(uint32(32)))
+						Expect(hcm_after.GetProperCaseHeaderKeyFormat().GetValue()).To(Equal(true))
+						Expect(hcm_after.GetPreserveCaseHeaderKeyFormat().GetValue()).To(Equal(false))
+						Expect((hcm_after.GetTracing().GetZipkinConfig().GetCollectorUpstreamRef().GetName())).To(Equal(""))
+						Expect((hcm_after.GetTracing().GetZipkinConfig().GetCollectorUpstreamRef().GetNamespace())).To(Equal(""))
+
+						// This is a limitation of this feature.  At present, we can't override enums
+						// Expect(hcm_after.GetCodecType()).To(Equal(hcm.HttpConnectionManagerSettings_AUTO))
+					})
 				})
 			})
 
@@ -510,6 +623,9 @@ var _ = Describe("Hybrid Translator", func() {
 								GatewayType: &v1.Gateway_HybridGateway{
 									HybridGateway: &v1.HybridGateway{
 										DelegatedHttpGateways: &v1.DelegatedHttpGateway{
+											// This is important as it means the Gateway will only select
+											// HttpGateways with Ssl defined
+											SslConfig: &gloov1.SslConfig{},
 											SelectionType: &v1.DelegatedHttpGateway_Ref{
 												Ref: &core.ResourceRef{
 													Name:      "name",

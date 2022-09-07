@@ -3,7 +3,8 @@ package bootstrap
 import (
 	"context"
 	"net"
-	"time"
+
+	"github.com/solo-io/gloo/pkg/bootstrap/leaderelector"
 
 	"github.com/solo-io/gloo/projects/gloo/pkg/debug"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/solo-io/solo-kit/pkg/api/v1/control-plane/server"
 	skkube "github.com/solo-io/solo-kit/pkg/api/v1/resources/common/kubernetes"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/durationpb"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -56,12 +58,14 @@ type Opts struct {
 	ReadGatwaysFromAllNamespaces bool
 	GatewayControllerEnabled     bool
 	ProxyCleanup                 func()
+
+	Identity leaderelector.Identity
 }
 
 type Consul struct {
 	ConsulWatcher      consul.ConsulWatcher
 	DnsServer          string
-	DnsPollingInterval *time.Duration
+	DnsPollingInterval *durationpb.Duration
 }
 
 type ControlPlane struct {

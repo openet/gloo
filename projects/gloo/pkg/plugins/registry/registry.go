@@ -3,6 +3,10 @@ package registry
 
 import (
 	"context"
+	"os"
+	"strings"
+
+	"github.com/solo-io/go-utils/contextutils"
 
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/dynamic_forward_proxy"
 
@@ -27,6 +31,7 @@ import (
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/hcm"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/headers"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/healthcheck"
+	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/istio_integration"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/kubernetes"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/linkerd"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/listener"
@@ -50,28 +55,32 @@ import (
 	"github.com/solo-io/gloo/projects/gloo/pkg/utils"
 )
 
-var _ plugins.PluginRegistry = new(pluginRegistry)
+var (
+	_ plugins.PluginRegistry = new(pluginRegistry)
+)
 
 func Plugins(opts bootstrap.Opts) []plugins.Plugin {
 	var glooPlugins []plugins.Plugin
 
-	transformationPlugin := transformation.NewPlugin()
-	hcmPlugin := hcm.NewPlugin()
+	ec2Plugin, err := ec2.NewPlugin(opts.WatchOpts.Ctx, opts.Secrets)
+	if err != nil {
+		contextutils.LoggerFrom(opts.WatchOpts.Ctx).Errorf("Failed to create ec2 Plugin %+v", err)
+	}
 
 	glooPlugins = append(glooPlugins,
 		loadbalancer.NewPlugin(),
 		upstreamconn.NewPlugin(),
 		azure.NewPlugin(),
-		aws.NewPlugin(),
+		aws.NewPlugin(aws.GenerateAWSLambdaRouteConfig),
 		rest.NewPlugin(),
-		hcmPlugin,
+		hcm.NewPlugin(),
 		als.NewPlugin(),
 		proxyprotocol.NewPlugin(),
 		tls_inspector.NewPlugin(),
 		pipe.NewPlugin(),
 		tcp.NewPlugin(utils.NewSslConfigTranslator()),
 		static.NewPlugin(),
-		transformationPlugin,
+		transformation.NewPlugin(),
 		grpcweb.NewPlugin(),
 		grpc.NewPlugin(),
 		faultinjection.NewPlugin(),
@@ -79,7 +88,7 @@ func Plugins(opts bootstrap.Opts) []plugins.Plugin {
 		cors.NewPlugin(),
 		linkerd.NewPlugin(),
 		stats.NewPlugin(),
-		ec2.NewPlugin(opts.WatchOpts.Ctx, opts.Secrets),
+		ec2Plugin,
 		tracing.NewPlugin(),
 		shadowing.NewPlugin(),
 		headers.NewPlugin(),
@@ -104,7 +113,14 @@ func Plugins(opts bootstrap.Opts) []plugins.Plugin {
 	if opts.Consul.ConsulWatcher != nil {
 		glooPlugins = append(glooPlugins, consul.NewPlugin(opts.Consul.ConsulWatcher, consul.NewConsulDnsResolver(opts.Consul.DnsServer), opts.Consul.DnsPollingInterval))
 	}
-
+	lookupResult, found := os.LookupEnv("ENABLE_ISTIO_INTEGRATION")
+	istioEnabled := found && strings.ToLower(lookupResult) == "true"
+	if istioEnabled {
+		istioPlugin := istio_integration.NewPlugin(opts.WatchOpts.Ctx, opts.Upstreams)
+		if istioPlugin != nil {
+			glooPlugins = append(glooPlugins, istioPlugin)
+		}
+	}
 	return glooPlugins
 }
 
@@ -137,6 +153,7 @@ type pluginRegistry struct {
 // into their appropriate plugin lists. This process is referred to as
 // registering the plugins.
 func NewPluginRegistry(registeredPlugins []plugins.Plugin) *pluginRegistry {
+	var allPlugins []plugins.Plugin
 	var listenerPlugins []plugins.ListenerPlugin
 	var tcpFilterChainPlugins []plugins.TcpFilterChainPlugin
 	var httpFilterPlugins []plugins.HttpFilterPlugin
@@ -151,6 +168,11 @@ func NewPluginRegistry(registeredPlugins []plugins.Plugin) *pluginRegistry {
 
 	// Process registered plugins once
 	for _, plugin := range registeredPlugins {
+		if plugin == nil {
+			continue
+		}
+		allPlugins = append(allPlugins, plugin)
+
 		listenerPlugin, ok := plugin.(plugins.ListenerPlugin)
 		if ok {
 			listenerPlugins = append(listenerPlugins, listenerPlugin)
@@ -208,7 +230,7 @@ func NewPluginRegistry(registeredPlugins []plugins.Plugin) *pluginRegistry {
 	}
 
 	return &pluginRegistry{
-		plugins:                      registeredPlugins,
+		plugins:                      allPlugins,
 		listenerPlugins:              listenerPlugins,
 		tcpFilterChainPlugins:        tcpFilterChainPlugins,
 		httpFilterPlugins:            httpFilterPlugins,

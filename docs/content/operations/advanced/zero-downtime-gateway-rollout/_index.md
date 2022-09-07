@@ -84,7 +84,7 @@ In the previous example, `Upstream` pings are issued every 2 seconds. You might 
 
 For more information, see the [health check API documentation]({{% versioned_link_path fromRoot="/reference/api/github.com/solo-io/gloo/projects/gloo/api/external/envoy/api/v2/core/health_check.proto.sk/#healthcheck" %}}).
 
-[Retries](({{% versioned_link_path fromRoot="/guides/traffic_management/request_processing/retries/" %}})) are configured on `VirtualServices` at the route level:
+[Retries]({{% versioned_link_path fromRoot="/guides/traffic_management/request_processing/retries/" %}}) are configured on `VirtualServices` at the route level:
 
 {{< highlight yaml "hl_lines=17" >}}
 apiVersion: gateway.solo.io/v1
@@ -340,7 +340,7 @@ The results show good results and no errors.
 You can observe similar nice results during an upgrade:
 
 ```bash
-helm upgrade -n gloo-system gloo glooe/gloo-ee --version=1.8.13
+helm upgrade -n gloo-system gloo glooe/gloo-ee --version={{< readfile file="static/content/version_gee_latest.md" markdown="true">}}
 ```
 
 **Grafana dashboards**

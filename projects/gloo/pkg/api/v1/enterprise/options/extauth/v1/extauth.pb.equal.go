@@ -93,6 +93,10 @@ func (m *AuthConfig) Equal(that interface{}) bool {
 		}
 	}
 
+	if m.GetFailOnRedirect() != target.GetFailOnRedirect() {
+		return false
+	}
+
 	return true
 }
 
@@ -688,6 +692,14 @@ func (m *RedisOptions) Equal(that interface{}) bool {
 		return false
 	}
 
+	if strings.Compare(m.GetTlsCertMountPath(), target.GetTlsCertMountPath()) != 0 {
+		return false
+	}
+
+	if m.GetSocketType() != target.GetSocketType() {
+		return false
+	}
+
 	return true
 }
 
@@ -913,6 +925,10 @@ func (m *DiscoveryOverride) Equal(that interface{}) bool {
 		return false
 	}
 
+	if strings.Compare(m.GetEndSessionEndpoint(), target.GetEndSessionEndpoint()) != 0 {
+		return false
+	}
+
 	return true
 }
 
@@ -1010,6 +1026,34 @@ func (m *AutoMapFromMetadata) Equal(that interface{}) bool {
 	}
 
 	if strings.Compare(m.GetNamespace(), target.GetNamespace()) != 0 {
+		return false
+	}
+
+	return true
+}
+
+// Equal function
+func (m *EndSessionProperties) Equal(that interface{}) bool {
+	if that == nil {
+		return m == nil
+	}
+
+	target, ok := that.(*EndSessionProperties)
+	if !ok {
+		that2, ok := that.(EndSessionProperties)
+		if ok {
+			target = &that2
+		} else {
+			return false
+		}
+	}
+	if target == nil {
+		return m == nil
+	} else if m == nil {
+		return false
+	}
+
+	if m.GetMethodType() != target.GetMethodType() {
 		return false
 	}
 
@@ -1168,6 +1212,16 @@ func (m *OidcAuthorizationCode) Equal(that interface{}) bool {
 		}
 	} else {
 		if !proto.Equal(m.GetAutoMapFromMetadata(), target.GetAutoMapFromMetadata()) {
+			return false
+		}
+	}
+
+	if h, ok := interface{}(m.GetEndSessionProperties()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetEndSessionProperties()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetEndSessionProperties(), target.GetEndSessionProperties()) {
 			return false
 		}
 	}
@@ -1694,6 +1748,10 @@ func (m *Ldap) Equal(that interface{}) bool {
 		return false
 	}
 
+	if m.GetDisableGroupChecking() != target.GetDisableGroupChecking() {
+		return false
+	}
+
 	return true
 }
 
@@ -1916,6 +1974,10 @@ func (m *ExtAuthConfig) Equal(that interface{}) bool {
 		if !proto.Equal(m.GetBooleanExpr(), target.GetBooleanExpr()) {
 			return false
 		}
+	}
+
+	if m.GetFailOnRedirect() != target.GetFailOnRedirect() {
+		return false
 	}
 
 	return true
@@ -2307,6 +2369,24 @@ func (m *UserSession_InternalSession) Equal(that interface{}) bool {
 		return false
 	}
 
+	if h, ok := interface{}(m.GetAllowRefreshing()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetAllowRefreshing()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetAllowRefreshing(), target.GetAllowRefreshing()) {
+			return false
+		}
+	}
+
+	if strings.Compare(m.GetKeyPrefix(), target.GetKeyPrefix()) != 0 {
+		return false
+	}
+
+	if strings.Compare(m.GetTargetDomain(), target.GetTargetDomain()) != 0 {
+		return false
+	}
+
 	return true
 }
 
@@ -2367,6 +2447,10 @@ func (m *UserSession_RedisSession) Equal(that interface{}) bool {
 		if !proto.Equal(m.GetPreExpiryBuffer(), target.GetPreExpiryBuffer()) {
 			return false
 		}
+	}
+
+	if strings.Compare(m.GetTargetDomain(), target.GetTargetDomain()) != 0 {
+		return false
 	}
 
 	return true
@@ -2935,6 +3019,16 @@ func (m *ExtAuthConfig_OidcAuthorizationCodeConfig) Equal(that interface{}) bool
 		}
 	} else {
 		if !proto.Equal(m.GetAutoMapFromMetadata(), target.GetAutoMapFromMetadata()) {
+			return false
+		}
+	}
+
+	if h, ok := interface{}(m.GetEndSessionProperties()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetEndSessionProperties()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetEndSessionProperties(), target.GetEndSessionProperties()) {
 			return false
 		}
 	}

@@ -3,7 +3,9 @@ package syncer_test
 import (
 	"context"
 
-	"github.com/solo-io/gloo/projects/gloo/pkg/xds"
+	"github.com/solo-io/gloo/pkg/bootstrap/leaderelector/singlereplica"
+
+	gloo_translator "github.com/solo-io/gloo/projects/gloo/pkg/translator"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -73,8 +75,7 @@ var _ = Describe("Translate Proxy", func() {
 
 		rep := reporter.NewReporter(ref, statusClient, proxyClient.BaseClient(), upstreamClient)
 
-		xdsHasher := xds.NewNodeRoleHasher()
-		syncer = NewTranslatorSyncer(&mockTranslator{true, false, nil}, xdsCache, xdsHasher, sanitizer, rep, false, nil, settings, statusMetrics, nil, proxyClient, "")
+		syncer = NewTranslatorSyncer(&mockTranslator{true, false, nil}, xdsCache, sanitizer, rep, false, nil, settings, statusMetrics, nil, proxyClient, "", singlereplica.Identity())
 		snap = &v1snap.ApiSnapshot{
 			Proxies: v1.ProxyList{
 				proxy,
@@ -103,7 +104,7 @@ var _ = Describe("Translate Proxy", func() {
 		Expect(err).NotTo(HaveOccurred())
 		snap.Proxies[0] = p1
 
-		syncer = NewTranslatorSyncer(&mockTranslator{false, false, nil}, xdsCache, xdsHasher, sanitizer, rep, false, nil, settings, statusMetrics, nil, proxyClient, "")
+		syncer = NewTranslatorSyncer(&mockTranslator{false, false, nil}, xdsCache, sanitizer, rep, false, nil, settings, statusMetrics, nil, proxyClient, "", singlereplica.Identity())
 
 		err = syncer.Sync(context.Background(), snap)
 		Expect(err).NotTo(HaveOccurred())
@@ -225,8 +226,7 @@ var _ = Describe("Translate multiple proxies with errors", func() {
 
 		rep := reporter.NewReporter(ref, statusClient, proxyClient.BaseClient(), usClient)
 
-		xdsHasher := xds.NewNodeRoleHasher()
-		syncer = NewTranslatorSyncer(&mockTranslator{true, true, nil}, xdsCache, xdsHasher, sanitizer, rep, false, nil, settings, statusMetrics, nil, proxyClient, "")
+		syncer = NewTranslatorSyncer(&mockTranslator{true, true, nil}, xdsCache, sanitizer, rep, false, nil, settings, statusMetrics, nil, proxyClient, "", singlereplica.Identity())
 		snap = &v1snap.ApiSnapshot{
 			Proxies: v1.ProxyList{
 				proxy1,
@@ -310,7 +310,7 @@ type mockTranslator struct {
 	currentSnapshot    envoycache.Snapshot
 }
 
-func (t *mockTranslator) Translate(params plugins.Params, proxy *v1.Proxy) (envoycache.Snapshot, reporter.ResourceReports, *validation.ProxyReport, error) {
+func (t *mockTranslator) Translate(params plugins.Params, proxy *v1.Proxy) (envoycache.Snapshot, reporter.ResourceReports, *validation.ProxyReport) {
 	if t.reportErrs {
 		rpts := reporter.ResourceReports{}
 		rpts.AddError(proxy, errors.Errorf("hi, how ya doin'?"))
@@ -324,14 +324,17 @@ func (t *mockTranslator) Translate(params plugins.Params, proxy *v1.Proxy) (envo
 			}
 		}
 		if t.currentSnapshot != nil {
-			return t.currentSnapshot, rpts, &validation.ProxyReport{}, nil
+			return t.currentSnapshot, rpts, &validation.ProxyReport{}
 		}
-		return envoycache.NilSnapshot{}, rpts, &validation.ProxyReport{}, nil
+		return envoycache.NilSnapshot{}, rpts, &validation.ProxyReport{}
 	}
 	if t.currentSnapshot != nil {
-		return t.currentSnapshot, nil, &validation.ProxyReport{}, nil
+		return t.currentSnapshot, nil, &validation.ProxyReport{}
 	}
-	return envoycache.NilSnapshot{}, nil, &validation.ProxyReport{}, nil
+	return envoycache.NilSnapshot{}, nil, &validation.ProxyReport{}
 }
 
-var _ envoycache.SnapshotCache = &MockXdsCache{}
+var (
+	_ envoycache.SnapshotCache   = new(MockXdsCache)
+	_ gloo_translator.Translator = new(mockTranslator)
+)

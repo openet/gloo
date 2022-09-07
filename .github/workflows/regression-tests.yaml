@@ -4,16 +4,18 @@ on:
     branches:
       - 'master'
   pull_request:
-  issue_comment:
-    types: [ created, edited ]
 jobs:
   prepare_env:
     name: Prepare Environment
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-22.04
     outputs:
       should-run-regression-tests: ${{ steps.regression-tests.outputs.run_value }}
       should-pass-regression-tests: ${{ steps.regression-tests.outputs.pass_value }}
     steps:
+    - name: Cancel Previous Actions
+      uses: styfle/cancel-workflow-action@0.4.1
+      with:
+        access_token: ${{ github.token }}
     - id: is-draft-pr
       name: Process draft Pull Requests
       if: ${{ github.event.pull_request.draft }}
@@ -21,7 +23,8 @@ jobs:
     - id: signal-ci-comment
       name: Process comments on Pull Request to signal CI
       if:  ${{ github.event.issue.pull_request }}
-      run: echo "::set-output name=value::$(echo ${{ contains(github.event.comment.body, '/sig-ci') }})"
+      run: |
+        echo "::set-output name=value::$(echo ${{ contains(github.event.comment.body, '/sig-ci') }})"
     - id: skip-ci-comment
       name: Process comments on Pull Request to skip CI
       if: ${{ github.event.issue.pull_request }}
@@ -55,8 +58,9 @@ jobs:
     name: k8s regression tests
     needs: prepare_env
     if: needs.prepare_env.outputs.should-run-regression-tests == 'true'
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-22.04
     strategy:
+      fail-fast: false
       matrix:
         # knative support has been deprecated: https://github.com/solo-io/gloo/issues/5707
         # We have removed it from our CI regression tests

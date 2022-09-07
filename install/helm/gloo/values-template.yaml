@@ -64,6 +64,7 @@ discovery:
 gateway:
   enabled: true
   readGatewaysFromAllNamespaces: false
+  isolateVirtualHostsBySslConfig: false
   validation:
     enabled: true
     failurePolicy: "Ignore"
@@ -77,11 +78,6 @@ gateway:
       enabled: true
       disableHelmHook: false
       extraAnnotations: {}
-  deployment:
-    image:
-      repository: gateway
-    replicas: 0
-    runAsUser: 10101
   certGenJob:
     enabled: true
     image:
@@ -95,19 +91,20 @@ gateway:
       schedule: "* * * * *"
     runOnUpdate: false
   rolloutJob:
+    enabled: true
     image:
-      registry: bitnami
       repository: kubectl
-      tag: 1.22.9
+    restartPolicy: OnFailure
     runAsUser: 10101
+    ttlSecondsAfterFinished: 60
   cleanupJob:
+    enabled: true
     image:
-      registry: bitnami
       repository: kubectl
-      tag: 1.22.9
+    restartPolicy: OnFailure
     runAsUser: 10101
+    ttlSecondsAfterFinished: 60
   proxyServiceAccount: {}
-  serviceAccount: {}
 gatewayProxies:
   gatewayProxy:
     envoyApiVersion: V3
@@ -216,6 +213,11 @@ global:
     sds:
       image:
         repository: sds
+    istioProxy:
+      image:
+        repository: proxyv2
+        registry: docker.io/istio
+        tag: 1.9.5
     envoy:
       image:
         repository: gloo-envoy-wrapper

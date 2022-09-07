@@ -84,6 +84,8 @@ spec:
                           items:
                             type: string
                           type: array
+                        disableGroupChecking:
+                          type: boolean
                         membershipAttributeName:
                           type: string
                         pool:
@@ -222,6 +224,8 @@ spec:
                                   items:
                                     type: string
                                   type: array
+                                endSessionEndpoint:
+                                  type: string
                                 idTokenAlgs:
                                   items:
                                     type: string
@@ -247,6 +251,12 @@ spec:
                               type: object
                             discoveryPollInterval:
                               type: string
+                            endSessionProperties:
+                              properties:
+                                methodType:
+                                  type: string
+                                  x-kubernetes-int-or-string: true
+                              type: object
                             headers:
                               properties:
                                 accessTokenHeader:
@@ -282,6 +292,14 @@ spec:
                             session:
                               properties:
                                 cookie:
+                                  properties:
+                                    allowRefreshing:
+                                      nullable: true
+                                      type: boolean
+                                    keyPrefix:
+                                      type: string
+                                    targetDomain:
+                                      type: string
                                   type: object
                                 cookieOptions:
                                   properties:
@@ -325,8 +343,15 @@ spec:
                                         poolSize:
                                           format: int32
                                           type: integer
+                                        socketType:
+                                          type: string
+                                          x-kubernetes-int-or-string: true
+                                        tlsCertMountPath:
+                                          type: string
                                       type: object
                                     preExpiryBuffer:
+                                      type: string
+                                    targetDomain:
                                       type: string
                                   type: object
                               type: object
@@ -421,6 +446,8 @@ spec:
                       type: object
                   type: object
                 type: array
+              failOnRedirect:
+                type: boolean
               namespacedStatuses:
                 properties:
                   statuses:

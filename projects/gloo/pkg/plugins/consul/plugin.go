@@ -6,6 +6,10 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/solo-io/go-utils/contextutils"
+	"github.com/solo-io/solo-kit/pkg/utils/prototime"
+	"google.golang.org/protobuf/types/known/durationpb"
+
 	"github.com/solo-io/gloo/projects/gloo/pkg/discovery"
 
 	envoy_config_cluster_v3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
@@ -34,8 +38,8 @@ const (
 var (
 	UnformattedErrorMsg = "Consul settings specify automatic detection of TLS services, " +
 		"but the rootCA resource's name/namespace are not properly specified: {%s}"
-	ConsulTlsInputError = func(nsString string) error {
-		return eris.Errorf(UnformattedErrorMsg, nsString)
+	TLSInputError = func(refString string) error {
+		return eris.Errorf(UnformattedErrorMsg, refString)
 	}
 )
 
@@ -47,10 +51,10 @@ type plugin struct {
 	settings                        *v1.Settings
 }
 
-func NewPlugin(client consul.ConsulWatcher, resolver DnsResolver, dnsPollingInterval *time.Duration) *plugin {
+func NewPlugin(client consul.ConsulWatcher, resolver DnsResolver, dnsPollingInterval *durationpb.Duration) *plugin {
 	pollingInterval := DefaultDnsPollingInterval
 	if dnsPollingInterval != nil {
-		pollingInterval = *dnsPollingInterval
+		pollingInterval = prototime.DurationFromProto(dnsPollingInterval)
 	}
 	return &plugin{client: client, resolver: resolver, dnsPollingInterval: pollingInterval}
 }
@@ -73,7 +77,7 @@ func (p *plugin) Resolve(u *v1.Upstream) (*url.URL, error) {
 		dc = spec.GetDataCenters()[0]
 	}
 
-	options := NewConsulQueryOptions(dc, spec.GetConsistencyMode())
+	options := consul.NewConsulCatalogServiceQueryOptions(dc, spec.GetConsistencyMode(), spec.GetQueryOptions())
 	instances, _, err := p.client.Service(spec.GetServiceName(), "", options)
 	if err != nil {
 		return nil, eris.Wrapf(err, "getting service from catalog")
@@ -119,7 +123,7 @@ func (p *plugin) Resolve(u *v1.Upstream) (*url.URL, error) {
 	return nil, eris.Errorf("service with name %s and tags %v not found", spec.GetServiceName(), spec.GetInstanceTags())
 }
 
-func (p *plugin) Init(params plugins.InitParams) error {
+func (p *plugin) Init(params plugins.InitParams) {
 	p.settings = params.Settings
 	p.consulUpstreamDiscoverySettings = params.Settings.GetConsulDiscovery()
 	if p.consulUpstreamDiscoverySettings == nil {
@@ -131,7 +135,9 @@ func (p *plugin) Init(params plugins.InitParams) error {
 	if p.consulUpstreamDiscoverySettings.GetUseTlsTagging() {
 		rootCa := p.consulUpstreamDiscoverySettings.GetRootCa()
 		if rootCa.GetNamespace() == "" || rootCa.GetName() == "" {
-			return ConsulTlsInputError(rootCa.String())
+			// Historically, we would return an error here
+			// That behavior would cause Envoy translation to exit early and never update the xDS Snapshot
+			contextutils.LoggerFrom(params.Ctx).Errorf(TLSInputError(rootCa.String()).Error())
 		}
 
 		tlsTagName := p.consulUpstreamDiscoverySettings.GetTlsTagName()
@@ -139,7 +145,6 @@ func (p *plugin) Init(params plugins.InitParams) error {
 			p.consulUpstreamDiscoverySettings.TlsTagName = DefaultTlsTagName
 		}
 	}
-	return nil
 }
 
 func (p *plugin) ProcessUpstream(params plugins.Params, in *v1.Upstream, out *envoy_config_cluster_v3.Cluster) error {

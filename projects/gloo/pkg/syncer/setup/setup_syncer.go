@@ -10,6 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/solo-io/gloo/pkg/bootstrap/leaderelector"
+
+	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
+
 	"github.com/solo-io/gloo/projects/gloo/pkg/debug"
 
 	"github.com/solo-io/gloo/projects/gateway/pkg/services/k8sadmission"
@@ -45,7 +49,6 @@ import (
 	"github.com/solo-io/gloo/projects/gloo/pkg/bootstrap"
 	"github.com/solo-io/gloo/projects/gloo/pkg/defaults"
 	"github.com/solo-io/gloo/projects/gloo/pkg/discovery"
-	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
 	consulplugin "github.com/solo-io/gloo/projects/gloo/pkg/plugins/consul"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/registry"
 	extauthExt "github.com/solo-io/gloo/projects/gloo/pkg/syncer/extauth"
@@ -92,7 +95,7 @@ func NewSetupFunc() setuputils.SetupFunc {
 //noinspection GoUnusedExportedFunction
 func NewSetupFuncWithExtensions(extensions Extensions) setuputils.SetupFunc {
 	runWithExtensions := func(opts bootstrap.Opts) error {
-		return RunGlooWithExtensions(opts, extensions, make(chan struct{}))
+		return RunGlooWithExtensions(opts, extensions)
 	}
 	return NewSetupFuncWithRunAndExtensions(runWithExtensions, &extensions)
 }
@@ -125,9 +128,12 @@ func NewSetupFuncWithRunAndExtensions(runFunc RunFunc, extensions *Extensions) s
 	return s.Setup
 }
 
+// grpcServer contains grpc server configuration fields we will need to persist after starting a server
+// to later check if they changed and we need to trigger a server restart
 type grpcServer struct {
-	addr   string
-	cancel context.CancelFunc
+	addr            string
+	maxGrpcRecvSize int
+	cancel          context.CancelFunc
 }
 
 type setupSyncer struct {
@@ -206,7 +212,7 @@ func getAddr(addr string) (*net.TCPAddr, error) {
 	return &net.TCPAddr{IP: ip, Port: port}, nil
 }
 
-func (s *setupSyncer) Setup(ctx context.Context, kubeCache kube.SharedCache, memCache memory.InMemoryResourceCache, settings *v1.Settings) error {
+func (s *setupSyncer) Setup(ctx context.Context, kubeCache kube.SharedCache, memCache memory.InMemoryResourceCache, settings *v1.Settings, identity leaderelector.Identity) error {
 
 	xdsAddr := settings.GetGloo().GetXdsBindAddr()
 	if xdsAddr == "" {
@@ -245,10 +251,22 @@ func (s *setupSyncer) Setup(ctx context.Context, kubeCache kube.SharedCache, mem
 	}
 	watchNamespaces := utils.ProcessWatchNamespaces(settings.GetWatchNamespaces(), writeNamespace)
 
+	// process grpcserver options to understand if any servers will need a restart
+
+	maxGrpcRecvSize := -1
+	// Use the same maxGrpcMsgSize for both validation server and proxy debug server as the message size is determined by the size of proxies.
+	if maxGrpcMsgSize := settings.GetGateway().GetValidation().GetValidationServerGrpcMaxSizeBytes(); maxGrpcMsgSize != nil {
+		if maxGrpcMsgSize.GetValue() < 0 {
+			return errors.Errorf("validationServerGrpcMaxSizeBytes in settings CRD must be non-negative, current value: %v", maxGrpcMsgSize.GetValue())
+		}
+		maxGrpcRecvSize = int(maxGrpcMsgSize.GetValue())
+	}
+
 	emptyControlPlane := bootstrap.ControlPlane{}
 	emptyValidationServer := bootstrap.ValidationServer{}
 	emptyProxyDebugServer := bootstrap.ProxyDebugServer{}
 
+	// check if we need to restart the control plane
 	if xdsAddr != s.previousXdsServer.addr {
 		if s.previousXdsServer.cancel != nil {
 			s.previousXdsServer.cancel()
@@ -257,20 +275,24 @@ func (s *setupSyncer) Setup(ctx context.Context, kubeCache kube.SharedCache, mem
 		s.controlPlane = emptyControlPlane
 	}
 
-	if validationAddr != s.previousValidationServer.addr {
+	// check if we need to restart the validation server
+	if validationAddr != s.previousValidationServer.addr || maxGrpcRecvSize != s.previousValidationServer.maxGrpcRecvSize {
 		if s.previousValidationServer.cancel != nil {
 			s.previousValidationServer.cancel()
 			s.previousValidationServer.cancel = nil
 		}
 		s.validationServer = emptyValidationServer
 	}
-	if proxyDebugAddr != s.previousProxyDebugServer.addr {
+
+	// check if we need to restart the proxy debug server
+	if proxyDebugAddr != s.previousProxyDebugServer.addr || maxGrpcRecvSize != s.previousProxyDebugServer.maxGrpcRecvSize {
 		if s.previousProxyDebugServer.cancel != nil {
 			s.previousProxyDebugServer.cancel()
 			s.previousProxyDebugServer.cancel = nil
 		}
 		s.proxyDebugServer = emptyProxyDebugServer
 	}
+
 	// initialize the control plane context in this block either on the first loop, or if bind addr changed
 	if s.controlPlane == emptyControlPlane {
 		// create new context as the grpc server might survive multiple iterations of this loop.
@@ -289,33 +311,25 @@ func (s *setupSyncer) Setup(ctx context.Context, kubeCache kube.SharedCache, mem
 		// create new context as the grpc server might survive multiple iterations of this loop.
 		ctx, cancel := context.WithCancel(context.Background())
 		var validationGrpcServerOpts []grpc.ServerOption
-		if maxGrpcMsgSize := settings.GetGateway().GetValidation().GetValidationServerGrpcMaxSizeBytes(); maxGrpcMsgSize != nil {
-			if maxGrpcMsgSize.GetValue() < 0 {
-				cancel()
-				return errors.Errorf("validationServerGrpcMaxSizeBytes in settings CRD must be non-negative, current value: %v", maxGrpcMsgSize.GetValue())
-			}
-			validationGrpcServerOpts = append(validationGrpcServerOpts, grpc.MaxRecvMsgSize(int(maxGrpcMsgSize.GetValue())))
+		// if validationServerGrpcMaxSizeBytes was set this will be non-negative, otherwise use gRPC default
+		if maxGrpcRecvSize >= 0 {
+			validationGrpcServerOpts = append(validationGrpcServerOpts, grpc.MaxRecvMsgSize(maxGrpcRecvSize))
 		}
 		s.validationServer = NewValidationServer(ctx, s.makeGrpcServer(ctx, validationGrpcServerOpts...), validationTcpAddress, true)
 		s.previousValidationServer.cancel = cancel
 		s.previousValidationServer.addr = validationAddr
+		s.previousValidationServer.maxGrpcRecvSize = maxGrpcRecvSize
 	}
 	// initialize the proxy debug server context in this block either on the first loop, or if bind addr changed
 	if s.proxyDebugServer == emptyProxyDebugServer {
 		// create new context as the grpc server might survive multiple iterations of this loop.
 		ctx, cancel := context.WithCancel(context.Background())
-		var proxyGrpcServerOpts []grpc.ServerOption
-		// Use the same maxGrpcMsgSize as validation as this is determined by the size of proxies.
-		if maxGrpcMsgSize := settings.GetGateway().GetValidation().GetValidationServerGrpcMaxSizeBytes(); maxGrpcMsgSize != nil {
-			if maxGrpcMsgSize.GetValue() < 0 {
-				cancel()
-				return errors.Errorf("validationServerGrpcMaxSizeBytes in settings CRD must be non-negative, current value: %v", maxGrpcMsgSize.GetValue())
-			}
-			proxyGrpcServerOpts = append(proxyGrpcServerOpts, grpc.MaxRecvMsgSize(int(maxGrpcMsgSize.GetValue())))
-		}
+
+		proxyGrpcServerOpts := []grpc.ServerOption{grpc.MaxRecvMsgSize(maxGrpcRecvSize)}
 		s.proxyDebugServer = NewProxyDebugServer(ctx, s.makeGrpcServer(ctx, proxyGrpcServerOpts...), proxyDebugTcpAddress, true)
 		s.previousProxyDebugServer.cancel = cancel
 		s.previousProxyDebugServer.addr = proxyDebugAddr
+		s.previousProxyDebugServer.maxGrpcRecvSize = maxGrpcRecvSize
 	}
 	consulClient, err := bootstrap.ConsulClientForSettings(ctx, settings)
 	if err != nil {
@@ -343,6 +357,7 @@ func (s *setupSyncer) Setup(ctx context.Context, kubeCache kube.SharedCache, mem
 	if err != nil {
 		return err
 	}
+	opts.Identity = identity
 	opts.WriteNamespace = writeNamespace
 	opts.StatusReporterNamespace = gloostatusutils.GetStatusReporterNamespaceOrDefault(writeNamespace)
 	opts.WatchNamespaces = watchNamespaces
@@ -362,15 +377,11 @@ func (s *setupSyncer) Setup(ctx context.Context, kubeCache kube.SharedCache, mem
 	if len(opts.Consul.DnsServer) == 0 {
 		opts.Consul.DnsServer = consulplugin.DefaultDnsAddress
 	}
-	if pollingInterval := settings.GetConsul().GetDnsPollingInterval(); pollingInterval != nil {
-		dnsPollingInterval := prototime.DurationFromProto(pollingInterval)
-		opts.Consul.DnsPollingInterval = &dnsPollingInterval
-	}
+	opts.Consul.DnsPollingInterval = settings.GetConsul().GetDnsPollingInterval()
 
 	// if vault service discovery specified, initialize consul watcher
 	if consulServiceDiscovery := settings.GetConsul().GetServiceDiscovery(); consulServiceDiscovery != nil {
-		// Set up Consul client
-		consulClientWrapper, err := consul.NewConsulWatcher(consulClient, consulServiceDiscovery.GetDataCenters())
+		consulClientWrapper, err := consul.NewConsulWatcher(consulClient, consulServiceDiscovery.GetDataCenters(), settings.GetConsulDiscovery().GetServiceTagsAllowlist())
 		if err != nil {
 			return err
 		}
@@ -389,21 +400,35 @@ type Extensions struct {
 	PluginRegistryFactory plugins.PluginRegistryFactory
 	SyncerExtensions      []syncer.TranslatorSyncerExtensionFactory
 	XdsCallbacks          xdsserver.Callbacks
+	ApiEmitterChannel     chan struct{}
 }
 
 func RunGloo(opts bootstrap.Opts) error {
-	return RunGlooWithExtensions(
-		opts,
-		Extensions{
-			SyncerExtensions: []syncer.TranslatorSyncerExtensionFactory{
-				ratelimitExt.NewTranslatorSyncerExtension,
-				extauthExt.NewTranslatorSyncerExtension,
-			}},
-		make(chan struct{}),
-	)
+	glooExtensions := Extensions{
+		PluginRegistryFactory: registry.GetPluginRegistryFactory(opts),
+		SyncerExtensions: []syncer.TranslatorSyncerExtensionFactory{
+			ratelimitExt.NewTranslatorSyncerExtension,
+			extauthExt.NewTranslatorSyncerExtension,
+		},
+		ApiEmitterChannel: make(chan struct{}),
+		XdsCallbacks:      nil,
+	}
+
+	return RunGlooWithExtensions(opts, glooExtensions)
 }
 
-func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitterChan chan struct{}) error {
+func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions) error {
+	// Validate Extensions
+	if extensions.ApiEmitterChannel == nil {
+		return errors.Errorf("Extensions.ApiEmitterChannel must be defined, found nil")
+	}
+	if extensions.PluginRegistryFactory == nil {
+		return errors.Errorf("Extensions.PluginRegistryFactory must be defined, found nil")
+	}
+	if extensions.SyncerExtensions == nil {
+		return errors.Errorf("Extensions.SyncerExtensions must be defined, found nil")
+	}
+
 	watchOpts := opts.WatchOpts.WithDefaults()
 	opts.WatchOpts.Ctx = contextutils.WithLogger(opts.WatchOpts.Ctx, "gloo")
 
@@ -424,7 +449,7 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitte
 	if opts.Settings.GetGloo().GetDisableKubernetesDestinations() {
 		kubeServiceClient = nil
 	}
-	hybridUsClient, err := upstreams.NewHybridUpstreamClient(upstreamClient, kubeServiceClient, opts.Consul.ConsulWatcher)
+	hybridUsClient, err := upstreams.NewHybridUpstreamClient(upstreamClient, kubeServiceClient, opts.Consul.ConsulWatcher, opts.Settings)
 	if err != nil {
 		return err
 	}
@@ -535,21 +560,17 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitte
 	}
 	// Register grpc endpoints to the grpc server
 	xds.SetupEnvoyXds(opts.ControlPlane.GrpcServer, opts.ControlPlane.XDSServer, opts.ControlPlane.SnapshotCache)
-	xdsHasher := xds.NewNodeRoleHasher()
 
-	pluginRegistryFactory := extensions.PluginRegistryFactory
-	if pluginRegistryFactory == nil {
-		pluginRegistryFactory = registry.GetPluginRegistryFactory(opts)
-	}
-
-	pluginRegistry := pluginRegistryFactory(watchOpts.Ctx)
+	pluginRegistry := extensions.PluginRegistryFactory(watchOpts.Ctx)
 	var discoveryPlugins []discovery.DiscoveryPlugin
 	for _, plug := range pluginRegistry.GetPlugins() {
 		disc, ok := plug.(discovery.DiscoveryPlugin)
 		if ok {
+			disc.Init(plugins.InitParams{Ctx: watchOpts.Ctx, Settings: opts.Settings})
 			discoveryPlugins = append(discoveryPlugins, disc)
 		}
 	}
+
 	logger := contextutils.LoggerFrom(watchOpts.Ctx)
 
 	startRestXdsServer(opts)
@@ -605,7 +626,7 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitte
 		routeOptionClient,
 		matchableHttpGatewayClient,
 		graphqlApiClient,
-		apiEmitterChan,
+		extensions.ApiEmitterChannel,
 	)
 
 	rpt := reporter.NewReporter("gloo",
@@ -713,8 +734,10 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitte
 		allowWarnings = gwOpts.Validation.AllowWarnings
 	}
 
-	t := translator.NewTranslator(sslutils.NewSslConfigTranslator(), opts.Settings, pluginRegistryFactory)
+	resourceHasher := translator.MustEnvoyCacheResourcesListToFnvHash
 
+	t := translator.NewTranslatorWithHasher(sslutils.NewSslConfigTranslator(), opts.Settings, extensions.PluginRegistryFactory(watchOpts.Ctx), resourceHasher)
+	validationTranslator := translator.NewTranslatorWithHasher(sslutils.NewSslConfigTranslator(), opts.Settings, extensions.PluginRegistryFactory(watchOpts.Ctx), resourceHasher)
 	routeReplacingSanitizer, err := sanitizer.NewRouteReplacingSanitizer(opts.Settings.GetGloo().GetInvalidConfigPolicy())
 	if err != nil {
 		return err
@@ -724,7 +747,7 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitte
 		sanitizer.NewUpstreamRemovingSanitizer(),
 		routeReplacingSanitizer,
 	}
-	validator := validation.NewValidator(watchOpts.Ctx, t, xdsSanitizer)
+	validator := validation.NewValidator(watchOpts.Ctx, validationTranslator, xdsSanitizer)
 	if opts.ValidationServer.Server != nil {
 		opts.ValidationServer.Server.SetValidator(validator)
 	}
@@ -737,7 +760,16 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitte
 		logger.Debugf("Setting up gateway translator")
 		gatewayTranslator = gwtranslator.NewDefaultTranslator(gwOpts)
 		proxyReconciler := gwreconciler.NewProxyReconciler(validator.Validate, proxyClient, statusClient)
-		gwTranslatorSyncer = gwsyncer.NewTranslatorSyncer(opts.WatchOpts.Ctx, opts.WriteNamespace, proxyClient, proxyReconciler, rpt, gatewayTranslator, statusClient, statusMetrics)
+		gwTranslatorSyncer = gwsyncer.NewTranslatorSyncer(
+			opts.WatchOpts.Ctx,
+			opts.WriteNamespace,
+			proxyClient,
+			proxyReconciler,
+			rpt,
+			gatewayTranslator,
+			statusClient,
+			statusMetrics,
+			opts.Identity)
 	} else {
 		logger.Debugf("Gateway translation is disabled. Proxies are provided from another source")
 	}
@@ -747,31 +779,34 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitte
 		ignoreProxyValidationFailure,
 		allowWarnings,
 	))
-	params := syncer.TranslatorSyncerExtensionParams{
+
+	// Set up the syncer extensions
+	syncerExtensionParams := syncer.TranslatorSyncerExtensionParams{
 		RateLimitServiceSettings: ratelimit.ServiceSettings{
 			Descriptors:    opts.Settings.GetRatelimit().GetDescriptors(),
 			SetDescriptors: opts.Settings.GetRatelimit().GetSetDescriptors(),
 		},
+		Hasher: resourceHasher,
 	}
-
-	// Set up the syncer extension
-	syncerExtensions := []syncer.TranslatorSyncerExtension{}
-
-	upgradedExtensions := make(map[string]bool)
+	var syncerExtensions []syncer.TranslatorSyncerExtension
 	for _, syncerExtensionFactory := range extensions.SyncerExtensions {
-		syncerExtension, err := syncerExtensionFactory(watchOpts.Ctx, params)
-		if err != nil {
-			logger.Errorw("Error initializing extension", "error", err)
-			continue
-		}
-		if extension, ok := syncerExtension.(syncer.UpgradeableTranslatorSyncerExtension); ok && extension.IsUpgrade() {
-			upgradedExtensions[extension.ExtensionName()] = true
-		}
+		syncerExtension := syncerExtensionFactory(watchOpts.Ctx, syncerExtensionParams)
 		syncerExtensions = append(syncerExtensions, syncerExtension)
 	}
-	syncerExtensions = reconcileUpgradedTranslatorSyncerExtensions(syncerExtensions, upgradedExtensions)
 
-	translationSync := syncer.NewTranslatorSyncer(t, opts.ControlPlane.SnapshotCache, xdsHasher, xdsSanitizer, rpt, opts.DevMode, syncerExtensions, opts.Settings, statusMetrics, gwTranslatorSyncer, proxyClient, opts.WriteNamespace)
+	translationSync := syncer.NewTranslatorSyncer(
+		t,
+		opts.ControlPlane.SnapshotCache,
+		xdsSanitizer,
+		rpt,
+		opts.DevMode,
+		syncerExtensions,
+		opts.Settings,
+		statusMetrics,
+		gwTranslatorSyncer,
+		proxyClient,
+		opts.WriteNamespace,
+		opts.Identity)
 
 	syncers := v1snap.ApiSyncers{
 		validator,
@@ -882,29 +917,6 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitte
 	return nil
 }
 
-// removes any redundant syncers, if we have added an upgraded version to replace them
-func reconcileUpgradedTranslatorSyncerExtensions(syncerList []syncer.TranslatorSyncerExtension, upgradedSyncers map[string]bool) []syncer.TranslatorSyncerExtension {
-	var syncersToDrop []int
-	for i, syncerExtension := range syncerList {
-		extension, upgradable := syncerExtension.(syncer.UpgradeableTranslatorSyncerExtension)
-		if upgradable {
-			_, inMap := upgradedSyncers[extension.ExtensionName()]
-			if inMap && !extension.IsUpgrade() {
-				// An upgraded version of this syncer exists,
-				// mark this one for removal
-				syncersToDrop = append(syncersToDrop, i)
-			}
-		}
-	}
-
-	// Walk back through the syncerList and remove the redundant syncers
-	for i := len(syncersToDrop) - 1; i >= 0; i-- {
-		badIndex := syncersToDrop[i]
-		syncerList = append(syncerList[:badIndex], syncerList[badIndex+1:]...)
-	}
-	return syncerList
-}
-
 func startRestXdsServer(opts bootstrap.Opts) {
 	restClient := server.NewHTTPGateway(
 		contextutils.LoggerFrom(opts.WatchOpts.Ctx),
@@ -934,6 +946,7 @@ func startRestXdsServer(opts bootstrap.Opts) {
 		}
 	}()
 }
+
 func constructOpts(ctx context.Context, clientset *kubernetes.Interface, kubeCache kube.SharedCache, consulClient *consulapi.Client, vaultClient *vaultapi.Client, memCache memory.InMemoryResourceCache, settings *v1.Settings, writeNamespace string) (bootstrap.Opts, error) {
 
 	var (
@@ -1114,6 +1127,7 @@ func constructOpts(ctx context.Context, clientset *kubernetes.Interface, kubeCac
 		}
 	}
 	readGatewaysFromAllNamespaces := settings.GetGateway().GetReadGatewaysFromAllNamespaces()
+
 	return bootstrap.Opts{
 		Upstreams:                    upstreamFactory,
 		KubeServiceClient:            kubeServiceClient,

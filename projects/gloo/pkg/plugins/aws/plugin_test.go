@@ -1,6 +1,8 @@
 package aws_test
 
 import (
+	"net/url"
+
 	envoy_config_cluster_v3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	envoy_config_route_v3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	envoyauth "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
@@ -10,11 +12,10 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	. "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/extensions/aws"
-	envoy_transform "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/extensions/transformation"
+	envoytransform "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/extensions/transformation"
 	v1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
 	v1snap "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/gloosnapshot"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/aws"
-	awsapi "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/aws"
 	v1transformation "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/transformation"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
 	. "github.com/solo-io/gloo/projects/gloo/pkg/plugins/aws"
@@ -26,7 +27,7 @@ import (
 )
 
 const (
-	accessKeyValue    = "some acccess value"
+	accessKeyValue    = "some access value"
 	secretKeyValue    = "some secret value"
 	sessionTokenValue = "some session token value"
 )
@@ -46,7 +47,7 @@ var _ = Describe("Plugin", func() {
 	)
 
 	BeforeEach(func() {
-		awsPlugin = NewPlugin()
+		awsPlugin = NewPlugin(GenerateAWSLambdaRouteConfig)
 
 		upstreamName := "up"
 		clusterName := upstreamName
@@ -69,6 +70,7 @@ var _ = Describe("Plugin", func() {
 						Namespace: "ns",
 						Name:      "secretref",
 					},
+					DisableRoleChaining: true,
 				},
 			},
 		}
@@ -85,7 +87,7 @@ var _ = Describe("Plugin", func() {
 							},
 							DestinationSpec: &v1.DestinationSpec{
 								DestinationType: &v1.DestinationSpec_Aws{
-									Aws: &awsapi.DestinationSpec{
+									Aws: &aws.DestinationSpec{
 										LogicalName: funcName,
 									},
 								},
@@ -127,8 +129,7 @@ var _ = Describe("Plugin", func() {
 	})
 
 	JustBeforeEach(func() {
-		err := awsPlugin.Init(initParams)
-		Expect(err).NotTo(HaveOccurred())
+		awsPlugin.Init(initParams)
 	})
 
 	processProtocolOptions := func() {
@@ -353,7 +354,7 @@ var _ = Describe("Plugin", func() {
 				Expect(outroute.TypedPerFilterConfig).To(HaveKey(transformation.FilterName))
 
 				pfc := outroute.GetTypedPerFilterConfig()[transformation.FilterName]
-				var transforms envoy_transform.RouteTransformations
+				var transforms envoytransform.RouteTransformations
 				pfc.UnmarshalTo(&transforms)
 
 				Expect(transforms.Transformations).To(HaveLen(2))
@@ -366,7 +367,7 @@ var _ = Describe("Plugin", func() {
 				verify()
 			})
 			It("should work with transformation first", func() {
-				// the same but in referse order
+				// the same but in reverse order
 				err := transformationPlugin.ProcessRoute(plugins.RouteParams{VirtualHostParams: vhostParams}, route, outroute)
 				Expect(err).NotTo(HaveOccurred())
 				err = awsPlugin.(plugins.RoutePlugin).ProcessRoute(plugins.RouteParams{VirtualHostParams: vhostParams}, route, outroute)
@@ -574,8 +575,27 @@ var _ = Describe("Plugin", func() {
 			Expect(lpe.SecretKey).To(Equal(secretKeyValue))
 			Expect(lpe.SessionToken).To(Equal(sessionTokenValue))
 			Expect(lpe.RoleArn).To(Equal(roleArn))
+			Expect(lpe.DisableRoleChaining).To(Equal(true))
 		})
 
+	})
+
+	Context("ExtraAccountCredentials", func() {
+		JustBeforeEach(func() {
+			upstream.UpstreamType.(*v1.Upstream_Aws).Aws.AwsAccountId = "222222222222"
+			err := awsPlugin.(plugins.UpstreamPlugin).ProcessUpstream(params, upstream, out)
+			Expect(err).NotTo(HaveOccurred())
+		})
+
+		It("should process route", func() {
+			err := awsPlugin.(plugins.RoutePlugin).ProcessRoute(plugins.RouteParams{VirtualHostParams: vhostParams}, route, outroute)
+			Expect(err).NotTo(HaveOccurred())
+			msg, err := utils.AnyToMessage(outroute.GetTypedPerFilterConfig()[FilterName])
+			Expect(err).Should(BeNil())
+			cfg := msg.(*AWSLambdaPerRoute)
+
+			Expect(cfg.Name).Should(Equal(url.QueryEscape("arn:aws:lambda:us-east1:222222222222:function:foo")))
+		})
 	})
 })
 

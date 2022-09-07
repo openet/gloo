@@ -72,6 +72,16 @@ func (m *AWSLambdaPerRoute) Equal(that interface{}) bool {
 		return false
 	}
 
+	if h, ok := interface{}(m.GetTransformerConfig()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetTransformerConfig()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetTransformerConfig(), target.GetTransformerConfig()) {
+			return false
+		}
+	}
+
 	return true
 }
 
@@ -117,6 +127,10 @@ func (m *AWSLambdaProtocolExtension) Equal(that interface{}) bool {
 	}
 
 	if strings.Compare(m.GetRoleArn(), target.GetRoleArn()) != 0 {
+		return false
+	}
+
+	if m.GetDisableRoleChaining() != target.GetDisableRoleChaining() {
 		return false
 	}
 
@@ -195,6 +209,30 @@ func (m *AWSLambdaConfig) Equal(that interface{}) bool {
 		if m.CredentialsFetcher != target.CredentialsFetcher {
 			return false
 		}
+	}
+
+	return true
+}
+
+// Equal function
+func (m *ApiGatewayTransformation) Equal(that interface{}) bool {
+	if that == nil {
+		return m == nil
+	}
+
+	target, ok := that.(*ApiGatewayTransformation)
+	if !ok {
+		that2, ok := that.(ApiGatewayTransformation)
+		if ok {
+			target = &that2
+		} else {
+			return false
+		}
+	}
+	if target == nil {
+		return m == nil
+	} else if m == nil {
+		return false
 	}
 
 	return true
