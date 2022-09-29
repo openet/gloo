@@ -14,7 +14,6 @@ import (
 	envoy_config_route_v3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	envoyhcm "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
-	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/any"
 	"github.com/hashicorp/go-multierror"
@@ -50,6 +49,8 @@ var (
 )
 
 type RouteReplacingSanitizer struct {
+	// note to devs: this can be called in parallel by the validation webhook and main translation loops at the same time
+	// any stateful fields should be protected by a mutex
 	enabled          bool
 	fallbackListener *envoy_config_listener_v3.Listener
 	fallbackCluster  *envoy_config_cluster_v3.Cluster
@@ -268,9 +269,8 @@ func (s *RouteReplacingSanitizer) replaceRoutes(
 	// replace any routes which do not point to a valid destination cluster
 	for _, cfg := range routeConfigs {
 		var replaced int64
-		sanitizedRouteConfig := proto.Clone(cfg).(*envoy_config_route_v3.RouteConfiguration)
 
-		for i, vh := range sanitizedRouteConfig.GetVirtualHosts() {
+		for i, vh := range cfg.GetVirtualHosts() {
 			for j, route := range vh.GetRoutes() {
 				routeAction := route.GetRoute()
 				if routeAction == nil {
@@ -299,13 +299,11 @@ func (s *RouteReplacingSanitizer) replaceRoutes(
 				default:
 					continue
 				}
-				vh.GetRoutes()[j] = route
 			}
-			sanitizedRouteConfig.GetVirtualHosts()[i] = vh
 		}
 
-		utils.Measure(ctx, mRoutesReplaced, replaced, tag.Insert(routeConfigKey, sanitizedRouteConfig.GetName()))
-		sanitizedRouteConfigs = append(sanitizedRouteConfigs, sanitizedRouteConfig)
+		utils.Measure(ctx, mRoutesReplaced, replaced, tag.Insert(routeConfigKey, cfg.GetName()))
+		sanitizedRouteConfigs = append(sanitizedRouteConfigs, cfg)
 	}
 
 	return sanitizedRouteConfigs, anyRoutesReplaced

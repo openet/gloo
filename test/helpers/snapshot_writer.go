@@ -23,7 +23,7 @@ type snapshotWriterImpl struct {
 
 func NewSnapshotWriter(clientSet ResourceClientSet, retryOptions []retry.Option) *snapshotWriterImpl {
 	defaultRetryOptions := []retry.Option{
-		retry.Attempts(10),
+		retry.Attempts(3),
 		retry.RetryIf(func(err error) bool {
 			return err != nil
 		}),
@@ -82,6 +82,11 @@ func (s snapshotWriterImpl) doWriteSnapshot(snapshot *gloosnapshot.ApiSnapshot, 
 	}
 	for _, rtOpt := range snapshot.RouteOptions {
 		if _, writeErr := s.RouteOptionClient().Write(rtOpt, writeOptions); !s.isContinuableWriteError(writeErr) {
+			return writeErr
+		}
+	}
+	for _, rlc := range snapshot.Ratelimitconfigs {
+		if _, writeErr := s.RateLimitConfigClient().Write(rlc, writeOptions); !s.isContinuableWriteError(writeErr) {
 			return writeErr
 		}
 	}
@@ -150,6 +155,12 @@ func (s snapshotWriterImpl) DeleteSnapshot(snapshot *gloosnapshot.ApiSnapshot, d
 	for _, rt := range snapshot.RouteTables {
 		rtNamespace, rtName := rt.GetMetadata().Ref().Strings()
 		if deleteErr := s.RouteTableClient().Delete(rtNamespace, rtName, deleteOptions); deleteErr != nil {
+			return deleteErr
+		}
+	}
+	for _, rlc := range snapshot.Ratelimitconfigs {
+		rlcNamespace, rlcName := rlc.GetMetadata().Ref().Strings()
+		if deleteErr := s.RateLimitConfigClient().Delete(rlcNamespace, rlcName, deleteOptions); deleteErr != nil {
 			return deleteErr
 		}
 	}

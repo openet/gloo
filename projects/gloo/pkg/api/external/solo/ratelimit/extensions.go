@@ -11,6 +11,8 @@ import (
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/kube/crd"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources"
 	"github.com/solo-io/solo-kit/pkg/api/v2/reporter"
+	"k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 var (
@@ -42,6 +44,13 @@ type kubeReporterClient struct {
 	skv2Client rlv1alpha1.RateLimitConfigClient
 }
 
+func init() {
+	scheme := scheme.Scheme
+	if err := rlv1alpha1.AddToScheme(scheme); err != nil {
+		panic(err)
+	}
+}
+
 func NewRateLimitClients(ctx context.Context, rcFactory factory.ResourceClientFactory) (RateLimitConfigClient, reporter.ReporterResourceClient, error) {
 	rlClient, err := NewRateLimitConfigClient(ctx, rcFactory)
 	if err != nil {
@@ -51,7 +60,10 @@ func NewRateLimitClients(ctx context.Context, rcFactory factory.ResourceClientFa
 	var reporterClient reporter.ReporterResourceClient
 	switch typedFactory := rcFactory.(type) {
 	case *factory.KubeResourceClientFactory:
-		rlClientSet, err := rlv1alpha1.NewClientsetFromConfig(typedFactory.Cfg)
+		cli, err := client.New(typedFactory.Cfg, client.Options{
+			Scheme: scheme.Scheme,
+		})
+		rlClientSet := rlv1alpha1.NewClientset(cli)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -73,14 +85,10 @@ func (c *kubeReporterClient) Read(namespace, name string, opts clients.ReadOpts)
 	return c.skClient.Read(namespace, name, opts)
 }
 
-func (c *kubeReporterClient) Write(resource resources.Resource, opts clients.WriteOpts) (resources.Resource, error) {
-	rlConfig, ok := resource.(*RateLimitConfig)
+func (c *kubeReporterClient) ApplyStatus(statusClient resources.StatusClient, inputResource resources.InputResource, opts clients.ApplyStatusOpts) (resources.Resource, error) {
+	rlConfig, ok := inputResource.(*RateLimitConfig)
 	if !ok {
-		return nil, eris.Errorf("unexpected type: expected %T, got %T", &RateLimitConfig{}, resource)
-	}
-	if !opts.OverwriteExisting {
-		// Reporters should never create resources
-		return nil, eris.New("unexpected create operation")
+		return nil, eris.Errorf("unexpected type: expected %T, got %T", &RateLimitConfig{}, inputResource)
 	}
 
 	baseRlConfig := rlv1alpha1.RateLimitConfig(rlConfig.RateLimitConfig)
@@ -93,4 +101,8 @@ func (c *kubeReporterClient) Write(resource resources.Resource, opts clients.Wri
 	return &RateLimitConfig{
 		RateLimitConfig: skratelimit.RateLimitConfig(baseRlConfig),
 	}, nil
+}
+
+func (c *kubeReporterClient) Write(resource resources.Resource, opts clients.WriteOpts) (resources.Resource, error) {
+	return c.skClient.Write(resource, opts)
 }

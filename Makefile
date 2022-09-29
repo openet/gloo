@@ -1,7 +1,7 @@
 ##########################################################################################
 # run-ci-regression-tests - runs a set of regression tests. Set KUBE2E_TESTS = (gateway, gloo, gloomtls, glooctl, helm, ingress)
 # run-tests - runs tests (see https://github.com/solo-io/gloo/blob/master/test/e2e/README.md)
-# 
+#
 ##########################################################################################
 #----------------------------------------------------------------------------------
 # Base
@@ -65,7 +65,7 @@ else
   endif
 endif
 
-ENVOY_GLOO_IMAGE ?= quay.io/solo-io/envoy-gloo:1.23.0-patch3
+ENVOY_GLOO_IMAGE ?= quay.io/solo-io/envoy-gloo:1.23.0-patch7
 
 # The full SHA of the currently checked out commit
 CHECKED_OUT_SHA := $(shell git rev-parse HEAD)
@@ -111,6 +111,7 @@ ifeq ($(GOOS),)
 endif
 
 GO_BUILD_FLAGS := GO111MODULE=on CGO_ENABLED=0 GOARCH=$(GOARCH)
+GOLANG_VERSION := golang:1.18.2-alpine
 
 # Passed by cloudbuild
 GCLOUD_PROJECT_ID := $(GCLOUD_PROJECT_ID)
@@ -172,7 +173,7 @@ install-test-tools:
 .PHONY: run-tests
 run-tests:
 ifneq ($(RELEASE), "true")
-	$(DEPSGOBIN)/ginkgo -ldflags=$(LDFLAGS) -r -failFast -trace -progress -race -compilers=4 -failOnPending -noColor $(TEST_PKG)
+	$(DEPSGOBIN)/ginkgo -ldflags=$(LDFLAGS) -r -failFast -trace -progress -race -compilers=4 -failOnPending -noColor -skipPackage=kube2e $(TEST_PKG)
 endif
 
 .PHONY: run-ci-regression-tests
@@ -204,6 +205,9 @@ clean:
 #----------------------------------------------------------------------------------
 # Generated Code and Docs
 #----------------------------------------------------------------------------------
+
+.PHONY: generate-all
+generate-all: generated-code
 
 .PHONY: generated-code
 generated-code: $(OUTPUT_DIR)/.generated-code verify-enterprise-protos generate-helm-files update-licenses init
@@ -391,6 +395,49 @@ gloo-docker: $(GLOO_OUTPUT_DIR)/gloo-linux-$(GOARCH) $(GLOO_OUTPUT_DIR)/Dockerfi
 		--build-arg ENVOY_IMAGE=$(ENVOY_GLOO_IMAGE) \
 		-t $(IMAGE_REPO)/gloo:$(VERSION) $(QUAY_EXPIRATION_LABEL)
 
+#----------------------------------------------------------------------------------
+# Gloo with race detection enabled.
+# This is intended to be used to aid in local debugging by swapping out this image in a running gloo instance
+#----------------------------------------------------------------------------------
+GLOO_RACE_OUT_DIR=$(OUTPUT_DIR)/gloo-race
+
+$(GLOO_RACE_OUT_DIR)/Dockerfile.build: $(GLOO_DIR)/Dockerfile
+	mkdir -p $(GLOO_RACE_OUT_DIR)
+	cp $< $@
+
+$(GLOO_RACE_OUT_DIR)/.gloo-race-docker-build: $(GLOO_SOURCES) $(GLOO_RACE_OUT_DIR)/Dockerfile.build
+	docker build -t $(IMAGE_REPO)/gloo-race-build-container:$(VERSION) \
+		-f $(GLOO_RACE_OUT_DIR)/Dockerfile.build \
+		--build-arg GO_BUILD_IMAGE=$(GOLANG_VERSION) \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg GCFLAGS=$(GCFLAGS) \
+		--build-arg LDFLAGS=$(LDFLAGS) \
+		--build-arg USE_APK=true \
+		--build-arg GOARCH=$(GOARCH) \
+		.
+	touch $@
+# Build inside container as we need to target linux and must compile with CGO_ENABLED=1
+# We may be running Docker in a VM (eg, minikube) so be careful about how we copy files out of the containers
+$(GLOO_RACE_OUT_DIR)/gloo-linux-$(GOARCH): $(GLOO_RACE_OUT_DIR)/.gloo-race-docker-build
+	docker create -ti --name gloo-race-temp-container $(IMAGE_REPO)/gloo-race-build-container:$(VERSION) bash
+	docker cp gloo-race-temp-container:/gloo-linux-$(GOARCH) $(GLOO_RACE_OUT_DIR)/gloo-linux-$(GOARCH)
+	docker rm -f gloo-race-temp-container
+
+# Build the gloo project with race detection enabled
+.PHONY: gloo-race
+gloo-race: $(GLOO_RACE_OUT_DIR)/gloo-linux-$(GOARCH)
+
+$(GLOO_RACE_OUT_DIR)/Dockerfile: $(GLOO_DIR)/cmd/Dockerfile
+	cp $< $@
+
+# Take the executable built in gloo-race and put it in a docker container
+.PHONY: gloo-race-docker
+gloo-race-docker: $(GLOO_RACE_OUT_DIR)/.gloo-race-docker
+$(GLOO_RACE_OUT_DIR)/.gloo-race-docker: $(GLOO_RACE_OUT_DIR)/gloo-linux-$(GOARCH) $(GLOO_RACE_OUT_DIR)/Dockerfile
+	docker build $(call get_test_tag_option,gloo) $(GLOO_RACE_OUT_DIR) \
+		--build-arg ENVOY_IMAGE=$(ENVOY_GLOO_IMAGE) --build-arg GOARCH=$(GOARCH) $(PLATFORM) \
+		-t $(IMAGE_REPO)/gloo:$(VERSION)-race $(QUAY_EXPIRATION_LABEL)
+	touch $@
 #----------------------------------------------------------------------------------
 # SDS Server - gRPC server for serving Secret Discovery Service config for Gloo Edge MTLS
 #----------------------------------------------------------------------------------
@@ -617,6 +664,7 @@ ifeq ($(RELEASE), "true")
 	docker tag $(RETAG_IMAGE_REGISTRY)/ingress:$(VERSION) $(IMAGE_REPO)/ingress:$(VERSION) && \
 	docker tag $(RETAG_IMAGE_REGISTRY)/discovery:$(VERSION) $(IMAGE_REPO)/discovery:$(VERSION) && \
 	docker tag $(RETAG_IMAGE_REGISTRY)/gloo:$(VERSION) $(IMAGE_REPO)/gloo:$(VERSION) && \
+	docker tag $(RETAG_IMAGE_REGISTRY)/gloo:$(VERSION)-race $(IMAGE_REPO)/gloo:$(VERSION)-race && \
 	docker tag $(RETAG_IMAGE_REGISTRY)/gloo-envoy-wrapper:$(VERSION) $(IMAGE_REPO)/gloo-envoy-wrapper:$(VERSION) && \
 	docker tag $(RETAG_IMAGE_REGISTRY)/certgen:$(VERSION) $(IMAGE_REPO)/certgen:$(VERSION) && \
 	docker tag $(RETAG_IMAGE_REGISTRY)/kubectl:$(VERSION) $(IMAGE_REPO)/kubectl:$(VERSION) && \
@@ -635,6 +683,7 @@ ifeq ($(RELEASE), "true")
 	docker push $(IMAGE_REPO)/ingress:$(VERSION) && \
 	docker push $(IMAGE_REPO)/discovery:$(VERSION) && \
 	docker push $(IMAGE_REPO)/gloo:$(VERSION) && \
+	docker push $(IMAGE_REPO)/gloo:$(VERSION)-race && \
 	docker push $(IMAGE_REPO)/gloo-envoy-wrapper:$(VERSION) && \
 	docker push $(IMAGE_REPO)/certgen:$(VERSION) && \
 	docker push $(IMAGE_REPO)/kubectl:$(VERSION) && \
@@ -652,7 +701,7 @@ ifeq ($(RELEASE), "true")
 endif
 
 .PHONY: docker docker-push
-docker: discovery-docker gloo-docker \
+docker: discovery-docker gloo-docker gloo-race-docker \
 		gloo-envoy-wrapper-docker certgen-docker sds-docker \
 		ingress-docker access-logger-docker kubectl-docker
 
@@ -669,6 +718,7 @@ ifeq ($(CREATE_ASSETS), "true")
 	docker push $(IMAGE_REPO)/ingress:$(VERSION) && \
 	docker push $(IMAGE_REPO)/discovery:$(VERSION) && \
 	docker push $(IMAGE_REPO)/gloo:$(VERSION) && \
+	docker push $(IMAGE_REPO)/gloo:$(VERSION)-race && \
 	docker push $(IMAGE_REPO)/gloo-envoy-wrapper:$(VERSION) && \
 	docker push $(IMAGE_REPO)/certgen:$(VERSION) && \
 	docker push $(IMAGE_REPO)/kubectl:$(VERSION) && \

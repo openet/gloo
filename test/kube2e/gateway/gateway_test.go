@@ -3,11 +3,18 @@ package gateway_test
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
+
+	ratelimit2 "github.com/solo-io/gloo/projects/gloo/api/external/solo/ratelimit"
+	v1alpha1skv1 "github.com/solo-io/gloo/projects/gloo/pkg/api/external/solo/ratelimit"
+	"github.com/solo-io/solo-apis/pkg/api/ratelimit.solo.io/v1alpha1"
+	rlv1alpha1 "github.com/solo-io/solo-apis/pkg/api/ratelimit.solo.io/v1alpha1"
+	matchers2 "github.com/solo-io/solo-kit/test/matchers"
+
+	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/static"
 
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/gloosnapshot"
 	"github.com/solo-io/gloo/projects/gloo/pkg/utils"
@@ -20,6 +27,7 @@ import (
 	gloostatusutils "github.com/solo-io/gloo/pkg/utils/statusutils"
 
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources"
+	"github.com/solo-io/solo-kit/pkg/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/golang/protobuf/ptypes/empty"
@@ -182,20 +190,34 @@ var _ = Describe("Kube2e: gateway", func() {
 
 			// modify the proxy to use the deprecated label
 			// this will simulate proxies that were persisted before the label change
-			proxy, err := resourceClientset.ProxyClient().Read(testHelper.InstallNamespace, defaults.GatewayProxyName, clients.ReadOpts{Ctx: ctx})
-			Expect(err).NotTo(HaveOccurred())
-			proxy.Metadata.Labels = map[string]string{
-				"created_by": "gateway",
-			}
-			_, err = resourceClientset.ProxyClient().Write(proxy, clients.WriteOpts{Ctx: ctx, OverwriteExisting: true})
+			err := kube2e.PatchResource(
+				ctx,
+				&core.ResourceRef{
+					Namespace: testHelper.InstallNamespace,
+					Name:      defaults.GatewayProxyName,
+				},
+				func(resource resources.Resource) {
+					proxy := resource.(*gloov1.Proxy)
+					proxy.Metadata.Labels = map[string]string{
+						"created_by": "gateway",
+					}
+				},
+				resourceClientset.ProxyClient().BaseClient())
 			Expect(err).NotTo(HaveOccurred())
 
 			// modify the virtual service to trigger gateway reconciliation
 			// any modification will work, for simplicity we duplicate a route on the virtual host
-			vs, err := resourceClientset.VirtualServiceClient().Read(testHelper.InstallNamespace, helper.TestrunnerName, clients.ReadOpts{Ctx: ctx})
-			Expect(err).NotTo(HaveOccurred())
-			vs.VirtualHost.Routes = append(vs.VirtualHost.Routes, vs.VirtualHost.Routes[0])
-			_, err = resourceClientset.VirtualServiceClient().Write(vs, clients.WriteOpts{Ctx: ctx, OverwriteExisting: true})
+			err = kube2e.PatchResource(
+				ctx,
+				&core.ResourceRef{
+					Namespace: testHelper.InstallNamespace,
+					Name:      helper.TestrunnerName,
+				},
+				func(resource resources.Resource) {
+					vs := resource.(*gatewayv1.VirtualService)
+					vs.VirtualHost.Routes = append(vs.VirtualHost.Routes, vs.VirtualHost.Routes[0])
+				},
+				resourceClientset.VirtualServiceClient().BaseClient())
 			Expect(err).NotTo(HaveOccurred())
 
 			// ensure that the changes from the virtual service are propagated to the proxy
@@ -276,7 +298,7 @@ var _ = Describe("Kube2e: gateway", func() {
 			})
 
 			It("works with ssl", func() {
-				caFile := ToFile(helpers.Certificate())
+				caFile := kube2e.ToFile(helpers.Certificate())
 				//noinspection GoUnhandledErrorResult
 				defer os.Remove(caFile)
 
@@ -560,17 +582,19 @@ var _ = Describe("Kube2e: gateway", func() {
 				})
 
 				It("when updating an upstream makes them valid", func() {
-					// wrapped in eventually to get around resource version errors
-					Eventually(func() error {
-						petstoreUs, err := resourceClientset.UpstreamClient().Read(testHelper.InstallNamespace, petstoreUpstreamName, clients.ReadOpts{Ctx: ctx})
-						Expect(err).NotTo(HaveOccurred())
-
-						Expect(petstoreUs.GetKube().GetServiceSpec().GetRest().GetSwaggerInfo().GetUrl()).To(BeEmpty())
-						petstoreUs.Metadata.Labels[syncer.FdsLabelKey] = "enabled"
-
-						_, err = resourceClientset.UpstreamClient().Write(petstoreUs, clients.WriteOpts{OverwriteExisting: true})
-						return err
-					}, "5s", "0.5s").ShouldNot(HaveOccurred())
+					err = kube2e.PatchResource(
+						ctx,
+						&core.ResourceRef{
+							Namespace: testHelper.InstallNamespace,
+							Name:      petstoreUpstreamName,
+						},
+						func(resource resources.Resource) {
+							us := resource.(*gloov1.Upstream)
+							us.Metadata.Labels[syncer.FdsLabelKey] = "enabled"
+						},
+						resourceClientset.UpstreamClient().BaseClient(),
+					)
+					Expect(err).NotTo(HaveOccurred())
 
 					// FDS should update the upstream with discovered rest spec
 					// it can take a long time for this to happen, perhaps petstore wasn't healthy yet?
@@ -723,15 +747,23 @@ var _ = Describe("Kube2e: gateway", func() {
 					Expect(res).To(ContainSubstring("404 Not Found"))
 
 					// update the response of the good RT
-					goodRt, err := resourceClientset.RouteTableClient().Read(testHelper.InstallNamespace, "good-rt", clients.ReadOpts{Ctx: ctx})
-					Expect(err).NotTo(HaveOccurred())
-					goodRt.Routes[0].Action = &gatewayv1.Route_DirectResponseAction{
-						DirectResponseAction: &gloov1.DirectResponseAction{
-							Status: 200,
-							Body:   "Updated good response",
+					err = kube2e.PatchResource(
+						ctx,
+						&core.ResourceRef{
+							Namespace: testHelper.InstallNamespace,
+							Name:      "good-rt",
 						},
-					}
-					_, err = resourceClientset.RouteTableClient().Write(goodRt, clients.WriteOpts{Ctx: ctx, OverwriteExisting: true})
+						func(resource resources.Resource) {
+							rt := resource.(*gatewayv1.RouteTable)
+							rt.Routes[0].Action = &gatewayv1.Route_DirectResponseAction{
+								DirectResponseAction: &gloov1.DirectResponseAction{
+									Status: 200,
+									Body:   "Updated good response",
+								},
+							}
+						},
+						resourceClientset.RouteTableClient().BaseClient(),
+					)
 					Expect(err).NotTo(HaveOccurred())
 
 					// make sure it returns the new response
@@ -801,15 +833,23 @@ var _ = Describe("Kube2e: gateway", func() {
 					}, "Good response", 1, 60*time.Second, 1*time.Second)
 
 					By("the RT should be updated to return a direct response")
-					goodRt, err := resourceClientset.RouteTableClient().Read(testHelper.InstallNamespace, "good-rt", clients.ReadOpts{Ctx: ctx})
-					Expect(err).NotTo(HaveOccurred())
-					goodRt.Routes[0].Action = &gatewayv1.Route_DirectResponseAction{
-						DirectResponseAction: &gloov1.DirectResponseAction{
-							Status: 200,
-							Body:   "Updated good response",
+					err := kube2e.PatchResource(
+						ctx,
+						&core.ResourceRef{
+							Namespace: testHelper.InstallNamespace,
+							Name:      "good-rt",
 						},
-					}
-					_, err = resourceClientset.RouteTableClient().Write(goodRt, clients.WriteOpts{Ctx: ctx, OverwriteExisting: true})
+						func(resource resources.Resource) {
+							rt := resource.(*gatewayv1.RouteTable)
+							rt.Routes[0].Action = &gatewayv1.Route_DirectResponseAction{
+								DirectResponseAction: &gloov1.DirectResponseAction{
+									Status: 200,
+									Body:   "Updated good response",
+								},
+							}
+						},
+						resourceClientset.RouteTableClient().BaseClient(),
+					)
 					Expect(err).NotTo(HaveOccurred())
 
 					testHelper.CurlEventuallyShouldRespond(helper.CurlOpts{
@@ -1212,6 +1252,63 @@ var _ = Describe("Kube2e: gateway", func() {
 		})
 	})
 
+	Context("tests with RateLimitConfigs", func() {
+
+		var rateLimitConfig *v1alpha1skv1.RateLimitConfig
+
+		BeforeEach(func() {
+			rateLimitConfig = &v1alpha1skv1.RateLimitConfig{
+				RateLimitConfig: ratelimit2.RateLimitConfig{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "testrlc",
+						Namespace: testHelper.InstallNamespace,
+					},
+					Spec: rlv1alpha1.RateLimitConfigSpec{
+						ConfigType: &rlv1alpha1.RateLimitConfigSpec_Raw_{
+							Raw: &rlv1alpha1.RateLimitConfigSpec_Raw{
+								Descriptors: []*rlv1alpha1.Descriptor{{
+									Key:   "generic_key",
+									Value: "foo",
+									RateLimit: &rlv1alpha1.RateLimit{
+										Unit:            rlv1alpha1.RateLimit_MINUTE,
+										RequestsPerUnit: 1,
+									},
+								}},
+								RateLimits: []*rlv1alpha1.RateLimitActions{{
+									Actions: []*rlv1alpha1.Action{{
+										ActionSpecifier: &rlv1alpha1.Action_GenericKey_{
+											GenericKey: &rlv1alpha1.Action_GenericKey{
+												DescriptorValue: "foo",
+											},
+										},
+									}},
+								}},
+							},
+						},
+					},
+				},
+			}
+			glooResources.Ratelimitconfigs = v1alpha1skv1.RateLimitConfigList{rateLimitConfig}
+		})
+
+		It("correctly sets a status to a RateLimitConfig", func() {
+			// demand that a created ratelimit config _has_ a rejected status.
+			Eventually(func() error {
+				rlc, err := resourceClientset.RateLimitConfigClient().Read(rateLimitConfig.GetMetadata().GetNamespace(), rateLimitConfig.GetMetadata().GetName(), clients.ReadOpts{Ctx: ctx})
+				if err != nil {
+					return err
+				}
+				if rlc.Status.State != v1alpha1.RateLimitConfigStatus_REJECTED {
+					return errors.Errorf("expected rejected status, got %v", rlc.Status.State)
+				}
+				if !strings.Contains(rlc.Status.Message, "enterprise-only") {
+					return errors.Errorf("expected enterprise-only message in status, got %v", rlc.Status.Message)
+				}
+				return nil
+			}, "15s", "0.5s").ShouldNot(HaveOccurred())
+		})
+	})
+
 	Context("upstream discovery", func() {
 		var createdServices []string
 
@@ -1289,21 +1386,27 @@ var _ = Describe("Kube2e: gateway", func() {
 			createServicesForPod(helper.TestrunnerName, helper.TestRunnerPort)
 
 			for _, svc := range createdServices {
-				Eventually(func() (*gloov1.Upstream, error) { return getUpstream(svc) }, "15s", "0.5s").ShouldNot(BeNil())
+				Eventually(func() (*gloov1.Upstream, error) {
+					return getUpstream(svc)
+				}, "15s", "0.5s").ShouldNot(BeNil())
+
 				// now set subset config on an upstream:
-				Eventually(func() error {
-					upstream, err := getUpstream(svc)
-					if err != nil {
-						return err
-					}
-					upstream.UpstreamType.(*gloov1.Upstream_Kube).Kube.ServiceSpec = &gloov1plugins.ServiceSpec{
-						PluginType: &gloov1plugins.ServiceSpec_Grpc{
-							Grpc: &grpcv1.ServiceSpec{},
-						},
-					}
-					_, err = resourceClientset.UpstreamClient().Write(upstream, clients.WriteOpts{OverwriteExisting: true})
-					return err
-				}, "10s", "0.5s").ShouldNot(HaveOccurred())
+				err := kube2e.PatchResource(
+					ctx,
+					&core.ResourceRef{
+						Namespace: testHelper.InstallNamespace,
+						Name:      fmt.Sprintf("%s-%s-%v", testHelper.InstallNamespace, svc, helper.TestRunnerPort),
+					},
+					func(resource resources.Resource) {
+						upstream := resource.(*gloov1.Upstream)
+						upstream.UpstreamType.(*gloov1.Upstream_Kube).Kube.ServiceSpec = &gloov1plugins.ServiceSpec{
+							PluginType: &gloov1plugins.ServiceSpec_Grpc{
+								Grpc: &grpcv1.ServiceSpec{},
+							},
+						}
+					},
+					resourceClientset.UpstreamClient().BaseClient())
+				Expect(err).NotTo(HaveOccurred())
 			}
 
 			// chill for a few letting discovery reconcile
@@ -1536,6 +1639,7 @@ var _ = Describe("Kube2e: gateway", func() {
 
 			upstreamName string
 		)
+
 		BeforeEach(func() {
 			pod := &corev1.Pod{
 				ObjectMeta: metav1.ObjectMeta{
@@ -1721,21 +1825,23 @@ var _ = Describe("Kube2e: gateway", func() {
 		})
 
 		It("routes to subsets and upstream groups", func() {
-			// upstream write might error on a conflict so try it a few times
-			// I use eventually so it will wait a bit between retries.
-			Eventually(func(g Gomega) error {
-				us, err := resourceClientset.UpstreamClient().Read(testHelper.InstallNamespace, upstreamName, clients.ReadOpts{Ctx: ctx})
-				g.Expect(err).NotTo(HaveOccurred())
-
-				us.UpstreamType.(*gloov1.Upstream_Kube).Kube.SubsetSpec = &gloov1plugins.SubsetSpec{
-					Selectors: []*gloov1plugins.Selector{{
-						Keys: []string{"text"},
-					}},
-				}
-
-				_, err = resourceClientset.UpstreamClient().Write(us, clients.WriteOpts{Ctx: ctx, OverwriteExisting: true})
-				return err
-			}, "5s", "0.1s").ShouldNot(HaveOccurred())
+			err := kube2e.PatchResource(
+				ctx,
+				&core.ResourceRef{
+					Namespace: testHelper.InstallNamespace,
+					Name:      upstreamName,
+				},
+				func(resource resources.Resource) {
+					us := resource.(*gloov1.Upstream)
+					us.UpstreamType.(*gloov1.Upstream_Kube).Kube.SubsetSpec = &gloov1plugins.SubsetSpec{
+						Selectors: []*gloov1plugins.Selector{{
+							Keys: []string{"text"},
+						}},
+					}
+				},
+				resourceClientset.UpstreamClient().BaseClient(),
+			)
+			Expect(err).NotTo(HaveOccurred())
 
 			// make sure we get all three upstreams:
 			testHelper.CurlEventuallyShouldRespond(helper.CurlOpts{
@@ -1909,31 +2015,7 @@ spec:
 
 			Context("gloo", func() {
 
-				var (
-					// Validation of Gloo resources requires that a Proxy resource exist
-					// Therefore, before the tests start, we must create valid resources that produce a Proxy
-					placeholderVs *gatewayv1.VirtualService
-				)
-
 				BeforeEach(func() {
-					dest := &gloov1.Destination{
-						DestinationType: &gloov1.Destination_Upstream{
-							Upstream: &core.ResourceRef{
-								Namespace: testHelper.InstallNamespace,
-								Name:      fmt.Sprintf("%s-%s-%v", testHelper.InstallNamespace, helper.TestrunnerName, helper.TestRunnerPort),
-							},
-						},
-					}
-
-					placeholderVs = getVirtualService(dest, nil)
-
-					_, err := resourceClientset.VirtualServiceClient().Write(placeholderVs, clients.WriteOpts{})
-					Expect(err).NotTo(HaveOccurred())
-
-					helpers.EventuallyResourceAccepted(func() (resources.InputResource, error) {
-						return resourceClientset.ProxyClient().Read(testHelper.InstallNamespace, defaults.GatewayProxyName, clients.ReadOpts{Ctx: ctx})
-					})
-
 					// Set the validation settings to be as strict as possible so that we can trigger
 					// rejections by just producing a warning on the resource
 					kube2e.UpdateSettings(ctx, func(settings *gloov1.Settings) {
@@ -1947,9 +2029,46 @@ spec:
 						Expect(settings.GetGateway().GetValidation()).NotTo(BeNil())
 						settings.GetGateway().GetValidation().AllowWarnings = &wrappers.BoolValue{Value: true}
 					}, testHelper.InstallNamespace)
+				})
 
-					err := resourceClientset.VirtualServiceClient().Delete(placeholderVs.GetMetadata().GetNamespace(), placeholderVs.GetMetadata().GetName(), clients.DeleteOpts{})
-					Expect(err).NotTo(HaveOccurred())
+				JustBeforeEach(func() {
+					// Validation of Gloo resources requires that a Proxy resource exist
+					// Therefore, before the tests start, we must attempt updates that should be rejected
+					// They will only be rejected once a Proxy exists in the ApiSnapshot
+
+					placeholderUs := &gloov1.Upstream{
+						Metadata: &core.Metadata{
+							Name:      "",
+							Namespace: testHelper.InstallNamespace,
+						},
+						UpstreamType: &gloov1.Upstream_Static{
+							Static: &static.UpstreamSpec{
+								Hosts: []*static.Host{{
+									Addr: "~",
+								}},
+							},
+						},
+					}
+					attempt := 0
+					Eventually(func(g Gomega) bool {
+						placeholderUs.Metadata.Name = fmt.Sprintf("invalid-placeholder-us-%d", attempt)
+
+						_, err := resourceClientset.UpstreamClient().Write(placeholderUs, clients.WriteOpts{Ctx: ctx})
+						if err != nil {
+							// We have successfully rejected an invalid upstream
+							// This means that the webhook is fully warmed, and contains a Snapshot with a Proxy
+							return true
+						}
+
+						err = resourceClientset.UpstreamClient().Delete(
+							placeholderUs.GetMetadata().GetNamespace(),
+							placeholderUs.GetMetadata().GetName(),
+							clients.DeleteOpts{Ctx: ctx, IgnoreNotExist: true})
+						g.Expect(err).NotTo(HaveOccurred())
+
+						attempt += 1
+						return false
+					}, time.Second*15, time.Second*1).Should(BeTrue())
 				})
 
 				It("rejects bad resources", func() {
@@ -1979,41 +2098,34 @@ spec:
 
 		It("rejects invalid inja template in transformation", func() {
 			injaTransform := `{% if default(data.error.message, "") != "" %}400{% else %}{{ header(":status") }}{% endif %}`
-			t := &glootransformation.Transformations{
+			invalidInjaTransform := strings.TrimSuffix(injaTransform, "}")
+
+			invalidTransform := &glootransformation.Transformations{
 				ClearRouteCache: true,
 				ResponseTransformation: &glootransformation.Transformation{
 					TransformationType: &glootransformation.Transformation_TransformationTemplate{
 						TransformationTemplate: &transformation.TransformationTemplate{
 							Headers: map[string]*transformation.InjaTemplate{
-								":status": {Text: injaTransform},
+								":status": {Text: invalidInjaTransform},
 							},
 						},
 					},
 				},
 			}
 
-			dest := &gloov1.Destination{
-				DestinationType: &gloov1.Destination_Upstream{
-					Upstream: &core.ResourceRef{
-						Namespace: testHelper.InstallNamespace,
-						Name:      fmt.Sprintf("%s-%s-%v", testHelper.InstallNamespace, helper.TestrunnerName, helper.TestRunnerPort),
-					},
+			// update the test runner vs
+			err := kube2e.PatchResource(
+				ctx,
+				&core.ResourceRef{
+					Namespace: testRunnerVs.GetMetadata().GetNamespace(),
+					Name:      testRunnerVs.GetMetadata().GetName(),
 				},
-			}
-
-			vs := getVirtualService(dest, nil)
-			vs.VirtualHost.Options = &gloov1.VirtualHostOptions{Transformations: t}
-
-			_, err := resourceClientset.VirtualServiceClient().Write(vs, clients.WriteOpts{Ctx: ctx})
-			Expect(err).ToNot(HaveOccurred())
-
-			err = resourceClientset.VirtualServiceClient().Delete(vs.Metadata.Namespace, vs.Metadata.Name, clients.DeleteOpts{Ctx: ctx})
-			Expect(err).ToNot(HaveOccurred())
-
-			// trim trailing "}", which should invalidate our inja template
-			t.ResponseTransformation.GetTransformationTemplate().Headers[":status"].Text = strings.TrimSuffix(injaTransform, "}")
-
-			_, err = resourceClientset.VirtualServiceClient().Write(vs, clients.WriteOpts{Ctx: ctx})
+				func(resource resources.Resource) {
+					vs := resource.(*gatewayv1.VirtualService)
+					vs.VirtualHost.Options = &gloov1.VirtualHostOptions{Transformations: invalidTransform}
+				},
+				resourceClientset.VirtualServiceClient().BaseClient(),
+			)
 			Expect(err).To(MatchError(ContainSubstring("Failed to parse response template: Failed to parse " +
 				"header template ':status': [inja.exception.parser_error] expected statement close, got '%'")))
 		})
@@ -2030,43 +2142,42 @@ spec:
 
 			It("will not reject invalid transformation", func() {
 				// this inja template is invalid since it is missing a trailing "}",
-				injaTransform := `{% if default(data.error.message, "") != "" %}400{% else %}{{ header(":status") }}{% endif %`
-				t := &glootransformation.Transformations{
+				invalidInjaTransform := `{% if default(data.error.message, "") != "" %}400{% else %}{{ header(":status") }}{% endif %`
+				invalidTransform := &glootransformation.Transformations{
 					ClearRouteCache: true,
 					ResponseTransformation: &glootransformation.Transformation{
 						TransformationType: &glootransformation.Transformation_TransformationTemplate{
 							TransformationTemplate: &transformation.TransformationTemplate{
 								Headers: map[string]*transformation.InjaTemplate{
-									":status": {Text: injaTransform},
+									":status": {Text: invalidInjaTransform},
 								},
 							},
 						},
 					},
 				}
 
-				dest := &gloov1.Destination{
-					DestinationType: &gloov1.Destination_Upstream{
-						Upstream: &core.ResourceRef{
-							Namespace: testHelper.InstallNamespace,
-							Name:      fmt.Sprintf("%s-%s-%v", testHelper.InstallNamespace, helper.TestrunnerName, helper.TestRunnerPort),
-						},
+				err := kube2e.PatchResource(
+					ctx,
+					&core.ResourceRef{
+						Namespace: testRunnerVs.GetMetadata().GetNamespace(),
+						Name:      testRunnerVs.GetMetadata().GetName(),
 					},
-				}
-
-				vs := getVirtualService(dest, nil)
-				vs.VirtualHost.Options = &gloov1.VirtualHostOptions{Transformations: t}
-
-				// give settings a chance to propagate
-				Eventually(func() error {
-					_, err := resourceClientset.VirtualServiceClient().Write(vs, clients.WriteOpts{Ctx: ctx})
-					return err
-				}, "5s", "0.1s").ShouldNot(HaveOccurred())
-				helpers.EventuallyResourceAccepted(func() (resources.InputResource, error) {
-					return resourceClientset.VirtualServiceClient().Read(testHelper.InstallNamespace, vs.GetMetadata().GetName(), clients.ReadOpts{Ctx: ctx})
+					func(resource resources.Resource) {
+						vs := resource.(*gatewayv1.VirtualService)
+						vs.VirtualHost.Options = &gloov1.VirtualHostOptions{Transformations: invalidTransform}
+					},
+					resourceClientset.VirtualServiceClient().BaseClient(),
+				)
+				Expect(err).NotTo(HaveOccurred())
+				Eventually(func(g Gomega) {
+					vs, err := resourceClientset.VirtualServiceClient().Read(
+						testRunnerVs.GetMetadata().GetNamespace(),
+						testRunnerVs.GetMetadata().GetName(),
+						clients.ReadOpts{Ctx: ctx})
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(vs.GetVirtualHost().GetOptions().GetTransformations()).To(matchers2.MatchProto(invalidTransform))
 				})
 
-				err := resourceClientset.VirtualServiceClient().Delete(vs.Metadata.Namespace, vs.Metadata.Name, clients.DeleteOpts{Ctx: ctx})
-				Expect(err).ToNot(HaveOccurred())
 			})
 		})
 	})
@@ -2174,50 +2285,6 @@ spec:
 
 })
 
-func ToFile(content string) string {
-	f, err := ioutil.TempFile("", "")
-	ExpectWithOffset(1, err).NotTo(HaveOccurred())
-	n, err := f.WriteString(content)
-	ExpectWithOffset(1, err).NotTo(HaveOccurred())
-	ExpectWithOffset(1, n).To(Equal(len(content)))
-	_ = f.Close()
-	return f.Name()
-}
-
-func withName(name string, vs *gatewayv1.VirtualService) *gatewayv1.VirtualService {
-	vs.Metadata.Name = name
-	return vs
-}
-
-func withDomains(domains []string, vs *gatewayv1.VirtualService) *gatewayv1.VirtualService {
-	vs.VirtualHost.Domains = domains
-	return vs
-}
-
-func withRoute(route *gatewayv1.Route, vs *gatewayv1.VirtualService) *gatewayv1.VirtualService {
-	vs.VirtualHost.Routes = append([]*gatewayv1.Route{route}, vs.VirtualHost.Routes...)
-	return vs
-}
-
-func getVirtualService(dest *gloov1.Destination, sslConfig *gloov1.SslConfig) *gatewayv1.VirtualService {
-	return getVirtualServiceWithRoute(getRouteWithDest(dest, "/"), sslConfig)
-}
-
-func getVirtualServiceWithRoute(route *gatewayv1.Route, sslConfig *gloov1.SslConfig) *gatewayv1.VirtualService {
-	return &gatewayv1.VirtualService{
-		Metadata: &core.Metadata{
-			Name:      "vs",
-			Namespace: testHelper.InstallNamespace,
-		},
-		SslConfig: sslConfig,
-		VirtualHost: &gatewayv1.VirtualHost{
-			Domains: []string{"*"},
-
-			Routes: []*gatewayv1.Route{route},
-		},
-	}
-}
-
 func getRouteTable(name string, labels map[string]string, route *gatewayv1.Route) *gatewayv1.RouteTable {
 	return &gatewayv1.RouteTable{
 		Metadata: &core.Metadata{
@@ -2280,31 +2347,6 @@ func getRouteWithDelegateRef(delegate string, path string) *gatewayv1.Route {
 			},
 		},
 	}
-}
-
-func getRouteWithDelegateSelector(labels map[string]string, path string) *gatewayv1.Route {
-	return &gatewayv1.Route{
-		Matchers: []*matchers.Matcher{{
-			PathSpecifier: &matchers.Matcher_Prefix{
-				Prefix: path,
-			},
-		}},
-		Action: &gatewayv1.Route_DelegateAction{
-			DelegateAction: &gatewayv1.DelegateAction{
-				DelegationType: &gatewayv1.DelegateAction_Selector{
-					Selector: &gatewayv1.RouteTableSelector{
-						Namespaces: []string{testHelper.InstallNamespace},
-						Labels:     labels,
-					},
-				},
-			},
-		},
-	}
-}
-
-func addPrefixRewrite(route *gatewayv1.Route, rewrite string) *gatewayv1.Route {
-	route.Options = &gloov1.RouteOptions{PrefixRewrite: &wrappers.StringValue{Value: rewrite}}
-	return route
 }
 
 func petstore(namespace string) (*v1.Deployment, *corev1.Service) {
