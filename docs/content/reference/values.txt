@@ -870,6 +870,7 @@
 |accessLogger.resources.limits.cpu|string||amount of CPUs|
 |accessLogger.resources.requests.memory|string||amount of memory|
 |accessLogger.resources.requests.cpu|string||amount of CPUs|
+|global.glooMtls.ipv4Only|bool|true|This field if set false will bind the IPv6 address '::' on envoy-sidecar-config.|
 |accessLogger.kubeResourceOverride.NAME|interface||override fields in the generated resource by specifying the yaml structure to override under the top-level key.|
 |global.image.tag|string||The image tag for the container.|
 |global.image.repository|string||The image repository (name) for the container.|
