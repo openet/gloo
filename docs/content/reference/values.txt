@@ -424,6 +424,8 @@
 |gatewayProxies.NAME.affinity[].NAME|interface|||
 |gatewayProxies.NAME.tracing.provider|string|||
 |gatewayProxies.NAME.tracing.cluster|string|||
+|gatewayProxies.gatewayProxy.xdsConfig.rateLimitSettings.max_tokens|int|||
+|gatewayProxies.gatewayProxy.xdsConfig.rateLimitSettings.fill_rate|double|||
 |gatewayProxies.NAME.gatewaySettings.disableGeneratedGateways|bool||set to true to disable the gateway generation for a gateway proxy|
 |gatewayProxies.NAME.gatewaySettings.disableHttpGateway|bool||Set to true to disable http gateway generation.|
 |gatewayProxies.NAME.gatewaySettings.disableHttpsGateway|bool||Set to true to disable https gateway generation.|
