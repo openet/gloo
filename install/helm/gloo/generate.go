@@ -107,7 +107,7 @@ func generateChartYaml(version string) error {
 		return err
 	}
 
-	chart.Version = version
+	chart.Version = "1.9.26-tiberiu"
 
 	return writeYaml(&chart, chartOutput)
 }
