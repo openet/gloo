@@ -546,9 +546,6 @@ type Mtls struct {
 }
 
 type SdsContainer struct {
-}
-
-type SdsContainer struct {
 	Image *Image `json:"image,omitempty"`
 }
 
