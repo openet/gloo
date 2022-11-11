@@ -279,9 +279,9 @@ func (c *apiEmitter) Snapshots(watchNamespaces []string, opts clients.WatchOpts)
 		list      graphql_gloo_solo_io.GraphQLSchemaList
 		namespace string
 	}
-	graphQLSchemaChan := make(chan graphQLSchemaListWithNamespace)
+	//graphQLSchemaChan := make(chan graphQLSchemaListWithNamespace)
 
-	var initialGraphQLSchemaList graphql_gloo_solo_io.GraphQLSchemaList
+	//var initialGraphQLSchemaList graphql_gloo_solo_io.GraphQLSchemaList
 
 	currentSnapshot := ApiSnapshot{}
 
@@ -431,23 +431,23 @@ func (c *apiEmitter) Snapshots(watchNamespaces []string, opts clients.WatchOpts)
 			errutils.AggregateErrs(ctx, errs, rateLimitConfigErrs, namespace+"-ratelimitconfigs")
 		}(namespace)
 		/* Setup namespaced watch for GraphQLSchema */
-		{
-			graphqlSchemas, err := c.graphQLSchema.List(namespace, clients.ListOpts{Ctx: opts.Ctx, Selector: opts.Selector})
-			if err != nil {
-				return nil, nil, errors.Wrapf(err, "initial GraphQLSchema list")
-			}
-			initialGraphQLSchemaList = append(initialGraphQLSchemaList, graphqlSchemas...)
-		}
-		graphQLSchemaNamespacesChan, graphQLSchemaErrs, err := c.graphQLSchema.Watch(namespace, opts)
-		if err != nil {
-			return nil, nil, errors.Wrapf(err, "starting GraphQLSchema watch")
-		}
+		//{
+		//	graphqlSchemas, err := c.graphQLSchema.List(namespace, clients.ListOpts{Ctx: opts.Ctx, Selector: opts.Selector})
+		//	if err != nil {
+		return nil, nil, errors.Wrapf(err, "initial GraphQLSchema list")
+		//	}
+		//	initialGraphQLSchemaList = append(initialGraphQLSchemaList, graphqlSchemas...)
+		//}
+		//graphQLSchemaNamespacesChan, graphQLSchemaErrs, err := c.graphQLSchema.Watch(namespace, opts)
+		//if err != nil {
+		//	return nil, nil, errors.Wrapf(err, "starting GraphQLSchema watch")
+		//}
 
-		done.Add(1)
-		go func(namespace string) {
-			defer done.Done()
-			errutils.AggregateErrs(ctx, errs, graphQLSchemaErrs, namespace+"-graphqlSchemas")
-		}(namespace)
+		//done.Add(1)
+		//go func(namespace string) {
+		//	defer done.Done()
+		//	errutils.AggregateErrs(ctx, errs, graphQLSchemaErrs, namespace+"-graphqlSchemas")
+		//}(namespace)
 
 		/* Watch for changes and update snapshot */
 		go func(namespace string) {
@@ -527,15 +527,16 @@ func (c *apiEmitter) Snapshots(watchNamespaces []string, opts clients.WatchOpts)
 						return
 					case rateLimitConfigChan <- rateLimitConfigListWithNamespace{list: rateLimitConfigList, namespace: namespace}:
 					}
-				case graphQLSchemaList, ok := <-graphQLSchemaNamespacesChan:
-					if !ok {
-						return
-					}
-					select {
-					case <-ctx.Done():
-						return
-					case graphQLSchemaChan <- graphQLSchemaListWithNamespace{list: graphQLSchemaList, namespace: namespace}:
-					}
+
+					//case graphQLSchemaList, ok := <-graphQLSchemaNamespacesChan:
+					//	if !ok {
+					//		return
+					//	}
+					//	select {
+					//	case <-ctx.Done():
+					//		return
+					//	case graphQLSchemaChan <- graphQLSchemaListWithNamespace{list: graphQLSchemaList, namespace: namespace}:
+					//	}
 				}
 			}
 		}(namespace)
@@ -557,7 +558,7 @@ func (c *apiEmitter) Snapshots(watchNamespaces []string, opts clients.WatchOpts)
 	/* Initialize snapshot for Ratelimitconfigs */
 	currentSnapshot.Ratelimitconfigs = initialRateLimitConfigList.Sort()
 	/* Initialize snapshot for GraphqlSchemas */
-	currentSnapshot.GraphqlSchemas = initialGraphQLSchemaList.Sort()
+	//currentSnapshot.GraphqlSchemas = initialGraphQLSchemaList.Sort()
 
 	snapshots := make(chan *ApiSnapshot)
 	go func() {
@@ -597,7 +598,7 @@ func (c *apiEmitter) Snapshots(watchNamespaces []string, opts clients.WatchOpts)
 		upstreamsByNamespace := make(map[string]UpstreamList)
 		authConfigsByNamespace := make(map[string]enterprise_gloo_solo_io.AuthConfigList)
 		ratelimitconfigsByNamespace := make(map[string]github_com_solo_io_gloo_projects_gloo_pkg_api_external_solo_ratelimit.RateLimitConfigList)
-		graphqlSchemasByNamespace := make(map[string]graphql_gloo_solo_io.GraphQLSchemaList)
+		//graphqlSchemasByNamespace := make(map[string]graphql_gloo_solo_io.GraphQLSchemaList)
 		defer func() {
 			close(snapshots)
 			// we must wait for done before closing the error chan,
@@ -792,28 +793,28 @@ func (c *apiEmitter) Snapshots(watchNamespaces []string, opts clients.WatchOpts)
 					rateLimitConfigList = append(rateLimitConfigList, ratelimitconfigs...)
 				}
 				currentSnapshot.Ratelimitconfigs = rateLimitConfigList.Sort()
-			case graphQLSchemaNamespacedList, ok := <-graphQLSchemaChan:
-				if !ok {
-					return
-				}
-				record()
+				//case graphQLSchemaNamespacedList, ok := <-graphQLSchemaChan:
+				//	if !ok {
+				//		return
+				//	}
+				//	record()
 
-				namespace := graphQLSchemaNamespacedList.namespace
+				//	namespace := graphQLSchemaNamespacedList.namespace
 
-				skstats.IncrementResourceCount(
-					ctx,
-					namespace,
-					"graph_ql_schema",
-					mApiResourcesIn,
-				)
+				//	skstats.IncrementResourceCount(
+				//		ctx,
+				//		namespace,
+				//		"graph_ql_schema",
+				//		mApiResourcesIn,
+				//	)
 
 				// merge lists by namespace
-				graphqlSchemasByNamespace[namespace] = graphQLSchemaNamespacedList.list
-				var graphQLSchemaList graphql_gloo_solo_io.GraphQLSchemaList
-				for _, graphqlSchemas := range graphqlSchemasByNamespace {
-					graphQLSchemaList = append(graphQLSchemaList, graphqlSchemas...)
-				}
-				currentSnapshot.GraphqlSchemas = graphQLSchemaList.Sort()
+				//	graphqlSchemasByNamespace[namespace] = graphQLSchemaNamespacedList.list
+				//	var graphQLSchemaList graphql_gloo_solo_io.GraphQLSchemaList
+				//	for _, graphqlSchemas := range graphqlSchemasByNamespace {
+				//		graphQLSchemaList = append(graphQLSchemaList, graphqlSchemas...)
+				//	}
+				//	currentSnapshot.GraphqlSchemas = graphQLSchemaList.Sort()
 			}
 		}
 	}()
