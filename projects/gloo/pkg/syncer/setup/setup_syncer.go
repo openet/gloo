@@ -9,8 +9,10 @@ import (
 	"strings"
 	"time"
 
-	gloostatusutils "github.com/solo-io/gloo/pkg/utils/statusutils"
 	"github.com/solo-io/gloo/projects/gateway/pkg/utils/metrics"
+	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/enterprise/options/graphql/v1alpha1"
+
+	gloostatusutils "github.com/solo-io/gloo/pkg/utils/statusutils"
 
 	"github.com/solo-io/gloo/projects/gloo/pkg/syncer"
 
@@ -455,13 +457,13 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitte
 		return err
 	}
 
-	//graphqlSchemaClient, err := v1alpha1.NewGraphQLSchemaClient(watchOpts.Ctx, opts.GraphQLSchemas)
-	//if err != nil {
-	//	return err
-	//}
-	//if err := graphqlSchemaClient.Register(); err != nil {
-	//	return err
-	//}
+	graphqlSchemaClient, err := v1alpha1.NewGraphQLSchemaClient(watchOpts.Ctx, opts.GraphQLSchemas)
+	if err != nil {
+		return err
+	}
+	if err := graphqlSchemaClient.Register(); err != nil {
+		return err
+	}
 
 	rlClient, rlReporterClient, err := rlv1alpha1.NewRateLimitClients(watchOpts.Ctx, opts.RateLimitConfigs)
 	if err != nil {
@@ -537,7 +539,7 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitte
 		hybridUsClient,
 		authConfigClient,
 		rlClient,
-		nil,
+		graphqlSchemaClient,
 		apiEmitterChan,
 	)
 
@@ -812,10 +814,10 @@ func constructOpts(ctx context.Context, clientset *kubernetes.Interface, kubeCac
 		return bootstrap.Opts{}, err
 	}
 
-	//graphqlSchemaFactory, err := bootstrap.ConfigFactoryForSettings(params, v1alpha1.GraphQLSchemaCrd)
-	//if err != nil {
-	//	return bootstrap.Opts{}, err
-	//}
+	graphqlSchemaFactory, err := bootstrap.ConfigFactoryForSettings(params, v1alpha1.GraphQLSchemaCrd)
+	if err != nil {
+		return bootstrap.Opts{}, err
+	}
 
 	return bootstrap.Opts{
 		Upstreams:         upstreamFactory,
@@ -826,7 +828,7 @@ func constructOpts(ctx context.Context, clientset *kubernetes.Interface, kubeCac
 		Artifacts:         artifactFactory,
 		AuthConfigs:       authConfigFactory,
 		RateLimitConfigs:  rateLimitConfigFactory,
-		//GraphQLSchemas:    graphqlSchemaFactory,
-		KubeCoreCache: kubeCoreCache,
+		GraphQLSchemas:    graphqlSchemaFactory,
+		KubeCoreCache:     kubeCoreCache,
 	}, nil
 }
