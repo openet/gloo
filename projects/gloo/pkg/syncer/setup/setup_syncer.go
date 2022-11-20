@@ -439,6 +439,8 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitte
 		}
 	}
 	logger := contextutils.LoggerFrom(watchOpts.Ctx)
+	logger.Infof("pluginRegistry.GetPlugins() len is %d", len(pluginRegistry.GetPlugins()))
+	logger.Infof("discoveryPlugins len is %d", len(discoveryPlugins))
 
 	startRestXdsServer(opts)
 
