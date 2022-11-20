@@ -491,6 +491,9 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitte
 	}
 	logger := contextutils.LoggerFrom(watchOpts.Ctx)
 
+	logger.Infof("GetPlugins len: %d", len(getPlugins()))
+	logger.Infof("DiscoveryPlugins len: %d", len(discoveryPlugins))
+
 	startRestXdsServer(opts)
 
 	errs := make(chan error)
