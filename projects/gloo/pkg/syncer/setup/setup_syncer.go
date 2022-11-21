@@ -332,7 +332,13 @@ type Extensions struct {
 
 func GetPluginsWithExtensionsAndRegistry(opts bootstrap.Opts, registryPlugins func(opts bootstrap.Opts) []plugins.Plugin, extensions Extensions) func() []plugins.Plugin {
 	pluginfuncs := extensions.PluginExtensionsFuncs
+	i1 := 0
+	watchOpts := opts.WatchOpts.WithDefaults()
+	watchOpts.Ctx = contextutils.WithLogger(watchOpts.Ctx, "setup")
+	logger := contextutils.LoggerFrom(watchOpts.Ctx)
 	for _, p := range extensions.PluginExtensions {
+		logger.Infof("i1 = %d", i1)
+		i1++
 		p := p
 		pluginfuncs = append(pluginfuncs, func() plugins.Plugin { return p })
 	}
