@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"github.com/solo-io/go-utils/contextutils"
 
 	"github.com/solo-io/gloo/projects/gloo/pkg/bootstrap"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
@@ -106,7 +107,12 @@ func Plugins(opts bootstrap.Opts) []plugins.Plugin {
 
 func GetPluginRegistryFactory(opts bootstrap.Opts) plugins.PluginRegistryFactory {
 	return func(ctx context.Context) plugins.PluginRegistry {
+		watchOpts := opts.WatchOpts.WithDefaults()
+		logger := contextutils.LoggerFrom(watchOpts.Ctx)
+
 		availablePlugins := Plugins(opts)
+
+		logger.Infof("In GetPluginRegistryFactory, availablePlugins len is %d", len(availablePlugins))
 
 		// To improve the UX, load a plugin that warns users if they are attempting to use enterprise configuration
 		availablePlugins = append(availablePlugins, enterprise_warning.NewPlugin())
