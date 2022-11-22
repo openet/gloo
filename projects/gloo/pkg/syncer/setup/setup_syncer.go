@@ -345,6 +345,7 @@ func GetPluginsWithExtensionsAndRegistry(opts bootstrap.Opts, registryPlugins fu
 	return func() []plugins.Plugin {
 		upgradedPlugins := make(map[string]bool)
 		plugs := registryPlugins(opts)
+		logger.Infof("In GetPluginsWithExtensionsAndRegistry, len(plugs) is %d", len(plugs))
 		for _, pluginExtension := range pluginfuncs {
 			pe := pluginExtension()
 			if uPlug, ok := pe.(plugins.Upgradable); ok && uPlug.IsUpgrade() {
@@ -353,8 +354,9 @@ func GetPluginsWithExtensionsAndRegistry(opts bootstrap.Opts, registryPlugins fu
 
 			plugs = append(plugs, pe)
 		}
+		logger.Infof("In GetPluginsWithExtensionsAndRegistry (2), len(plugs) is %d", len(plugs))
 		plugs = reconcileUpgradedPlugins(plugs, upgradedPlugins)
-
+		logger.Infof("In GetPluginsWithExtensionsAndRegistry (3), len(plugs) is %d", len(plugs))
 		return plugs
 	}
 }
