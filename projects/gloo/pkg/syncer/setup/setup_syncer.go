@@ -22,6 +22,7 @@ import (
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	consulapi "github.com/hashicorp/consul/api"
 	vaultapi "github.com/hashicorp/vault/api"
+	errorsEris "github.com/rotisserie/eris"
 	"github.com/solo-io/gloo/pkg/utils"
 	"github.com/solo-io/gloo/pkg/utils/channelutils"
 	"github.com/solo-io/gloo/pkg/utils/setuputils"
@@ -425,20 +426,35 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitte
 	xds.SetupEnvoyXds(opts.ControlPlane.GrpcServer, opts.ControlPlane.XDSServer, opts.ControlPlane.SnapshotCache)
 	xdsHasher := xds.NewNodeHasher()
 
-	pluginRegistryFactory := extensions.PluginRegistryFactory
-	if pluginRegistryFactory == nil {
-		pluginRegistryFactory = registry.GetPluginRegistryFactory(opts)
-	}
+	logger := contextutils.LoggerFrom(watchOpts.Ctx)
+
+	pluginRegistryFactoryFromGlooWrapper := extensions.PluginRegistryFactory
+
+	pluginRegistryFactory := registry.GetPluginRegistryFactory(opts)
 
 	pluginRegistry := pluginRegistryFactory(watchOpts.Ctx)
+	plugs := pluginRegistry.GetPlugins()
+
+	if pluginRegistryFactoryFromGlooWrapper == nil {
+		logger.Error("No pluginRegistryFactory from GlooWrapper")
+		return errorsEris.Errorf("No pluginRegistryFactory from GlooWrapper")
+	} else {
+		pluginRegistryFromGlooWrapper := pluginRegistryFactoryFromGlooWrapper(watchOpts.Ctx)
+		for _, plug := range pluginRegistryFromGlooWrapper.GetPlugins() {
+			plugs = append(plugs, plug)
+		}
+		logger.Infof("pluginRegistryFromGlooWrapper.GetPlugins() len is %d", len(pluginRegistryFromGlooWrapper.GetPlugins()))
+		logger.Infof("Final plugs len is %d", len(plugs))
+	}
+
 	var discoveryPlugins []discovery.DiscoveryPlugin
-	for _, plug := range pluginRegistry.GetPlugins() {
+	for _, plug := range plugs {
 		disc, ok := plug.(discovery.DiscoveryPlugin)
 		if ok {
 			discoveryPlugins = append(discoveryPlugins, disc)
 		}
 	}
-	logger := contextutils.LoggerFrom(watchOpts.Ctx)
+
 	logger.Infof("pluginRegistry.GetPlugins() len is %d", len(pluginRegistry.GetPlugins()))
 	logger.Infof("discoveryPlugins len is %d", len(discoveryPlugins))
 
