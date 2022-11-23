@@ -519,7 +519,11 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitte
 		rlReporterClient,
 	)
 
-	t := translator.NewTranslator(sslutils.NewSslConfigTranslator(), opts.Settings, pluginRegistryFactory)
+	pluginRegistryFactorySum := func(ctx context.Context) plugins.PluginRegistry {
+		return registry.NewPluginRegistry(plugs)
+	}
+
+	t := translator.NewTranslator(sslutils.NewSslConfigTranslator(), opts.Settings, pluginRegistryFactorySum)
 
 	routeReplacingSanitizer, err := sanitizer.NewRouteReplacingSanitizer(opts.Settings.GetGloo().GetInvalidConfigPolicy())
 	if err != nil {
