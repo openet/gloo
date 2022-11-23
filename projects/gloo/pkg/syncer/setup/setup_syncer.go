@@ -22,7 +22,6 @@ import (
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	consulapi "github.com/hashicorp/consul/api"
 	vaultapi "github.com/hashicorp/vault/api"
-	errorsEris "github.com/rotisserie/eris"
 	"github.com/solo-io/gloo/pkg/utils"
 	"github.com/solo-io/gloo/pkg/utils/channelutils"
 	"github.com/solo-io/gloo/pkg/utils/setuputils"
@@ -426,31 +425,20 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitte
 	xds.SetupEnvoyXds(opts.ControlPlane.GrpcServer, opts.ControlPlane.XDSServer, opts.ControlPlane.SnapshotCache)
 	xdsHasher := xds.NewNodeHasher()
 
-	logger := contextutils.LoggerFrom(watchOpts.Ctx)
-
-	pluginRegistryFactoryFromGlooWrapper := extensions.PluginRegistryFactory
-	if pluginRegistryFactoryFromGlooWrapper == nil {
-		logger.Error("No pluginRegistryFactory from GlooWrapper")
-		return errorsEris.Errorf("No pluginRegistryFactory from GlooWrapper")
+	pluginRegistryFactory := extensions.PluginRegistryFactory
+	if pluginRegistryFactory == nil {
+		pluginRegistryFactory = registry.GetPluginRegistryFactory(opts)
 	}
-
-	pluginRegistryFactory := registry.GetPluginRegistryFactory(opts)
 
 	pluginRegistry := pluginRegistryFactory(watchOpts.Ctx)
-	plugs := pluginRegistry.GetPlugins()
-
-	for _, plug := range pluginRegistryFactoryFromGlooWrapper(watchOpts.Ctx).GetPlugins() {
-		plugs = append(plugs, plug)
-	}
-
 	var discoveryPlugins []discovery.DiscoveryPlugin
-	for _, plug := range plugs {
+	for _, plug := range pluginRegistry.GetPlugins() {
 		disc, ok := plug.(discovery.DiscoveryPlugin)
 		if ok {
 			discoveryPlugins = append(discoveryPlugins, disc)
 		}
 	}
-
+	logger := contextutils.LoggerFrom(watchOpts.Ctx)
 	logger.Infof("pluginRegistry.GetPlugins() len is %d", len(pluginRegistry.GetPlugins()))
 	logger.Infof("discoveryPlugins len is %d", len(discoveryPlugins))
 
