@@ -443,8 +443,6 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitte
 		for _, plug := range pluginRegistryFromGlooWrapper.GetPlugins() {
 			plugs = append(plugs, plug)
 		}
-		logger.Infof("pluginRegistryFromGlooWrapper.GetPlugins() len is %d", len(pluginRegistryFromGlooWrapper.GetPlugins()))
-		logger.Infof("Final plugs len is %d", len(plugs))
 	}
 
 	var discoveryPlugins []discovery.DiscoveryPlugin
@@ -454,9 +452,6 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitte
 			discoveryPlugins = append(discoveryPlugins, disc)
 		}
 	}
-
-	logger.Infof("pluginRegistry.GetPlugins() len is %d", len(pluginRegistry.GetPlugins()))
-	logger.Infof("discoveryPlugins len is %d", len(discoveryPlugins))
 
 	startRestXdsServer(opts)
 
@@ -521,6 +516,10 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions, apiEmitte
 
 	pluginRegistryFactorySum := func(ctx context.Context) plugins.PluginRegistry {
 		return registry.NewPluginRegistry(plugs)
+	}
+
+	for _, plug := range pluginRegistryFactorySum(watchOpts.Ctx).GetPlugins() {
+		logger.Infof("Plugin: %s", plug.Name())
 	}
 
 	t := translator.NewTranslator(sslutils.NewSslConfigTranslator(), opts.Settings, pluginRegistryFactorySum)
