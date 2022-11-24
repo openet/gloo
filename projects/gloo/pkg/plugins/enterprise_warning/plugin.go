@@ -18,13 +18,13 @@ var (
 const (
 	ExtensionName = "enterprise_warning"
 
-	AdvancedHttpExtensionName          = "advanced_http"
-	DlpExtensionName                   = "dlp"
-	FailoverExtensionName              = "failover"
-	JwtExtensionName                   = "jwt"
-	LeftmostXffAddressExtensionName    = "leftmost_xff_address"
-	ProxyLatencyExtensionName          = "proxy_latency"
-	RbacExtensionName                  = "rbac"
+	AdvancedHttpExtensionName = "advanced_http"
+	DlpExtensionName          = "dlp"
+	FailoverExtensionName     = "failover"
+	//JwtExtensionName                   = "jwt"
+	LeftmostXffAddressExtensionName = "leftmost_xff_address"
+	ProxyLatencyExtensionName       = "proxy_latency"
+	//RbacExtensionName                  = "rbac"
 	SanitizeClusterHeaderExtensionName = "sanitize_cluster_header"
 	WafExtensionName                   = "waf"
 	WasmExtensionName                  = "wasm"
@@ -63,13 +63,13 @@ func (p *plugin) ProcessVirtualHost(
 ) error {
 	var enterpriseExtensions []string
 
-	if isJwtConfiguredOnVirtualHost(in) {
-		enterpriseExtensions = append(enterpriseExtensions, JwtExtensionName)
-	}
+	//if isJwtConfiguredOnVirtualHost(in) {
+	//	enterpriseExtensions = append(enterpriseExtensions, JwtExtensionName)
+	//}
 
-	if isRbacConfiguredOnVirtualHost(in) {
-		enterpriseExtensions = append(enterpriseExtensions, RbacExtensionName)
-	}
+	//if isRbacConfiguredOnVirtualHost(in) {
+	//	enterpriseExtensions = append(enterpriseExtensions, RbacExtensionName)
+	//}
 
 	if isWafConfiguredOnVirtualHost(in) {
 		enterpriseExtensions = append(enterpriseExtensions, WafExtensionName)
@@ -81,13 +81,13 @@ func (p *plugin) ProcessVirtualHost(
 func (p *plugin) ProcessRoute(_ plugins.RouteParams, in *v1.Route, _ *envoy_config_route_v3.Route) error {
 	var enterpriseExtensions []string
 
-	if isJwtConfiguredOnRoute(in) {
-		enterpriseExtensions = append(enterpriseExtensions, JwtExtensionName)
-	}
+	//if isJwtConfiguredOnRoute(in) {
+	//	enterpriseExtensions = append(enterpriseExtensions, JwtExtensionName)
+	//}
 
-	if isRbacConfiguredOnRoute(in) {
-		enterpriseExtensions = append(enterpriseExtensions, RbacExtensionName)
-	}
+	//if isRbacConfiguredOnRoute(in) {
+	//	enterpriseExtensions = append(enterpriseExtensions, RbacExtensionName)
+	//}
 
 	if isWafConfiguredOnRoute(in) {
 		enterpriseExtensions = append(enterpriseExtensions, WafExtensionName)
