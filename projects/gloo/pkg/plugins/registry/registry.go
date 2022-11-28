@@ -8,11 +8,9 @@ import (
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/als"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/aws"
-	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/aws/ec2"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/azure"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/basicroute"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/buffer"
-	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/consul"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/cors"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/csrf"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/extauth"
@@ -76,7 +74,7 @@ func Plugins(opts bootstrap.Opts) []plugins.Plugin {
 		cors.NewPlugin(),
 		linkerd.NewPlugin(),
 		stats.NewPlugin(),
-		ec2.NewPlugin(opts.WatchOpts.Ctx, opts.Secrets),
+		//ec2.NewPlugin(opts.WatchOpts.Ctx, opts.Secrets),
 		tracing.NewPlugin(),
 		shadowing.NewPlugin(),
 		headers.NewPlugin(),
@@ -97,9 +95,9 @@ func Plugins(opts bootstrap.Opts) []plugins.Plugin {
 	if opts.KubeClient != nil {
 		glooPlugins = append(glooPlugins, kubernetes.NewPlugin(opts.KubeClient, opts.KubeCoreCache))
 	}
-	if opts.Consul.ConsulWatcher != nil {
-		glooPlugins = append(glooPlugins, consul.NewPlugin(opts.Consul.ConsulWatcher, &consul.ConsulDnsResolver{DnsAddress: opts.Consul.DnsServer}, opts.Consul.DnsPollingInterval))
-	}
+	//if opts.Consul.ConsulWatcher != nil {
+	//glooPlugins = append(glooPlugins, consul.NewPlugin(opts.Consul.ConsulWatcher, &consul.ConsulDnsResolver{DnsAddress: opts.Consul.DnsServer}, opts.Consul.DnsPollingInterval))
+	//}
 
 	return glooPlugins
 }
