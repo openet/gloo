@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	gloo_matchers "github.com/solo-io/gloo/test/gomega/matchers"
+
 	v1snap "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/gloosnapshot"
 
 	v3 "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/config/core/v3"
@@ -19,12 +21,11 @@ import (
 	"github.com/solo-io/gloo/projects/gloo/pkg/translator"
 	glooutils "github.com/solo-io/gloo/projects/gloo/pkg/utils"
 	validationutils "github.com/solo-io/gloo/projects/gloo/pkg/utils/validation"
-	matchers2 "github.com/solo-io/gloo/test/matchers"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/factory"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/memory"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
 	"github.com/solo-io/gloo/test/helpers"
@@ -162,8 +163,8 @@ var _ = Describe("SnapshotBenchmark", func() {
 		JustBeforeEach(func() {
 			pluginRegistry := registry.NewPluginRegistry(registeredPlugins)
 
-			fnvTranslator = translator.NewTranslatorWithHasher(glooutils.NewSslConfigTranslator(), settings, pluginRegistry, translator.MustEnvoyCacheResourcesListToFnvHash)
-			hashstructureTranslator = translator.NewTranslatorWithHasher(glooutils.NewSslConfigTranslator(), settings, pluginRegistry, translator.MustEnvoyCacheResourcesListToHash)
+			fnvTranslator = translator.NewTranslatorWithHasher(glooutils.NewSslConfigTranslator(), settings, pluginRegistry, translator.EnvoyCacheResourcesListToFnvHash)
+			hashstructureTranslator = translator.NewTranslatorWithHasher(glooutils.NewSslConfigTranslator(), settings, pluginRegistry, translator.EnvoyCacheResourcesListToFnvHash)
 
 			httpListener := &v1.Listener{
 				Name:        "http-listener",
@@ -284,13 +285,13 @@ var _ = Describe("SnapshotBenchmark", func() {
 				snap, errs, report := fnvTranslator.Translate(params, proxyClone)
 				Expect(errs.Validate()).NotTo(HaveOccurred())
 				Expect(snap).NotTo(BeNil())
-				Expect(report).To(matchers2.BeEquivalentToDiff(validationutils.MakeReport(proxy)))
+				Expect(report).To(gloo_matchers.BeEquivalentToDiff(validationutils.MakeReport(proxy)))
 			})
 			b.Time(fmt.Sprintf("runtime of hashstructure translate"), func() {
 				snap, errs, report := hashstructureTranslator.Translate(params, proxyClone)
 				Expect(errs.Validate()).NotTo(HaveOccurred())
 				Expect(snap).NotTo(BeNil())
-				Expect(report).To(matchers2.BeEquivalentToDiff(validationutils.MakeReport(proxy)))
+				Expect(report).To(gloo_matchers.BeEquivalentToDiff(validationutils.MakeReport(proxy)))
 			})
 		}, 15)
 	})

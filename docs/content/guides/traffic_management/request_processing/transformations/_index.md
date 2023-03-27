@@ -138,6 +138,7 @@ The `clearRouteCache` attribute is a boolean value that determines whether the r
 The `requestTransformation` and `responseTransformation` attributes have the {{< protobuf display="same format" name="transformation.options.gloo.solo.io.Transformation" >}} and specify transformations that will be applied to requests and responses respectively. The format can take one of two forms:
 
 - `headerBodyTransform`: this type of transformation will make all the headers available in the body. The result will be a JSON body that consists of two attributes: `headers`, containing the headers, and `body`, containing the original body.
+  - If `addRequestMetadata` is true, `queryString`, `queryStringParameters`, `multiValueQueryStringParameters`, `httpMethod`, `path`, and `multiValueHeaders` will additionally be present in the body.
 - `transformationTemplate`: this type of transformation allows you to define transformation templates. This is the more powerful and flexible type of transformation. We will spend the rest of this guide to describe its properties.
 
 #### Transformation templates
@@ -163,6 +164,15 @@ The `body`, `passthrough`, and `mergeExtractorsToBody` attributes define three d
 
 Let's go ahead and describe each one of these attributes in detail.
 
+##### Body Parsing Behavior
+{{% notice warning %}}
+By default, `transformationTemplate` parses the request/response body as JSON, depending on whether you configure a `requestTransformation` or `responseTransformation`. If Gloo Edge fails to parse the request/response body as JSON, it returns a `400 Bad Request` error.
+
+If you want to skip this behavior, you can:
+* Set the [`parseBodyBehavior`](#parsebodybehavior) attribute to `DontParse`. Edge treats the body as plain text and does not parse it.
+* Set the [`ignoreErrorOnParse`](#ignoreerroronparse) attribute to `true`. Edge parses the body as JSON, but does not return an error if the body is not valid JSON.
+* Enable [`passthrough`](#passthrough). Edge does not parse the body.
+{{% /notice %}}
 ##### parseBodyBehavior
 This attribute determines how the request/response body will be parsed and can have one of two values:
 

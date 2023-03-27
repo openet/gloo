@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	. "github.com/onsi/ginkgo"
+	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/options/contextoptions"
+
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/solo-io/gloo/pkg/cliutil/testutil"
 	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/options"
@@ -157,7 +159,9 @@ func getMinCreateSecretOptions(secretOpts options.Secret) *options.Options {
 		Top: options.Top{
 			Ctx: context.Background(),
 			// These are all interactive tests
-			Interactive: true,
+			ContextAccessible: contextoptions.ContextAccessible{
+				Interactive: true,
+			},
 		},
 		Metadata: core.Metadata{},
 		Create: options.Create{

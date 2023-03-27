@@ -2,8 +2,10 @@ package translator
 
 import (
 	errors "github.com/rotisserie/eris"
+
 	v1 "github.com/solo-io/gloo/projects/gateway/pkg/api/v1"
 	gloov1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
+	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/ssl"
 	"github.com/solo-io/go-utils/contextutils"
 	"github.com/solo-io/go-utils/hashutils"
 )
@@ -165,7 +167,7 @@ func (t *HybridTranslator) computeMatchedListener(
 	listenerOptions := reconcileGatewayLevelHCMConfig(parentGateway, matchableHttpGateway)
 
 	// reconcile the ssl configuration that is shared by Gateway and MatchableHttpGateways
-	var sslConfig *gloov1.SslConfig
+	var sslConfig *ssl.SslConfig
 	if sslGateway {
 		sslConfig = reconcileGatewayLevelSslConfig(parentGateway, matchableHttpGateway)
 	}

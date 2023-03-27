@@ -181,6 +181,12 @@ spec:
                   fdsMode:
                     type: string
                     x-kubernetes-int-or-string: true
+                  fdsOptions:
+                    properties:
+                      graphqlEnabled:
+                        nullable: true
+                        type: boolean
+                    type: object
                   udsOptions:
                     properties:
                       enabled:
@@ -342,6 +348,9 @@ spec:
                       credentialRefreshDelay:
                         type: string
                       enableCredentialsDiscovey:
+                        type: boolean
+                      fallbackToFirstFunction:
+                        nullable: true
                         type: boolean
                       propagateOriginalRouting:
                         nullable: true
@@ -653,8 +662,27 @@ spec:
                 type: object
               vaultSecretSource:
                 properties:
+                  accessToken:
+                    type: string
                   address:
                     type: string
+                  aws:
+                    properties:
+                      accessKeyId:
+                        type: string
+                      iamServerIdHeader:
+                        type: string
+                      mountPath:
+                        type: string
+                      region:
+                        type: string
+                      secretAccessKey:
+                        type: string
+                      sessionToken:
+                        type: string
+                      vaultRole:
+                        type: string
+                    type: object
                   caCert:
                     type: string
                   caPath:
@@ -670,6 +698,22 @@ spec:
                     type: string
                   rootKey:
                     type: string
+                  tlsConfig:
+                    properties:
+                      caCert:
+                        type: string
+                      caPath:
+                        type: string
+                      clientCert:
+                        type: string
+                      clientKey:
+                        type: string
+                      insecure:
+                        nullable: true
+                        type: boolean
+                      tlsServerName:
+                        type: string
+                    type: object
                   tlsServerName:
                     type: string
                   token:

@@ -12,7 +12,7 @@ import (
 	v1alpha1skv1 "github.com/solo-io/gloo/projects/gloo/pkg/api/external/solo/ratelimit"
 	"github.com/solo-io/solo-apis/pkg/api/ratelimit.solo.io/v1alpha1"
 	rlv1alpha1 "github.com/solo-io/solo-apis/pkg/api/ratelimit.solo.io/v1alpha1"
-	matchers2 "github.com/solo-io/solo-kit/test/matchers"
+	gloo_matchers "github.com/solo-io/solo-kit/test/matchers"
 
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/static"
 
@@ -27,13 +27,12 @@ import (
 	gloostatusutils "github.com/solo-io/gloo/pkg/utils/statusutils"
 
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources"
-	"github.com/solo-io/solo-kit/pkg/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/golang/protobuf/ptypes/wrappers"
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/ginkgo/extensions/table"
+
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/rotisserie/eris"
 	"github.com/solo-io/gloo/pkg/cliutil/install"
@@ -50,6 +49,7 @@ import (
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/headers"
 	gloorest "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/rest"
 	glootransformation "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/transformation"
+	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/ssl"
 	defaults2 "github.com/solo-io/gloo/projects/gloo/pkg/defaults"
 	kubernetes2 "github.com/solo-io/gloo/projects/gloo/pkg/plugins/kubernetes"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/linkerd"
@@ -77,6 +77,49 @@ var _ = Describe("Kube2e: gateway", func() {
 		glooResources *gloosnapshot.ApiSnapshot
 	)
 
+	verifyValidationWorks := func() {
+		// Validation of Gloo resources requires that a Proxy resource exist
+		// Therefore, before the tests start, we must attempt updates that should be rejected
+		// They will only be rejected once a Proxy exists in the ApiSnapshot
+
+		placeholderUs := &gloov1.Upstream{
+			Metadata: &core.Metadata{
+				Name:      "",
+				Namespace: testHelper.InstallNamespace,
+			},
+			UpstreamType: &gloov1.Upstream_Static{
+				Static: &static.UpstreamSpec{
+					Hosts: []*static.Host{{
+						Addr: "~",
+					}},
+				},
+			},
+		}
+		attempt := 0
+		Eventually(func(g Gomega) bool {
+			placeholderUs.Metadata.Name = fmt.Sprintf("invalid-placeholder-us-%d", attempt)
+
+			_, err := resourceClientset.UpstreamClient().Write(placeholderUs, clients.WriteOpts{Ctx: ctx})
+			if err != nil {
+				serr := err.Error()
+				g.Expect(serr).Should(ContainSubstring("admission webhook"))
+				g.Expect(serr).Should(ContainSubstring("port cannot be empty for host"))
+				// We have successfully rejected an invalid upstream
+				// This means that the webhook is fully warmed, and contains a Snapshot with a Proxy
+				return true
+			}
+
+			err = resourceClientset.UpstreamClient().Delete(
+				placeholderUs.GetMetadata().GetNamespace(),
+				placeholderUs.GetMetadata().GetName(),
+				clients.DeleteOpts{Ctx: ctx, IgnoreNotExist: true})
+			g.Expect(err).NotTo(HaveOccurred())
+
+			attempt += 1
+			return false
+		}, time.Second*15, time.Second*1).Should(BeTrue())
+	}
+
 	BeforeEach(func() {
 		// Create a VirtualService routing directly to the testrunner kubernetes service
 		testRunnerDestination = &gloov1.Destination{
@@ -95,7 +138,7 @@ var _ = Describe("Kube2e: gateway", func() {
 			WithNamespace(testHelper.InstallNamespace).
 			WithDomain(helper.TestrunnerName).
 			WithRoutePrefixMatcher(helper.TestrunnerName, "/").
-			WithRouteActionToDestination(helper.TestrunnerName, testRunnerDestination).
+			WithRouteActionToSingleDestination(helper.TestrunnerName, testRunnerDestination).
 			Build()
 
 		// The set of resources that these tests will generate
@@ -190,32 +233,34 @@ var _ = Describe("Kube2e: gateway", func() {
 
 			// modify the proxy to use the deprecated label
 			// this will simulate proxies that were persisted before the label change
-			err := kube2e.PatchResource(
+			err := helpers.PatchResource(
 				ctx,
 				&core.ResourceRef{
 					Namespace: testHelper.InstallNamespace,
 					Name:      defaults.GatewayProxyName,
 				},
-				func(resource resources.Resource) {
+				func(resource resources.Resource) resources.Resource {
 					proxy := resource.(*gloov1.Proxy)
 					proxy.Metadata.Labels = map[string]string{
 						"created_by": "gateway",
 					}
+					return proxy
 				},
 				resourceClientset.ProxyClient().BaseClient())
 			Expect(err).NotTo(HaveOccurred())
 
 			// modify the virtual service to trigger gateway reconciliation
 			// any modification will work, for simplicity we duplicate a route on the virtual host
-			err = kube2e.PatchResource(
+			err = helpers.PatchResource(
 				ctx,
 				&core.ResourceRef{
 					Namespace: testHelper.InstallNamespace,
 					Name:      helper.TestrunnerName,
 				},
-				func(resource resources.Resource) {
+				func(resource resources.Resource) resources.Resource {
 					vs := resource.(*gatewayv1.VirtualService)
 					vs.VirtualHost.Routes = append(vs.VirtualHost.Routes, vs.VirtualHost.Routes[0])
+					return vs
 				},
 				resourceClientset.VirtualServiceClient().BaseClient())
 			Expect(err).NotTo(HaveOccurred())
@@ -282,8 +327,8 @@ var _ = Describe("Kube2e: gateway", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				// Modify the VirtualService to include the necessary SslConfig
-				testRunnerVs.SslConfig = &gloov1.SslConfig{
-					SslSecrets: &gloov1.SslConfig_SecretRef{
+				testRunnerVs.SslConfig = &ssl.SslConfig{
+					SslSecrets: &ssl.SslConfig_SecretRef{
 						SecretRef: &core.ResourceRef{
 							Name:      createdSecret.ObjectMeta.Name,
 							Namespace: createdSecret.ObjectMeta.Namespace,
@@ -352,7 +397,7 @@ var _ = Describe("Kube2e: gateway", func() {
 					WithNamespace(testHelper.InstallNamespace).
 					WithDomain(helper.HttpEchoName).
 					WithRoutePrefixMatcher(helper.HttpEchoName, "/").
-					WithRouteActionToDestination(helper.HttpEchoName, httpEchoDestination).
+					WithRouteActionToSingleDestination(helper.HttpEchoName, httpEchoDestination).
 					Build()
 
 				glooResources.VirtualServices = []*gatewayv1.VirtualService{httpEchoVs}
@@ -534,7 +579,7 @@ var _ = Describe("Kube2e: gateway", func() {
 						WithNamespace(testHelper.InstallNamespace).
 						WithDomain("petstore.com").
 						WithRoutePrefixMatcher(petstoreName, "/").
-						WithRouteActionToDestination(petstoreName,
+						WithRouteActionToSingleDestination(petstoreName,
 							&gloov1.Destination{
 								DestinationType: &gloov1.Destination_Upstream{
 									Upstream: &core.ResourceRef{
@@ -582,15 +627,16 @@ var _ = Describe("Kube2e: gateway", func() {
 				})
 
 				It("when updating an upstream makes them valid", func() {
-					err = kube2e.PatchResource(
+					err = helpers.PatchResource(
 						ctx,
 						&core.ResourceRef{
 							Namespace: testHelper.InstallNamespace,
 							Name:      petstoreUpstreamName,
 						},
-						func(resource resources.Resource) {
+						func(resource resources.Resource) resources.Resource {
 							us := resource.(*gloov1.Upstream)
 							us.Metadata.Labels[syncer.FdsLabelKey] = "enabled"
+							return us
 						},
 						resourceClientset.UpstreamClient().BaseClient(),
 					)
@@ -747,13 +793,13 @@ var _ = Describe("Kube2e: gateway", func() {
 					Expect(res).To(ContainSubstring("404 Not Found"))
 
 					// update the response of the good RT
-					err = kube2e.PatchResource(
+					err = helpers.PatchResource(
 						ctx,
 						&core.ResourceRef{
 							Namespace: testHelper.InstallNamespace,
 							Name:      "good-rt",
 						},
-						func(resource resources.Resource) {
+						func(resource resources.Resource) resources.Resource {
 							rt := resource.(*gatewayv1.RouteTable)
 							rt.Routes[0].Action = &gatewayv1.Route_DirectResponseAction{
 								DirectResponseAction: &gloov1.DirectResponseAction{
@@ -761,6 +807,7 @@ var _ = Describe("Kube2e: gateway", func() {
 									Body:   "Updated good response",
 								},
 							}
+							return rt
 						},
 						resourceClientset.RouteTableClient().BaseClient(),
 					)
@@ -833,13 +880,13 @@ var _ = Describe("Kube2e: gateway", func() {
 					}, "Good response", 1, 60*time.Second, 1*time.Second)
 
 					By("the RT should be updated to return a direct response")
-					err := kube2e.PatchResource(
+					err := helpers.PatchResource(
 						ctx,
 						&core.ResourceRef{
 							Namespace: testHelper.InstallNamespace,
 							Name:      "good-rt",
 						},
-						func(resource resources.Resource) {
+						func(resource resources.Resource) resources.Resource {
 							rt := resource.(*gatewayv1.RouteTable)
 							rt.Routes[0].Action = &gatewayv1.Route_DirectResponseAction{
 								DirectResponseAction: &gloov1.DirectResponseAction{
@@ -847,6 +894,7 @@ var _ = Describe("Kube2e: gateway", func() {
 									Body:   "Updated good response",
 								},
 							}
+							return rt
 						},
 						resourceClientset.RouteTableClient().BaseClient(),
 					)
@@ -1056,14 +1104,14 @@ var _ = Describe("Kube2e: gateway", func() {
 						vsHeaderManipulation := &headers.HeaderManipulation{
 							RequestHeadersToRemove: []string{"header-from-vhost"},
 						}
-						kube2e.ExpectEqualProtoMessages(g, opts.GetHeaderManipulation(), vsHeaderManipulation)
+						g.Expect(opts.GetHeaderManipulation()).To(gloo_matchers.MatchProto(vsHeaderManipulation))
 
 						// since rt1 is delegated to first, it overrides rt2, which was delegated later
 						vhost1Cors := &cors.CorsPolicy{
 							ExposeHeaders: []string{"header-from-extopt1"},
 							AllowOrigin:   []string{"some-origin-1"},
 						}
-						kube2e.ExpectEqualProtoMessages(g, opts.GetCors(), vhost1Cors)
+						g.Expect(opts.GetCors()).To(gloo_matchers.MatchProto(vhost1Cors))
 
 						// options that weren't already set in previously delegated options are set from rt2
 						vhost2Transformations := &glootransformation.Transformations{
@@ -1079,7 +1127,7 @@ var _ = Describe("Kube2e: gateway", func() {
 								},
 							},
 						}
-						kube2e.ExpectEqualProtoMessages(g, opts.GetTransformations(), vhost2Transformations)
+						g.Expect(opts.GetTransformations()).To(gloo_matchers.MatchProto(vhost2Transformations))
 					}
 				}
 
@@ -1216,14 +1264,14 @@ var _ = Describe("Kube2e: gateway", func() {
 							vsHeaderManipulation := &headers.HeaderManipulation{
 								RequestHeadersToRemove: []string{"header-from-vhost"},
 							}
-							kube2e.ExpectEqualProtoMessages(g, opts.GetHeaderManipulation(), vsHeaderManipulation)
+							g.Expect(opts.GetHeaderManipulation()).To(gloo_matchers.MatchProto(vsHeaderManipulation))
 
 							// since rt1 is delegated to first, it overrides rt2, which was delegated later
 							rt1Cors := &cors.CorsPolicy{
 								ExposeHeaders: []string{"header-from-extopt1"},
 								AllowOrigin:   []string{"some-origin-1"},
 							}
-							kube2e.ExpectEqualProtoMessages(g, opts.GetCors(), rt1Cors)
+							g.Expect(opts.GetCors()).To(gloo_matchers.MatchProto(rt1Cors))
 
 							// options that weren't already set in previously delegated options are set from rt2
 							rt2Transformation := &glootransformation.Transformations{
@@ -1239,7 +1287,7 @@ var _ = Describe("Kube2e: gateway", func() {
 									},
 								},
 							}
-							kube2e.ExpectEqualProtoMessages(g, opts.GetTransformations(), rt2Transformation)
+							g.Expect(opts.GetTransformations()).To(gloo_matchers.MatchProto(rt2Transformation))
 						}
 					}
 				}
@@ -1252,60 +1300,67 @@ var _ = Describe("Kube2e: gateway", func() {
 		})
 	})
 
-	Context("tests with RateLimitConfigs", func() {
-
-		var rateLimitConfig *v1alpha1skv1.RateLimitConfig
+	Context("validation will always accept resources", func() {
 
 		BeforeEach(func() {
-			rateLimitConfig = &v1alpha1skv1.RateLimitConfig{
-				RateLimitConfig: ratelimit2.RateLimitConfig{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "testrlc",
-						Namespace: testHelper.InstallNamespace,
-					},
-					Spec: rlv1alpha1.RateLimitConfigSpec{
-						ConfigType: &rlv1alpha1.RateLimitConfigSpec_Raw_{
-							Raw: &rlv1alpha1.RateLimitConfigSpec_Raw{
-								Descriptors: []*rlv1alpha1.Descriptor{{
-									Key:   "generic_key",
-									Value: "foo",
-									RateLimit: &rlv1alpha1.RateLimit{
-										Unit:            rlv1alpha1.RateLimit_MINUTE,
-										RequestsPerUnit: 1,
-									},
-								}},
-								RateLimits: []*rlv1alpha1.RateLimitActions{{
-									Actions: []*rlv1alpha1.Action{{
-										ActionSpecifier: &rlv1alpha1.Action_GenericKey_{
-											GenericKey: &rlv1alpha1.Action_GenericKey{
-												DescriptorValue: "foo",
-											},
+			kube2e.UpdateAlwaysAcceptSetting(ctx, true, testHelper.InstallNamespace)
+		})
+
+		AfterEach(func() {
+			kube2e.UpdateAlwaysAcceptSetting(ctx, false, testHelper.InstallNamespace)
+		})
+
+		Context("tests with RateLimitConfigs", func() {
+
+			var rateLimitConfig *v1alpha1skv1.RateLimitConfig
+
+			BeforeEach(func() {
+				rateLimitConfig = &v1alpha1skv1.RateLimitConfig{
+					RateLimitConfig: ratelimit2.RateLimitConfig{
+						ObjectMeta: metav1.ObjectMeta{
+							Name:      "testrlc",
+							Namespace: testHelper.InstallNamespace,
+						},
+						Spec: rlv1alpha1.RateLimitConfigSpec{
+							ConfigType: &rlv1alpha1.RateLimitConfigSpec_Raw_{
+								Raw: &rlv1alpha1.RateLimitConfigSpec_Raw{
+									Descriptors: []*rlv1alpha1.Descriptor{{
+										Key:   "generic_key",
+										Value: "foo",
+										RateLimit: &rlv1alpha1.RateLimit{
+											Unit:            rlv1alpha1.RateLimit_MINUTE,
+											RequestsPerUnit: 1,
 										},
 									}},
-								}},
+									RateLimits: []*rlv1alpha1.RateLimitActions{{
+										Actions: []*rlv1alpha1.Action{{
+											ActionSpecifier: &rlv1alpha1.Action_GenericKey_{
+												GenericKey: &rlv1alpha1.Action_GenericKey{
+													DescriptorValue: "foo",
+												},
+											},
+										}},
+									}},
+								},
 							},
 						},
 					},
-				},
-			}
-			glooResources.Ratelimitconfigs = v1alpha1skv1.RateLimitConfigList{rateLimitConfig}
-		})
+				}
+				glooResources.Ratelimitconfigs = v1alpha1skv1.RateLimitConfigList{rateLimitConfig}
+			})
 
-		It("correctly sets a status to a RateLimitConfig", func() {
-			// demand that a created ratelimit config _has_ a rejected status.
-			Eventually(func() error {
-				rlc, err := resourceClientset.RateLimitConfigClient().Read(rateLimitConfig.GetMetadata().GetNamespace(), rateLimitConfig.GetMetadata().GetName(), clients.ReadOpts{Ctx: ctx})
-				if err != nil {
-					return err
-				}
-				if rlc.Status.State != v1alpha1.RateLimitConfigStatus_REJECTED {
-					return errors.Errorf("expected rejected status, got %v", rlc.Status.State)
-				}
-				if !strings.Contains(rlc.Status.Message, "enterprise-only") {
-					return errors.Errorf("expected enterprise-only message in status, got %v", rlc.Status.Message)
-				}
-				return nil
-			}, "15s", "0.5s").ShouldNot(HaveOccurred())
+			It("correctly sets a status to a RateLimitConfig", func() {
+				// demand that a created ratelimit config _has_ a rejected status.
+				Eventually(func(g Gomega) error {
+					rlc, err := resourceClientset.RateLimitConfigClient().Read(rateLimitConfig.GetMetadata().GetNamespace(), rateLimitConfig.GetMetadata().GetName(), clients.ReadOpts{Ctx: ctx})
+					if err != nil {
+						return err
+					}
+					g.Expect(rlc.Status.State).To(Equal(v1alpha1.RateLimitConfigStatus_REJECTED))
+					g.Expect(rlc.Status.Message).Should(ContainSubstring("enterprise-only"))
+					return nil
+				}, "15s", "0.5s").ShouldNot(HaveOccurred())
+			})
 		})
 	})
 
@@ -1391,19 +1446,20 @@ var _ = Describe("Kube2e: gateway", func() {
 				}, "15s", "0.5s").ShouldNot(BeNil())
 
 				// now set subset config on an upstream:
-				err := kube2e.PatchResource(
+				err := helpers.PatchResource(
 					ctx,
 					&core.ResourceRef{
 						Namespace: testHelper.InstallNamespace,
 						Name:      fmt.Sprintf("%s-%s-%v", testHelper.InstallNamespace, svc, helper.TestRunnerPort),
 					},
-					func(resource resources.Resource) {
+					func(resource resources.Resource) resources.Resource {
 						upstream := resource.(*gloov1.Upstream)
 						upstream.UpstreamType.(*gloov1.Upstream_Kube).Kube.ServiceSpec = &gloov1plugins.ServiceSpec{
 							PluginType: &gloov1plugins.ServiceSpec_Grpc{
 								Grpc: &grpcv1.ServiceSpec{},
 							},
 						}
+						return upstream
 					},
 					resourceClientset.UpstreamClient().BaseClient())
 				Expect(err).NotTo(HaveOccurred())
@@ -1591,10 +1647,10 @@ var _ = Describe("Kube2e: gateway", func() {
 							ForwardSniClusterName: &empty.Empty{},
 						},
 					},
-					SslConfig: &gloov1.SslConfig{
+					SslConfig: &ssl.SslConfig{
 						// Use the translated cluster name as the SNI domain so envoy uses that in the cluster field
 						SniDomains: []string{httpEchoClusterName},
-						SslSecrets: &gloov1.SslConfig_SecretRef{
+						SslSecrets: &ssl.SslConfig_SecretRef{
 							SecretRef: &core.ResourceRef{
 								Name:      createdSecret.GetName(),
 								Namespace: createdSecret.GetNamespace(),
@@ -1609,6 +1665,11 @@ var _ = Describe("Kube2e: gateway", func() {
 
 				glooResources.Gateways = gatewayv1.GatewayList{tcpGateway}
 
+			})
+
+			AfterEach(func() {
+				err := resourceClientset.KubeClients().CoreV1().Secrets(testHelper.InstallNamespace).Delete(ctx, "secret", metav1.DeleteOptions{})
+				Expect(err).NotTo(HaveOccurred())
 			})
 
 			It("correctly routes to the service (tcp/tls)", func() {
@@ -1825,19 +1886,20 @@ var _ = Describe("Kube2e: gateway", func() {
 		})
 
 		It("routes to subsets and upstream groups", func() {
-			err := kube2e.PatchResource(
+			err := helpers.PatchResource(
 				ctx,
 				&core.ResourceRef{
 					Namespace: testHelper.InstallNamespace,
 					Name:      upstreamName,
 				},
-				func(resource resources.Resource) {
+				func(resource resources.Resource) resources.Resource {
 					us := resource.(*gloov1.Upstream)
 					us.UpstreamType.(*gloov1.Upstream_Kube).Kube.SubsetSpec = &gloov1plugins.SubsetSpec{
 						Selectors: []*gloov1plugins.Selector{{
 							Keys: []string{"text"},
 						}},
 					}
+					return us
 				},
 				resourceClientset.UpstreamClient().BaseClient(),
 			)
@@ -1898,7 +1960,7 @@ var _ = Describe("Kube2e: gateway", func() {
 		})
 	})
 
-	Context("tests for the validation server", func() {
+	Context("tests for the validation", func() {
 
 		Context("rejects bad resources", func() {
 
@@ -1912,8 +1974,8 @@ var _ = Describe("Kube2e: gateway", func() {
 				out, err := install.KubectlApplyOut([]byte(yaml))
 
 				testValidationDidError := func() {
-					ExpectWithOffset(1, err).To(HaveOccurred())
 					ExpectWithOffset(1, string(out)).To(ContainSubstring(expectedErr))
+					ExpectWithOffset(1, err).To(HaveOccurred())
 				}
 
 				testValidationDidSucceed := func() {
@@ -2004,6 +2066,28 @@ spec:
 `,
 							expectedErr: gwtranslator.MissingGatewayTypeErr.Error(),
 						},
+						{
+							resourceYaml: `
+apiVersion: ratelimit.solo.io/v1alpha1
+kind: RateLimitConfig
+metadata:
+  name: rlc
+  namespace: gloo-system
+spec:
+  raw:
+    descriptors:
+      - key: foo
+        value: foo
+        rateLimit:
+          requestsPerUnit: 1
+          unit: MINUTE
+    rateLimits:
+      - actions:
+        - genericKey:
+            descriptorValue: bar
+`,
+							expectedErr: "The Gloo Advanced Rate limit API feature 'RateLimitConfig' is enterprise-only",
+						},
 					}
 
 					for _, tc := range testCases {
@@ -2032,43 +2116,7 @@ spec:
 				})
 
 				JustBeforeEach(func() {
-					// Validation of Gloo resources requires that a Proxy resource exist
-					// Therefore, before the tests start, we must attempt updates that should be rejected
-					// They will only be rejected once a Proxy exists in the ApiSnapshot
-
-					placeholderUs := &gloov1.Upstream{
-						Metadata: &core.Metadata{
-							Name:      "",
-							Namespace: testHelper.InstallNamespace,
-						},
-						UpstreamType: &gloov1.Upstream_Static{
-							Static: &static.UpstreamSpec{
-								Hosts: []*static.Host{{
-									Addr: "~",
-								}},
-							},
-						},
-					}
-					attempt := 0
-					Eventually(func(g Gomega) bool {
-						placeholderUs.Metadata.Name = fmt.Sprintf("invalid-placeholder-us-%d", attempt)
-
-						_, err := resourceClientset.UpstreamClient().Write(placeholderUs, clients.WriteOpts{Ctx: ctx})
-						if err != nil {
-							// We have successfully rejected an invalid upstream
-							// This means that the webhook is fully warmed, and contains a Snapshot with a Proxy
-							return true
-						}
-
-						err = resourceClientset.UpstreamClient().Delete(
-							placeholderUs.GetMetadata().GetNamespace(),
-							placeholderUs.GetMetadata().GetName(),
-							clients.DeleteOpts{Ctx: ctx, IgnoreNotExist: true})
-						g.Expect(err).NotTo(HaveOccurred())
-
-						attempt += 1
-						return false
-					}, time.Second*15, time.Second*1).Should(BeTrue())
+					verifyValidationWorks()
 				})
 
 				It("rejects bad resources", func() {
@@ -2086,14 +2134,12 @@ spec:
 `,
 						expectedErr: "addr cannot be empty for host\n",
 					}}
-
 					for _, tc := range testCases {
 						testValidation(tc.resourceYaml, tc.expectedErr)
 					}
 				})
 
 			})
-
 		})
 
 		It("rejects invalid inja template in transformation", func() {
@@ -2114,15 +2160,16 @@ spec:
 			}
 
 			// update the test runner vs
-			err := kube2e.PatchResource(
+			err := helpers.PatchResource(
 				ctx,
 				&core.ResourceRef{
 					Namespace: testRunnerVs.GetMetadata().GetNamespace(),
 					Name:      testRunnerVs.GetMetadata().GetName(),
 				},
-				func(resource resources.Resource) {
+				func(resource resources.Resource) resources.Resource {
 					vs := resource.(*gatewayv1.VirtualService)
 					vs.VirtualHost.Options = &gloov1.VirtualHostOptions{Transformations: invalidTransform}
+					return vs
 				},
 				resourceClientset.VirtualServiceClient().BaseClient(),
 			)
@@ -2156,15 +2203,16 @@ spec:
 					},
 				}
 
-				err := kube2e.PatchResource(
+				err := helpers.PatchResource(
 					ctx,
 					&core.ResourceRef{
 						Namespace: testRunnerVs.GetMetadata().GetNamespace(),
 						Name:      testRunnerVs.GetMetadata().GetName(),
 					},
-					func(resource resources.Resource) {
+					func(resource resources.Resource) resources.Resource {
 						vs := resource.(*gatewayv1.VirtualService)
 						vs.VirtualHost.Options = &gloov1.VirtualHostOptions{Transformations: invalidTransform}
+						return vs
 					},
 					resourceClientset.VirtualServiceClient().BaseClient(),
 				)
@@ -2175,7 +2223,7 @@ spec:
 						testRunnerVs.GetMetadata().GetName(),
 						clients.ReadOpts{Ctx: ctx})
 					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(vs.GetVirtualHost().GetOptions().GetTransformations()).To(matchers2.MatchProto(invalidTransform))
+					g.Expect(vs.GetVirtualHost().GetOptions().GetTransformations()).To(gloo_matchers.MatchProto(invalidTransform))
 				})
 
 			})

@@ -27,6 +27,24 @@ spec:
                 properties:
                   awsAccountId:
                     type: string
+                  destinationOverrides:
+                    properties:
+                      invocationStyle:
+                        type: string
+                        x-kubernetes-int-or-string: true
+                      logicalName:
+                        type: string
+                      requestTransformation:
+                        type: boolean
+                      responseTransformation:
+                        type: boolean
+                      unwrapAsAlb:
+                        type: boolean
+                      unwrapAsApiGateway:
+                        type: boolean
+                      wrapAsApiGateway:
+                        type: boolean
+                    type: object
                   disableRoleChaining:
                     type: boolean
                   lambdaFunctions:
@@ -207,6 +225,14 @@ spec:
                     type: string
                   serviceSpec:
                     properties:
+                      graphql:
+                        properties:
+                          endpoint:
+                            properties:
+                              url:
+                                type: string
+                            type: object
+                        type: object
                       grpc:
                         properties:
                           descriptors:
@@ -224,6 +250,53 @@ spec:
                                 serviceName:
                                   type: string
                               type: object
+                            type: array
+                        type: object
+                      grpcJsonTranscoder:
+                        properties:
+                          autoMapping:
+                            type: boolean
+                          convertGrpcStatus:
+                            type: boolean
+                          ignoreUnknownQueryParameters:
+                            type: boolean
+                          ignoredQueryParameters:
+                            items:
+                              type: string
+                            type: array
+                          matchIncomingRequestRoute:
+                            type: boolean
+                          printOptions:
+                            properties:
+                              addWhitespace:
+                                type: boolean
+                              alwaysPrintEnumsAsInts:
+                                type: boolean
+                              alwaysPrintPrimitiveFields:
+                                type: boolean
+                              preserveProtoFieldNames:
+                                type: boolean
+                            type: object
+                          protoDescriptor:
+                            type: string
+                          protoDescriptorBin:
+                            format: byte
+                            type: string
+                          protoDescriptorConfigMap:
+                            properties:
+                              configMapRef:
+                                properties:
+                                  name:
+                                    type: string
+                                  namespace:
+                                    type: string
+                                type: object
+                              key:
+                                type: string
+                            type: object
+                          services:
+                            items:
+                              type: string
                             type: array
                         type: object
                       rest:
@@ -326,6 +399,8 @@ spec:
                       type: string
                     type: object
                 type: object
+              dnsRefreshRate:
+                type: string
               failover:
                 properties:
                   policy:
@@ -507,6 +582,9 @@ spec:
                           type: array
                         host:
                           type: string
+                        method:
+                          type: string
+                          x-kubernetes-int-or-string: true
                         path:
                           type: string
                         requestHeadersToAdd:
@@ -728,6 +806,14 @@ spec:
                     type: integer
                   serviceSpec:
                     properties:
+                      graphql:
+                        properties:
+                          endpoint:
+                            properties:
+                              url:
+                                type: string
+                            type: object
+                        type: object
                       grpc:
                         properties:
                           descriptors:
@@ -745,6 +831,53 @@ spec:
                                 serviceName:
                                   type: string
                               type: object
+                            type: array
+                        type: object
+                      grpcJsonTranscoder:
+                        properties:
+                          autoMapping:
+                            type: boolean
+                          convertGrpcStatus:
+                            type: boolean
+                          ignoreUnknownQueryParameters:
+                            type: boolean
+                          ignoredQueryParameters:
+                            items:
+                              type: string
+                            type: array
+                          matchIncomingRequestRoute:
+                            type: boolean
+                          printOptions:
+                            properties:
+                              addWhitespace:
+                                type: boolean
+                              alwaysPrintEnumsAsInts:
+                                type: boolean
+                              alwaysPrintPrimitiveFields:
+                                type: boolean
+                              preserveProtoFieldNames:
+                                type: boolean
+                            type: object
+                          protoDescriptor:
+                            type: string
+                          protoDescriptorBin:
+                            format: byte
+                            type: string
+                          protoDescriptorConfigMap:
+                            properties:
+                              configMapRef:
+                                properties:
+                                  name:
+                                    type: string
+                                  namespace:
+                                    type: string
+                                type: object
+                              key:
+                                type: string
+                            type: object
+                          services:
+                            items:
+                              type: string
                             type: array
                         type: object
                       rest:
@@ -866,6 +999,17 @@ spec:
                       choiceCount:
                         format: int32
                         type: integer
+                      slowStartConfig:
+                        properties:
+                          aggression:
+                            nullable: true
+                            type: number
+                          minWeightPercent:
+                            nullable: true
+                            type: number
+                          slowStartWindow:
+                            type: string
+                        type: object
                     type: object
                   localityWeightedLbConfig:
                     maxProperties: 0
@@ -889,6 +1033,18 @@ spec:
                         type: object
                     type: object
                   roundRobin:
+                    properties:
+                      slowStartConfig:
+                        properties:
+                          aggression:
+                            nullable: true
+                            type: number
+                          minWeightPercent:
+                            nullable: true
+                            type: number
+                          slowStartWindow:
+                            type: string
+                        type: object
                     type: object
                   updateMergeWindow:
                     type: string
@@ -984,6 +1140,14 @@ spec:
                     type: string
                   serviceSpec:
                     properties:
+                      graphql:
+                        properties:
+                          endpoint:
+                            properties:
+                              url:
+                                type: string
+                            type: object
+                        type: object
                       grpc:
                         properties:
                           descriptors:
@@ -1001,6 +1165,53 @@ spec:
                                 serviceName:
                                   type: string
                               type: object
+                            type: array
+                        type: object
+                      grpcJsonTranscoder:
+                        properties:
+                          autoMapping:
+                            type: boolean
+                          convertGrpcStatus:
+                            type: boolean
+                          ignoreUnknownQueryParameters:
+                            type: boolean
+                          ignoredQueryParameters:
+                            items:
+                              type: string
+                            type: array
+                          matchIncomingRequestRoute:
+                            type: boolean
+                          printOptions:
+                            properties:
+                              addWhitespace:
+                                type: boolean
+                              alwaysPrintEnumsAsInts:
+                                type: boolean
+                              alwaysPrintPrimitiveFields:
+                                type: boolean
+                              preserveProtoFieldNames:
+                                type: boolean
+                            type: object
+                          protoDescriptor:
+                            type: string
+                          protoDescriptorBin:
+                            format: byte
+                            type: string
+                          protoDescriptorConfigMap:
+                            properties:
+                              configMapRef:
+                                properties:
+                                  name:
+                                    type: string
+                                  namespace:
+                                    type: string
+                                type: object
+                              key:
+                                type: string
+                            type: object
+                          services:
+                            items:
+                              type: string
                             type: array
                         type: object
                       rest:
@@ -1091,6 +1302,9 @@ spec:
               protocolSelection:
                 type: string
                 x-kubernetes-int-or-string: true
+              respectDnsTtl:
+                nullable: true
+                type: boolean
               sslConfig:
                 properties:
                   allowRenegotiation:
@@ -1192,6 +1406,14 @@ spec:
                     type: array
                   serviceSpec:
                     properties:
+                      graphql:
+                        properties:
+                          endpoint:
+                            properties:
+                              url:
+                                type: string
+                            type: object
+                        type: object
                       grpc:
                         properties:
                           descriptors:
@@ -1209,6 +1431,53 @@ spec:
                                 serviceName:
                                   type: string
                               type: object
+                            type: array
+                        type: object
+                      grpcJsonTranscoder:
+                        properties:
+                          autoMapping:
+                            type: boolean
+                          convertGrpcStatus:
+                            type: boolean
+                          ignoreUnknownQueryParameters:
+                            type: boolean
+                          ignoredQueryParameters:
+                            items:
+                              type: string
+                            type: array
+                          matchIncomingRequestRoute:
+                            type: boolean
+                          printOptions:
+                            properties:
+                              addWhitespace:
+                                type: boolean
+                              alwaysPrintEnumsAsInts:
+                                type: boolean
+                              alwaysPrintPrimitiveFields:
+                                type: boolean
+                              preserveProtoFieldNames:
+                                type: boolean
+                            type: object
+                          protoDescriptor:
+                            type: string
+                          protoDescriptorBin:
+                            format: byte
+                            type: string
+                          protoDescriptorConfigMap:
+                            properties:
+                              configMapRef:
+                                properties:
+                                  name:
+                                    type: string
+                                  namespace:
+                                    type: string
+                                type: object
+                              key:
+                                type: string
+                            type: object
+                          services:
+                            items:
+                              type: string
                             type: array
                         type: object
                       rest:

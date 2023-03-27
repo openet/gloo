@@ -9,18 +9,19 @@ import (
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/kubernetes/serviceconverter"
 	"github.com/solo-io/gloo/test/kube2e"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
-	matchers2 "github.com/solo-io/solo-kit/test/matchers"
+	"github.com/solo-io/solo-kit/test/matchers"
 
 	"time"
 
 	kubev1 "k8s.io/api/core/v1"
 
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	gatewayv1 "github.com/solo-io/gloo/projects/gateway/pkg/api/v1"
 	"github.com/solo-io/gloo/projects/gateway/pkg/defaults"
 	gloov1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
+	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/ssl"
 	"github.com/solo-io/gloo/test/helpers"
 
 	"github.com/solo-io/k8s-utils/testutils/helper"
@@ -56,7 +57,7 @@ var _ = Describe("GlooResourcesTest", func() {
 			WithNamespace(testHelper.InstallNamespace).
 			WithDomain(helper.TestrunnerName).
 			WithRoutePrefixMatcher(helper.TestrunnerName, "/").
-			WithRouteActionToDestination(helper.TestrunnerName, testRunnerDestination).
+			WithRouteActionToSingleDestination(helper.TestrunnerName, testRunnerDestination).
 			Build()
 
 		// The set of resources that these tests will generate
@@ -98,8 +99,8 @@ var _ = Describe("GlooResourcesTest", func() {
 			_, err := resourceClientset.KubeClients().CoreV1().Secrets(testHelper.InstallNamespace).Create(ctx, tlsSecret, metav1.CreateOptions{})
 			Expect(err).NotTo(HaveOccurred())
 
-			upstreamSslConfig := &gloov1.UpstreamSslConfig{
-				SslSecrets: &gloov1.UpstreamSslConfig_SecretRef{
+			upstreamSslConfig := &ssl.UpstreamSslConfig{
+				SslSecrets: &ssl.UpstreamSslConfig_SecretRef{
 					SecretRef: &core.ResourceRef{
 						Name:      tlsSecret.GetName(),
 						Namespace: tlsSecret.GetNamespace(),
@@ -127,7 +128,7 @@ var _ = Describe("GlooResourcesTest", func() {
 				testRunnerUs, err := resourceClientset.UpstreamClient().Read(testHelper.InstallNamespace, usName, clients.ReadOpts{Ctx: ctx})
 				g.Expect(err).NotTo(HaveOccurred())
 
-				g.Expect(testRunnerUs.GetSslConfig()).To(matchers2.MatchProto(upstreamSslConfig))
+				g.Expect(testRunnerUs.GetSslConfig()).To(matchers.MatchProto(upstreamSslConfig))
 			})
 
 		})

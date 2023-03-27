@@ -13,10 +13,12 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/solo-io/gloo/test/gomega/matchers"
+
 	"github.com/golang/protobuf/ptypes/wrappers"
 
 	"github.com/golang/protobuf/proto"
-	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	gloov1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
 	static_plugin_gloo "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/static"
@@ -28,6 +30,25 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
+// TestUpstream is a testing utility (used in in-memory e2e tests) to compose the following concepts:
+//  1. Running an application with a custom response message (see: runTestServer)
+//  2. Configuring an Upstream object to route to that application (see: newTestUpstream)
+//  3. Utility methods for asserting that traffic was successfully routed to the application (see: Assertion Utilities)
+type TestUpstream struct {
+	Upstream    *gloov1.Upstream
+	C           <-chan *ReceivedRequest
+	Address     string
+	Port        uint32
+	GrpcServers []*testgrpcservice.TestGRPCServer
+}
+
+func (tu *TestUpstream) FailGrpcHealthCheck() *testgrpcservice.TestGRPCServer {
+	for _, v := range tu.GrpcServers[:len(tu.GrpcServers)-1] {
+		v.HealthChecker.Fail()
+	}
+	return tu.GrpcServers[len(tu.GrpcServers)-1]
+}
+
 type ReceivedRequest struct {
 	Method      string
 	Headers     map[string][]string
@@ -38,28 +59,40 @@ type ReceivedRequest struct {
 	Port        uint32
 }
 
+const (
+	NO_TLS = iota
+	TLS
+	MTLS
+)
+
+type UpstreamTlsRequired int
+
+// Test Upstream Factory Utilities
+//
+// Below are a collection of methods that can be used to create a TestUpstream with a certain behavior
+
 func NewTestHttpUpstream(ctx context.Context, addr string) *TestUpstream {
-	backendPort, responses := runTestServer(ctx, "", false)
+	backendPort, responses := runTestServer(ctx, "", NO_TLS)
 	return newTestUpstream(addr, []uint32{backendPort}, responses)
 }
 
-func NewTestHttpUpstreamWithTls(ctx context.Context, addr string, tlsUpstream bool) *TestUpstream {
-	backendPort, responses := runTestServer(ctx, "", tlsUpstream)
+func NewTestHttpUpstreamWithTls(ctx context.Context, addr string, tlsServer UpstreamTlsRequired) *TestUpstream {
+	backendPort, responses := runTestServer(ctx, "", tlsServer)
 	return newTestUpstream(addr, []uint32{backendPort}, responses)
 }
 
 func NewTestHttpUpstreamWithReply(ctx context.Context, addr, reply string) *TestUpstream {
-	backendPort, responses := runTestServer(ctx, reply, false)
+	backendPort, responses := runTestServer(ctx, reply, NO_TLS)
 	return newTestUpstream(addr, []uint32{backendPort}, responses)
 }
 
 func NewTestHttpUpstreamWithReplyAndHealthReply(ctx context.Context, addr, reply, healthReply string) *TestUpstream {
-	backendPort, responses := runTestServerWithHealthReply(ctx, reply, healthReply, false)
+	backendPort, responses := runTestServerWithHealthReply(ctx, reply, healthReply, NO_TLS)
 	return newTestUpstream(addr, []uint32{backendPort}, responses)
 }
 
 func NewTestHttpsUpstreamWithReply(ctx context.Context, addr, reply string) *TestUpstream {
-	backendPort, responses := runTestServer(ctx, reply, true)
+	backendPort, responses := runTestServer(ctx, reply, TLS)
 	return newTestUpstream(addr, []uint32{backendPort}, responses)
 }
 
@@ -89,25 +122,12 @@ func NewTestGRPCUpstream(ctx context.Context, addr string, replicas int) *TestUp
 	return us
 }
 
-type TestUpstream struct {
-	Upstream    *gloov1.Upstream
-	C           <-chan *ReceivedRequest
-	Address     string
-	Port        uint32
-	GrpcServers []*testgrpcservice.TestGRPCServer
-}
+var testUpstreamId = 0
 
-func (tu *TestUpstream) FailGrpcHealthCheck() *testgrpcservice.TestGRPCServer {
-	for _, v := range tu.GrpcServers[:len(tu.GrpcServers)-1] {
-		v.HealthChecker.Fail()
-	}
-	return tu.GrpcServers[len(tu.GrpcServers)-1]
-}
-
-var id = 0
-
+// newTestUpstream creates a static Upstream that can route traffic to a set of ports for a given address
+// It contains a unique name (since tests may run in parallel), with a suffix id that increases each invocation
 func newTestUpstream(addr string, ports []uint32, responses <-chan *ReceivedRequest) *TestUpstream {
-	id += 1
+	testUpstreamId += 1
 	hosts := make([]*static_plugin_gloo.Host, len(ports))
 	for i, port := range ports {
 		hosts[i] = &static_plugin_gloo.Host{
@@ -117,7 +137,7 @@ func newTestUpstream(addr string, ports []uint32, responses <-chan *ReceivedRequ
 	}
 	u := &gloov1.Upstream{
 		Metadata: &core.Metadata{
-			Name:      fmt.Sprintf("local-test-upstream-%d", id),
+			Name:      fmt.Sprintf("local-test-upstream-%d", testUpstreamId),
 			Namespace: "default",
 		},
 		UpstreamType: &gloov1.Upstream_Static{
@@ -134,11 +154,13 @@ func newTestUpstream(addr string, ports []uint32, responses <-chan *ReceivedRequ
 	}
 }
 
-func runTestServer(ctx context.Context, reply string, serveTls bool) (uint32, <-chan *ReceivedRequest) {
-	return runTestServerWithHealthReply(ctx, reply, "OK", serveTls)
+// runTestServer starts a local server listening on a random port, that responds to requests with the provided `reply`.
+// It returns the port that the server is running on, and a channel which will contain requests received by this server
+func runTestServer(ctx context.Context, reply string, tlsServer UpstreamTlsRequired) (uint32, <-chan *ReceivedRequest) {
+	return runTestServerWithHealthReply(ctx, reply, "OK", tlsServer)
 }
 
-func runTestServerWithHealthReply(ctx context.Context, reply, healthReply string, serveTls bool) (uint32, <-chan *ReceivedRequest) {
+func runTestServerWithHealthReply(ctx context.Context, reply, healthReply string, tlsServer UpstreamTlsRequired) (uint32, <-chan *ReceivedRequest) {
 	bodyChan := make(chan *ReceivedRequest, 100)
 	handlerFunc := func(rw http.ResponseWriter, r *http.Request) {
 		var rr ReceivedRequest
@@ -165,7 +187,7 @@ func runTestServerWithHealthReply(ctx context.Context, reply, healthReply string
 		bodyChan <- &rr
 	}
 
-	listener, err := net.Listen("tcp", ":0")
+	listener, err := getListener(tlsServer)
 	if err != nil {
 		panic(err)
 	}
@@ -190,15 +212,6 @@ func runTestServerWithHealthReply(ctx context.Context, reply, healthReply string
 	go func() {
 		defer GinkgoRecover()
 		h := &http.Server{Handler: mux}
-		if serveTls {
-			certs, err := tls.X509KeyPair([]byte(helpers.Certificate()), []byte(helpers.PrivateKey()))
-			if err != nil {
-				Expect(err).NotTo(HaveOccurred())
-			}
-			listener = tls.NewListener(listener, &tls.Config{
-				Certificates: []tls.Certificate{certs},
-			})
-		}
 
 		go func() {
 			defer GinkgoRecover()
@@ -219,6 +232,44 @@ func runTestServerWithHealthReply(ctx context.Context, reply, healthReply string
 	return uint32(port), bodyChan
 }
 
+func getListener(tlsServer UpstreamTlsRequired) (net.Listener, error) {
+	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		return nil, err
+	}
+
+	if tlsServer > NO_TLS {
+		fmt.Fprintln(GinkgoWriter, "test server serving tls")
+		certGenFunc, keyGenFunc := helpers.Certificate, helpers.PrivateKey
+		if tlsServer == MTLS {
+			fmt.Fprintln(GinkgoWriter, "test server serving mtls")
+			certGenFunc, keyGenFunc = helpers.MtlsCertificate, helpers.MtlsPrivateKey
+		}
+		cert, key := certGenFunc(), keyGenFunc()
+		certs, err := tls.X509KeyPair([]byte(cert), []byte(key))
+		if err != nil {
+			return nil, err
+		}
+
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{certs},
+		}
+		if tlsServer == MTLS {
+			certPool := x509.NewCertPool()
+			certPool.AppendCertsFromPEM([]byte(cert))
+			tlsConfig.ClientCAs = certPool
+			tlsConfig.ClientAuth = tls.RequireAndVerifyClientCert
+		}
+		listener = tls.NewListener(listener, tlsConfig)
+	}
+	return listener, nil
+}
+
+// Assertion Utilities
+//
+// Below are a collection of methods that can be used to assert that a configured TestUpstream successfully
+// received traffic. ExpectCurlWithOffset`is the preferred utility, and includes a comment outlining how to use it
+
 func TestUpstreamReachable(envoyPort uint32, tu *TestUpstream, rootca *string) {
 	TestUpstreamReachableWithOffset(2, envoyPort, tu, rootca)
 }
@@ -226,7 +277,7 @@ func TestUpstreamReachable(envoyPort uint32, tu *TestUpstream, rootca *string) {
 func TestUpstreamReachableWithOffset(offset int, envoyPort uint32, tu *TestUpstream, rootca *string) {
 	body := []byte("solo.io test")
 
-	ExpectHttpOK(body, rootca, envoyPort, "")
+	ExpectHttpOK(body, rootca, envoyPort, "solo.io test")
 
 	timeout := time.After(15 * time.Second)
 	var receivedRequest *ReceivedRequest
@@ -288,10 +339,13 @@ type CurlResponse struct {
 	Message string
 }
 
+// ExpectCurlWithOffset is the preferred utility for asserting that a request to a port was received and
+// returned the expectedResponse. It provides the same functionality as the above methods, but groups parameters
+// into a CurlRequest and CurlResponse object, which helps us avoid frequently updating the method parameters
+// whenever new properties are required (telescoping constructor anti-pattern:
 func ExpectCurlWithOffset(offset int, request CurlRequest, expectedResponse CurlResponse) {
 
-	var res *http.Response
-	EventuallyWithOffset(offset+1, func() error {
+	EventuallyWithOffset(offset+1, func(g Gomega) {
 		// send a request with a body
 		var buf bytes.Buffer
 		buf.Write(request.Body)
@@ -303,9 +357,7 @@ func ExpectCurlWithOffset(offset int, request CurlRequest, expectedResponse Curl
 			scheme = "https"
 			caCertPool := x509.NewCertPool()
 			ok := caCertPool.AppendCertsFromPEM([]byte(*request.RootCA))
-			if !ok {
-				return fmt.Errorf("ca cert is not OK")
-			}
+			g.Expect(ok).To(BeTrue())
 
 			tlsConfig := &tls.Config{
 				RootCAs:            caCertPool,
@@ -317,10 +369,9 @@ func ExpectCurlWithOffset(offset int, request CurlRequest, expectedResponse Curl
 		}
 
 		requestUrl := fmt.Sprintf("%s://%s:%d%s", scheme, "localhost", request.Port, request.Path)
-		req, err := http.NewRequest("POST", requestUrl, &buf)
-		if err != nil {
-			return err
-		}
+		req, err := http.NewRequest(http.MethodPost, requestUrl, &buf)
+		g.Expect(err).NotTo(HaveOccurred())
+
 		if request.Host != "" {
 			req.Host = request.Host
 		}
@@ -328,24 +379,12 @@ func ExpectCurlWithOffset(offset int, request CurlRequest, expectedResponse Curl
 		for headerName, headerValue := range request.Headers {
 			req.Header.Set(headerName, headerValue)
 		}
-		res, err = client.Do(req)
-		if err != nil {
-			return err
-		}
 
-		if res.StatusCode != expectedResponse.Status {
-			return fmt.Errorf("received status code (%v) is not expected status code (%v)", res.StatusCode, expectedResponse.Status)
-		}
-
-		return nil
-	}, "30s", "1s").Should(BeNil())
-
-	if expectedResponse.Message != "" {
-		body, err := ioutil.ReadAll(res.Body)
-		ExpectWithOffset(offset, err).NotTo(HaveOccurred())
-		defer res.Body.Close()
-		ExpectWithOffset(offset, string(body)).To(Equal(expectedResponse.Message))
-	}
+		g.Expect(client.Do(req)).Should(matchers.HaveHttpResponse(&matchers.HttpResponse{
+			StatusCode: expectedResponse.Status,
+			Body:       expectedResponse.Message,
+		}))
+	}, "30s", "1s").Should(Succeed())
 }
 
 func ExpectGrpcHealthOK(rootca *string, envoyPort uint32, service string) {

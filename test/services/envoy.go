@@ -19,10 +19,11 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/solo-io/gloo/test/ginkgo/parallel"
+
 	"github.com/solo-io/gloo/projects/gloo/pkg/defaults"
 
-	"github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/config"
+	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	errors "github.com/rotisserie/eris"
 
@@ -42,7 +43,7 @@ func NextBindPort() uint32 {
 }
 
 func AdvanceBindPort(p *uint32) uint32 {
-	return atomic.AddUint32(p, 1) + uint32(config.GinkgoConfig.ParallelNode*1000)
+	return atomic.AddUint32(p, 1) + uint32(parallel.GetPortOffset())
 }
 
 type EnvoyBootstrapBuilder interface {
@@ -331,24 +332,6 @@ func (ef *EnvoyFactory) Clean() error {
 	return nil
 }
 
-func (ei *EnvoyInstance) EnvoyConfigDump() (string, error) {
-	adminUrl := fmt.Sprintf("http://%s:%d/config_dump",
-		ei.LocalAddr(),
-		ei.AdminPort)
-	response, err := http.Get(adminUrl)
-	if err != nil {
-		return "", err
-	}
-
-	configDumpBytes := new(bytes.Buffer)
-	defer response.Body.Close()
-	if _, err := io.Copy(configDumpBytes, response.Body); err != nil {
-		return "", err
-	}
-
-	return configDumpBytes.String(), nil
-}
-
 type EnvoyInstance struct {
 	AccessLogAddr string
 	AccessLogPort uint32
@@ -404,21 +387,12 @@ func (ef *EnvoyFactory) NewEnvoyInstance() (*EnvoyInstance, error) {
 		UseDocker:     ef.useDocker,
 		GlooAddr:      gloo,
 		AccessLogAddr: gloo,
-		AdminPort:     atomic.AddUint32(&adminPort, 1) + uint32(config.GinkgoConfig.ParallelNode*1000),
+		AdminPort:     atomic.AddUint32(&adminPort, 1) + uint32(parallel.GetPortOffset()),
 		ApiVersion:    "V3",
 	}
 	ef.instances = append(ef.instances, ei)
 	return ei, nil
 
-}
-
-func (ei *EnvoyInstance) RunWithId(id string) error {
-	ei.ID = id
-	return ei.RunWithRole(DefaultProxyName, 8081)
-}
-
-func (ei *EnvoyInstance) Run(port int) error {
-	return ei.RunWithRole(DefaultProxyName, port)
 }
 
 func (ei *EnvoyInstance) RunWith(eic EnvoyInstanceConfig) error {
@@ -704,6 +678,30 @@ func (ei *EnvoyInstance) Logs() (string, error) {
 	}
 
 	return ei.logs.String(), nil
+}
+
+func (ei *EnvoyInstance) ConfigDump() (string, error) {
+	return ei.getAdminEndpointData("config_dump")
+}
+
+func (ei *EnvoyInstance) Statistics() (string, error) {
+	return ei.getAdminEndpointData("stats")
+}
+
+func (ei *EnvoyInstance) getAdminEndpointData(endpoint string) (string, error) {
+	adminUrl := fmt.Sprintf("http://%s:%d/%s", ei.LocalAddr(), ei.AdminPort, endpoint)
+	response, err := http.Get(adminUrl)
+	if err != nil {
+		return "", err
+	}
+
+	responseBytes := new(bytes.Buffer)
+	defer response.Body.Close()
+	if _, err := io.Copy(responseBytes, response.Body); err != nil {
+		return "", err
+	}
+
+	return responseBytes.String(), nil
 }
 
 // SafeBuffer is a goroutine safe bytes.Buffer

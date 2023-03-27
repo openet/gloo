@@ -16,14 +16,26 @@ metadata:
     "helm.sh/hook-weight": "5" # run this job after the role/rolebinding is created
     "helm.sh/hook-delete-policy": hook-succeeded,before-hook-creation
 spec:
-  {{- with .Values.gateway.cleanupJob.activeDeadlineSeconds }}
-  activeDeadlineSeconds: {{ . }}
-  {{- end }}
+  {{- include "gloo.jobSpecStandardFields" .Values.gateway.cleanupJob | nindent 2 -}}
   template:
     metadata:
       labels:
         gloo: resource-cleanup
         sidecar.istio.io/inject: "false"
+        {{- if .Values.gateway.cleanupJob.extraPodLabels }}
+        {{- range $key, $value := .Values.gateway.cleanupJob.extraPodLabels }}
+        {{ $key | quote }}: {{ $value | quote }}
+        {{- end }}
+        {{- end }}
+      {{- if or .Values.settings.linkerd .Values.gateway.cleanupJob.extraPodAnnotations }}
+      annotations:
+        {{- if .Values.settings.linkerd }}
+        "linkerd.io/inject": disabled
+        {{- end }}
+        {{- range $key, $value := .Values.gateway.cleanupJob.extraPodAnnotations }}
+        {{ $key | quote }}: {{ $value | quote }}
+        {{- end }}
+      {{- end }}
     spec:
       {{- include "gloo.pullSecret" $image | nindent 6 -}}
       serviceAccountName: gloo-resource-cleanup
@@ -57,7 +69,6 @@ spec:
             {{- range include "gloo.gatewayNamespaces" . | fromJsonArray }}
             kubectl delete --ignore-not-found gateways.gateway.solo.io -n {{ . }} -l app=gloo || exit $?
             {{- end }}
-  ttlSecondsAfterFinished: {{ .Values.gateway.cleanupJob.ttlSecondsAfterFinished }}
 {{- if .Values.global.glooRbac.create }}
 ---
 apiVersion: v1

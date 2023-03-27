@@ -525,6 +525,143 @@ func (m *BasicAuth) Equal(that interface{}) bool {
 }
 
 // Equal function
+func (m *HmacAuth) Equal(that interface{}) bool {
+	if that == nil {
+		return m == nil
+	}
+
+	target, ok := that.(*HmacAuth)
+	if !ok {
+		that2, ok := that.(HmacAuth)
+		if ok {
+			target = &that2
+		} else {
+			return false
+		}
+	}
+	if target == nil {
+		return m == nil
+	} else if m == nil {
+		return false
+	}
+
+	switch m.SecretStorage.(type) {
+
+	case *HmacAuth_SecretRefs:
+		if _, ok := target.SecretStorage.(*HmacAuth_SecretRefs); !ok {
+			return false
+		}
+
+		if h, ok := interface{}(m.GetSecretRefs()).(equality.Equalizer); ok {
+			if !h.Equal(target.GetSecretRefs()) {
+				return false
+			}
+		} else {
+			if !proto.Equal(m.GetSecretRefs(), target.GetSecretRefs()) {
+				return false
+			}
+		}
+
+	default:
+		// m is nil but target is not nil
+		if m.SecretStorage != target.SecretStorage {
+			return false
+		}
+	}
+
+	switch m.ImplementationType.(type) {
+
+	case *HmacAuth_ParametersInHeaders:
+		if _, ok := target.ImplementationType.(*HmacAuth_ParametersInHeaders); !ok {
+			return false
+		}
+
+		if h, ok := interface{}(m.GetParametersInHeaders()).(equality.Equalizer); ok {
+			if !h.Equal(target.GetParametersInHeaders()) {
+				return false
+			}
+		} else {
+			if !proto.Equal(m.GetParametersInHeaders(), target.GetParametersInHeaders()) {
+				return false
+			}
+		}
+
+	default:
+		// m is nil but target is not nil
+		if m.ImplementationType != target.ImplementationType {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Equal function
+func (m *SecretRefList) Equal(that interface{}) bool {
+	if that == nil {
+		return m == nil
+	}
+
+	target, ok := that.(*SecretRefList)
+	if !ok {
+		that2, ok := that.(SecretRefList)
+		if ok {
+			target = &that2
+		} else {
+			return false
+		}
+	}
+	if target == nil {
+		return m == nil
+	} else if m == nil {
+		return false
+	}
+
+	if len(m.GetSecretRefs()) != len(target.GetSecretRefs()) {
+		return false
+	}
+	for idx, v := range m.GetSecretRefs() {
+
+		if h, ok := interface{}(v).(equality.Equalizer); ok {
+			if !h.Equal(target.GetSecretRefs()[idx]) {
+				return false
+			}
+		} else {
+			if !proto.Equal(v, target.GetSecretRefs()[idx]) {
+				return false
+			}
+		}
+
+	}
+
+	return true
+}
+
+// Equal function
+func (m *HmacParametersInHeaders) Equal(that interface{}) bool {
+	if that == nil {
+		return m == nil
+	}
+
+	target, ok := that.(*HmacParametersInHeaders)
+	if !ok {
+		that2, ok := that.(HmacParametersInHeaders)
+		if ok {
+			target = &that2
+		} else {
+			return false
+		}
+	}
+	if target == nil {
+		return m == nil
+	} else if m == nil {
+		return false
+	}
+
+	return true
+}
+
+// Equal function
 func (m *OAuth) Equal(that interface{}) bool {
 	if that == nil {
 		return m == nil
@@ -1964,6 +2101,10 @@ func (m *ApiKey) Equal(that interface{}) bool {
 
 	}
 
+	if strings.Compare(m.GetUuid(), target.GetUuid()) != 0 {
+		return false
+	}
+
 	return true
 }
 
@@ -2162,6 +2303,54 @@ func (m *Ldap) Equal(that interface{}) bool {
 		return false
 	}
 
+	if h, ok := interface{}(m.GetGroupLookupSettings()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetGroupLookupSettings()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetGroupLookupSettings(), target.GetGroupLookupSettings()) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Equal function
+func (m *LdapServiceAccount) Equal(that interface{}) bool {
+	if that == nil {
+		return m == nil
+	}
+
+	target, ok := that.(*LdapServiceAccount)
+	if !ok {
+		that2, ok := that.(LdapServiceAccount)
+		if ok {
+			target = &that2
+		} else {
+			return false
+		}
+	}
+	if target == nil {
+		return m == nil
+	} else if m == nil {
+		return false
+	}
+
+	if h, ok := interface{}(m.GetCredentialsSecretRef()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetCredentialsSecretRef()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetCredentialsSecretRef(), target.GetCredentialsSecretRef()) {
+			return false
+		}
+	}
+
+	if m.GetCheckGroupsWithServiceAccount() != target.GetCheckGroupsWithServiceAccount() {
+		return false
+	}
+
 	return true
 }
 
@@ -2275,6 +2464,40 @@ func (m *PassThroughGrpc) Equal(that interface{}) bool {
 		if !proto.Equal(m.GetConnectionTimeout(), target.GetConnectionTimeout()) {
 			return false
 		}
+	}
+
+	if h, ok := interface{}(m.GetTlsConfig()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetTlsConfig()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetTlsConfig(), target.GetTlsConfig()) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Equal function
+func (m *PassThroughGrpcTLSConfig) Equal(that interface{}) bool {
+	if that == nil {
+		return m == nil
+	}
+
+	target, ok := that.(*PassThroughGrpcTLSConfig)
+	if !ok {
+		that2, ok := that.(PassThroughGrpcTLSConfig)
+		if ok {
+			target = &that2
+		} else {
+			return false
+		}
+	}
+	if target == nil {
+		return m == nil
+	} else if m == nil {
+		return false
 	}
 
 	return true
@@ -2908,6 +3131,21 @@ func (m *AuthConfig_Config) Equal(that interface{}) bool {
 			}
 		} else {
 			if !proto.Equal(m.GetPassThroughAuth(), target.GetPassThroughAuth()) {
+				return false
+			}
+		}
+
+	case *AuthConfig_Config_HmacAuth:
+		if _, ok := target.AuthConfig.(*AuthConfig_Config_HmacAuth); !ok {
+			return false
+		}
+
+		if h, ok := interface{}(m.GetHmacAuth()).(equality.Equalizer); ok {
+			if !h.Equal(target.GetHmacAuth()) {
+				return false
+			}
+		} else {
+			if !proto.Equal(m.GetHmacAuth(), target.GetHmacAuth()) {
 				return false
 			}
 		}
@@ -4458,6 +4696,224 @@ func (m *ExtAuthConfig_OpaAuthConfig) Equal(that interface{}) bool {
 }
 
 // Equal function
+func (m *ExtAuthConfig_LdapConfig) Equal(that interface{}) bool {
+	if that == nil {
+		return m == nil
+	}
+
+	target, ok := that.(*ExtAuthConfig_LdapConfig)
+	if !ok {
+		that2, ok := that.(ExtAuthConfig_LdapConfig)
+		if ok {
+			target = &that2
+		} else {
+			return false
+		}
+	}
+	if target == nil {
+		return m == nil
+	} else if m == nil {
+		return false
+	}
+
+	if strings.Compare(m.GetAddress(), target.GetAddress()) != 0 {
+		return false
+	}
+
+	if strings.Compare(m.GetUserDnTemplate(), target.GetUserDnTemplate()) != 0 {
+		return false
+	}
+
+	if strings.Compare(m.GetMembershipAttributeName(), target.GetMembershipAttributeName()) != 0 {
+		return false
+	}
+
+	if len(m.GetAllowedGroups()) != len(target.GetAllowedGroups()) {
+		return false
+	}
+	for idx, v := range m.GetAllowedGroups() {
+
+		if strings.Compare(v, target.GetAllowedGroups()[idx]) != 0 {
+			return false
+		}
+
+	}
+
+	if h, ok := interface{}(m.GetPool()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetPool()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetPool(), target.GetPool()) {
+			return false
+		}
+	}
+
+	if strings.Compare(m.GetSearchFilter(), target.GetSearchFilter()) != 0 {
+		return false
+	}
+
+	if m.GetDisableGroupChecking() != target.GetDisableGroupChecking() {
+		return false
+	}
+
+	if h, ok := interface{}(m.GetGroupLookupSettings()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetGroupLookupSettings()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetGroupLookupSettings(), target.GetGroupLookupSettings()) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Equal function
+func (m *ExtAuthConfig_LdapServiceAccountConfig) Equal(that interface{}) bool {
+	if that == nil {
+		return m == nil
+	}
+
+	target, ok := that.(*ExtAuthConfig_LdapServiceAccountConfig)
+	if !ok {
+		that2, ok := that.(ExtAuthConfig_LdapServiceAccountConfig)
+		if ok {
+			target = &that2
+		} else {
+			return false
+		}
+	}
+	if target == nil {
+		return m == nil
+	} else if m == nil {
+		return false
+	}
+
+	if strings.Compare(m.GetUsername(), target.GetUsername()) != 0 {
+		return false
+	}
+
+	if strings.Compare(m.GetPassword(), target.GetPassword()) != 0 {
+		return false
+	}
+
+	if m.GetCheckGroupsWithServiceAccount() != target.GetCheckGroupsWithServiceAccount() {
+		return false
+	}
+
+	return true
+}
+
+// Equal function
+func (m *ExtAuthConfig_HmacAuthConfig) Equal(that interface{}) bool {
+	if that == nil {
+		return m == nil
+	}
+
+	target, ok := that.(*ExtAuthConfig_HmacAuthConfig)
+	if !ok {
+		that2, ok := that.(ExtAuthConfig_HmacAuthConfig)
+		if ok {
+			target = &that2
+		} else {
+			return false
+		}
+	}
+	if target == nil {
+		return m == nil
+	} else if m == nil {
+		return false
+	}
+
+	switch m.SecretStorage.(type) {
+
+	case *ExtAuthConfig_HmacAuthConfig_SecretList:
+		if _, ok := target.SecretStorage.(*ExtAuthConfig_HmacAuthConfig_SecretList); !ok {
+			return false
+		}
+
+		if h, ok := interface{}(m.GetSecretList()).(equality.Equalizer); ok {
+			if !h.Equal(target.GetSecretList()) {
+				return false
+			}
+		} else {
+			if !proto.Equal(m.GetSecretList(), target.GetSecretList()) {
+				return false
+			}
+		}
+
+	default:
+		// m is nil but target is not nil
+		if m.SecretStorage != target.SecretStorage {
+			return false
+		}
+	}
+
+	switch m.ImplementationType.(type) {
+
+	case *ExtAuthConfig_HmacAuthConfig_ParametersInHeaders:
+		if _, ok := target.ImplementationType.(*ExtAuthConfig_HmacAuthConfig_ParametersInHeaders); !ok {
+			return false
+		}
+
+		if h, ok := interface{}(m.GetParametersInHeaders()).(equality.Equalizer); ok {
+			if !h.Equal(target.GetParametersInHeaders()) {
+				return false
+			}
+		} else {
+			if !proto.Equal(m.GetParametersInHeaders(), target.GetParametersInHeaders()) {
+				return false
+			}
+		}
+
+	default:
+		// m is nil but target is not nil
+		if m.ImplementationType != target.ImplementationType {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Equal function
+func (m *ExtAuthConfig_InMemorySecretList) Equal(that interface{}) bool {
+	if that == nil {
+		return m == nil
+	}
+
+	target, ok := that.(*ExtAuthConfig_InMemorySecretList)
+	if !ok {
+		that2, ok := that.(ExtAuthConfig_InMemorySecretList)
+		if ok {
+			target = &that2
+		} else {
+			return false
+		}
+	}
+	if target == nil {
+		return m == nil
+	} else if m == nil {
+		return false
+	}
+
+	if len(m.GetSecretList()) != len(target.GetSecretList()) {
+		return false
+	}
+	for k, v := range m.GetSecretList() {
+
+		if strings.Compare(v, target.GetSecretList()[k]) != 0 {
+			return false
+		}
+
+	}
+
+	return true
+}
+
+// Equal function
 func (m *ExtAuthConfig_Config) Equal(that interface{}) bool {
 	if that == nil {
 		return m == nil
@@ -4595,6 +5051,21 @@ func (m *ExtAuthConfig_Config) Equal(that interface{}) bool {
 			}
 		}
 
+	case *ExtAuthConfig_Config_LdapInternal:
+		if _, ok := target.AuthConfig.(*ExtAuthConfig_Config_LdapInternal); !ok {
+			return false
+		}
+
+		if h, ok := interface{}(m.GetLdapInternal()).(equality.Equalizer); ok {
+			if !h.Equal(target.GetLdapInternal()) {
+				return false
+			}
+		} else {
+			if !proto.Equal(m.GetLdapInternal(), target.GetLdapInternal()) {
+				return false
+			}
+		}
+
 	case *ExtAuthConfig_Config_Jwt:
 		if _, ok := target.AuthConfig.(*ExtAuthConfig_Config_Jwt); !ok {
 			return false
@@ -4621,6 +5092,21 @@ func (m *ExtAuthConfig_Config) Equal(that interface{}) bool {
 			}
 		} else {
 			if !proto.Equal(m.GetPassThroughAuth(), target.GetPassThroughAuth()) {
+				return false
+			}
+		}
+
+	case *ExtAuthConfig_Config_HmacAuth:
+		if _, ok := target.AuthConfig.(*ExtAuthConfig_Config_HmacAuth); !ok {
+			return false
+		}
+
+		if h, ok := interface{}(m.GetHmacAuth()).(equality.Equalizer); ok {
+			if !h.Equal(target.GetHmacAuth()) {
+				return false
+			}
+		} else {
+			if !proto.Equal(m.GetHmacAuth(), target.GetHmacAuth()) {
 				return false
 			}
 		}

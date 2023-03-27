@@ -1,27 +1,22 @@
 package e2e_test
 
 import (
-	"context"
-	"fmt"
 	"net/http"
 	"strings"
 
-	gatewayv1 "github.com/solo-io/gloo/projects/gateway/pkg/api/v1"
-	gatewaydefaults "github.com/solo-io/gloo/projects/gateway/pkg/defaults"
-	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/gloosnapshot"
-	gloohelpers "github.com/solo-io/gloo/test/helpers"
-	"github.com/solo-io/solo-kit/pkg/api/v1/resources"
+	"github.com/solo-io/gloo/test/testutils"
 
-	. "github.com/onsi/ginkgo"
+	"github.com/solo-io/gloo/test/gomega/matchers"
+
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	gatewayv1 "github.com/solo-io/gloo/projects/gateway/pkg/api/v1"
+	"github.com/solo-io/gloo/test/e2e"
+	gloohelpers "github.com/solo-io/gloo/test/helpers"
 
 	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	gloov1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/cors"
-	"github.com/solo-io/gloo/projects/gloo/pkg/defaults"
-	"github.com/solo-io/gloo/test/services"
-	"github.com/solo-io/gloo/test/v1helpers"
-	"github.com/solo-io/solo-kit/pkg/api/v1/clients"
 )
 
 const (
@@ -34,82 +29,39 @@ const (
 var _ = Describe("CORS", func() {
 
 	var (
-		err           error
-		ctx           context.Context
-		cancel        context.CancelFunc
-		testClients   services.TestClients
-		envoyInstance *services.EnvoyInstance
-		testUpstream  *v1helpers.TestUpstream
-
-		resourcesToCreate *gloosnapshot.ApiSnapshot
-
-		writeNamespace = defaults.GlooSystem
+		testContext *e2e.TestContext
 	)
 
 	BeforeEach(func() {
-		ctx, cancel = context.WithCancel(context.Background())
-		defaults.HttpPort = services.NextBindPort()
-
-		// run gloo
-		writeNamespace = defaults.GlooSystem
-		ro := &services.RunOptions{
-			NsToWrite: writeNamespace,
-			NsToWatch: []string{"default", writeNamespace},
-			WhatToRun: services.What{
-				DisableFds: true,
-				DisableUds: true,
-			},
-		}
-		testClients = services.RunGlooGatewayUdsFds(ctx, ro)
-
-		// run envoy
-		envoyInstance, err = envoyFactory.NewEnvoyInstance()
-		Expect(err).NotTo(HaveOccurred())
-		err = envoyInstance.RunWithRole(writeNamespace+"~"+gatewaydefaults.GatewayProxyName, testClients.GlooPort)
-		Expect(err).NotTo(HaveOccurred())
-
-		// this is the upstream that will handle requests
-		testUpstream = v1helpers.NewTestHttpUpstream(ctx, envoyInstance.LocalAddr())
-
-		// The set of resources that these tests will generate
-		resourcesToCreate = &gloosnapshot.ApiSnapshot{
-			Gateways: gatewayv1.GatewayList{
-				gatewaydefaults.DefaultGateway(writeNamespace),
-			},
-			Upstreams: gloov1.UpstreamList{
-				testUpstream.Upstream,
-			},
-		}
+		testContext = testContextFactory.NewTestContext()
+		testContext.BeforeEach()
 	})
 
 	AfterEach(func() {
-		envoyInstance.Clean()
-		cancel()
+		testContext.AfterEach()
 	})
 
 	JustBeforeEach(func() {
-		// Create Resources
-		err = testClients.WriteSnapshot(ctx, resourcesToCreate)
-		Expect(err).NotTo(HaveOccurred())
+		testContext.JustBeforeEach()
+	})
 
-		// Wait for a proxy to be accepted
-		gloohelpers.EventuallyResourceAccepted(func() (resources.InputResource, error) {
-			return testClients.ProxyClient.Read(writeNamespace, gatewaydefaults.GatewayProxyName, clients.ReadOpts{Ctx: ctx})
-		})
+	JustAfterEach(func() {
+		testContext.JustAfterEach()
 	})
 
 	Context("With CORS", func() {
 
 		var (
 			allowedOrigins = []string{allowedOrigin}
-			allowedMethods = []string{"GET", "POST"}
+			allowedMethods = []string{http.MethodGet, http.MethodGet}
 		)
 
 		BeforeEach(func() {
-			vsWithCors := gloohelpers.NewVirtualServiceBuilder().WithNamespace(writeNamespace).
+			vsWithCors := gloohelpers.NewVirtualServiceBuilder().
+				WithNamespace(writeNamespace).
 				WithName("vs-cors").
-				WithDomain(allowedOrigin).
-				WithRouteActionToUpstream("route", testUpstream.Upstream).
+				WithDomain(e2e.DefaultHost).
+				WithRouteActionToUpstream("route", testContext.TestUpstream().Upstream).
 				WithRoutePrefixMatcher("route", "/cors").
 				WithRouteOptions("route", &gloov1.RouteOptions{
 					Cors: &cors.CorsPolicy{
@@ -119,47 +71,40 @@ var _ = Describe("CORS", func() {
 					}}).
 				Build()
 
-			resourcesToCreate.VirtualServices = gatewayv1.VirtualServiceList{
+			testContext.ResourcesToCreate().VirtualServices = gatewayv1.VirtualServiceList{
 				vsWithCors,
 			}
-
 		})
 
 		It("should run with cors", func() {
-
-			By("Envoy config contains CORS filer")
 			Eventually(func(g Gomega) {
-				cfg, err := envoyInstance.EnvoyConfigDump()
+				cfg, err := testContext.EnvoyInstance().ConfigDump()
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(cfg).To(MatchRegexp(corsFilterString))
 				g.Expect(cfg).To(MatchRegexp(corsActiveConfigString))
 				g.Expect(cfg).To(MatchRegexp(allowedOrigin))
-			}, "10s", ".1s").ShouldNot(HaveOccurred())
+			}, "10s", ".1s").ShouldNot(HaveOccurred(), "Envoy config contains CORS filer")
 
-			preFlightRequest, err := http.NewRequest("OPTIONS", fmt.Sprintf("http://%s:%d/cors", envoyInstance.LocalAddr(), defaults.HttpPort), nil)
-			Expect(err).NotTo(HaveOccurred())
-			preFlightRequest.Host = allowedOrigin
-
-			By("Request with allowed origin")
+			allowedOriginRequestBuilder := testContext.GetHttpRequestBuilder().
+				WithOptionsMethod().
+				WithPath("cors").
+				WithHeader("Origin", allowedOrigins[0]).
+				WithHeader("Access-Control-Request-Method", http.MethodGet).
+				WithHeader("Access-Control-Request-Headers", "X-Requested-With")
 			Eventually(func(g Gomega) {
-				headers := executeRequestWithAccessControlHeaders(preFlightRequest, allowedOrigins[0], "GET")
-				v, ok := headers[requestACHMethods]
-				g.Expect(ok).To(BeTrue())
-				g.Expect(strings.Split(v[0], ",")).Should(ConsistOf(allowedMethods))
+				g.Expect(testutils.DefaultHttpClient.Do(allowedOriginRequestBuilder.Build())).Should(matchers.HaveOkResponseWithHeaders(map[string]interface{}{
+					requestACHMethods: MatchRegexp(strings.Join(allowedMethods, ",")),
+					requestACHOrigin:  Equal(allowedOrigins[0]),
+				}))
+			}).Should(Succeed(), "Request with allowed origin")
 
-				v, ok = headers[requestACHOrigin]
-				g.Expect(ok).To(BeTrue())
-				g.Expect(len(v)).To(Equal(1))
-				g.Expect(v[0]).To(Equal(allowedOrigins[0]))
-			}).ShouldNot(HaveOccurred())
-
-			By("Request with disallowed origin")
+			disallowedOriginRequestBuilder := allowedOriginRequestBuilder.WithHeader("Origin", unAllowedOrigin)
 			Eventually(func(g Gomega) {
-				headers := executeRequestWithAccessControlHeaders(preFlightRequest, unAllowedOrigin, "GET")
-				_, ok := headers[requestACHMethods]
-				g.Expect(ok).To(BeFalse())
-			}).ShouldNot(HaveOccurred())
+				g.Expect(testutils.DefaultHttpClient.Do(disallowedOriginRequestBuilder.Build())).Should(matchers.HaveOkResponseWithHeaders(map[string]interface{}{
+					requestACHMethods: BeEmpty(),
+				}))
+			}).Should(Succeed(), "Request with disallowed origin")
 		})
 
 	})
@@ -170,41 +115,24 @@ var _ = Describe("CORS", func() {
 			vsWithoutCors := gloohelpers.NewVirtualServiceBuilder().WithNamespace(writeNamespace).
 				WithName("vs-cors").
 				WithDomain("cors.com").
-				WithRouteActionToUpstream("route", testUpstream.Upstream).
+				WithRouteActionToUpstream("route", testContext.TestUpstream().Upstream).
 				WithRoutePrefixMatcher("route", "/cors").
 				Build()
 
-			resourcesToCreate.VirtualServices = gatewayv1.VirtualServiceList{
+			testContext.ResourcesToCreate().VirtualServices = gatewayv1.VirtualServiceList{
 				vsWithoutCors,
 			}
 		})
 
 		It("should run without cors", func() {
-			By("Envoy config does not contain CORS filer")
 			Eventually(func(g Gomega) {
-				cfg, err := envoyInstance.EnvoyConfigDump()
+				cfg, err := testContext.EnvoyInstance().ConfigDump()
 				g.Expect(err).NotTo(HaveOccurred())
 
 				g.Expect(cfg).To(MatchRegexp(corsFilterString))
 				g.Expect(cfg).NotTo(MatchRegexp(corsActiveConfigString))
-			}).ShouldNot(HaveOccurred())
+			}).Should(Succeed(), "Envoy config does not contain CORS filer")
 		})
 	})
 
 })
-
-func executeRequestWithAccessControlHeaders(req *http.Request, origin, method string) http.Header {
-	h := http.Header{}
-	Eventually(func(g Gomega) {
-		req.Header.Set("Origin", origin)
-		req.Header.Set("Access-Control-Request-Method", method)
-		req.Header.Set("Access-Control-Request-Headers", "X-Requested-With")
-
-		resp, err := http.DefaultClient.Do(req)
-		g.Expect(err).NotTo(HaveOccurred())
-
-		defer resp.Body.Close()
-		h = resp.Header
-	}).ShouldNot(HaveOccurred())
-	return h
-}

@@ -100,6 +100,8 @@ spec:
                           caseSensitive:
                             nullable: true
                             type: boolean
+                          connectMatcher:
+                            type: object
                           exact:
                             type: string
                           headers:
@@ -399,6 +401,26 @@ spec:
                               type: array
                           type: object
                         hostRewrite:
+                          type: string
+                        hostRewritePathRegex:
+                          properties:
+                            pattern:
+                              properties:
+                                googleRe2:
+                                  properties:
+                                    maxProgramSize:
+                                      maximum: 4294967295
+                                      minimum: 0
+                                      nullable: true
+                                      type: integer
+                                  type: object
+                                regex:
+                                  type: string
+                              type: object
+                            substitution:
+                              type: string
+                          type: object
+                        idleTimeout:
                           type: string
                         jwt:
                           properties:
@@ -1101,6 +1123,13 @@ spec:
                               type: integer
                             perTryTimeout:
                               type: string
+                            retryBackOff:
+                              properties:
+                                baseInterval:
+                                  type: string
+                                maxInterval:
+                                  type: string
+                              type: object
                             retryOn:
                               type: string
                           type: object
@@ -1130,6 +1159,8 @@ spec:
                                           caseSensitive:
                                             nullable: true
                                             type: boolean
+                                          connectMatcher:
+                                            type: object
                                           exact:
                                             type: string
                                           headers:
@@ -1466,6 +1497,8 @@ spec:
                                           caseSensitive:
                                             nullable: true
                                             type: boolean
+                                          connectMatcher:
+                                            type: object
                                           exact:
                                             type: string
                                           headers:
@@ -1995,6 +2028,12 @@ spec:
                         upgrades:
                           items:
                             properties:
+                              connect:
+                                properties:
+                                  enabled:
+                                    nullable: true
+                                    type: boolean
+                                type: object
                               websocket:
                                 properties:
                                   enabled:
@@ -2014,6 +2053,22 @@ spec:
                                   type: string
                                   x-kubernetes-int-or-string: true
                               type: object
+                            configMapRuleSets:
+                              items:
+                                properties:
+                                  configMapRef:
+                                    properties:
+                                      name:
+                                        type: string
+                                      namespace:
+                                        type: string
+                                    type: object
+                                  dataMapKeys:
+                                    items:
+                                      type: string
+                                    type: array
+                                type: object
+                              type: array
                             coreRuleSet:
                               properties:
                                 customSettingsFile:
@@ -2443,6 +2498,8 @@ spec:
                                                         caseSensitive:
                                                           nullable: true
                                                           type: boolean
+                                                        connectMatcher:
+                                                          type: object
                                                         exact:
                                                           type: string
                                                         headers:
@@ -2779,6 +2836,8 @@ spec:
                                                         caseSensitive:
                                                           nullable: true
                                                           type: boolean
+                                                        connectMatcher:
+                                                          type: object
                                                         exact:
                                                           type: string
                                                         headers:

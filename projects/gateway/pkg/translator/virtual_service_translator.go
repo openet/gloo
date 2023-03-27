@@ -171,6 +171,9 @@ func getVirtualServicesForHttpGateway(
 	return virtualServicesForGateway
 }
 
+// HttpGatewayContainsVirtualService determines whether the VS has the same selector/expression matching and the same namespace
+// so that the two resources can co-exist.  A VS must match on these terms. Else see if the VS matches the same refs
+// that are currently on the gateway.
 func HttpGatewayContainsVirtualService(httpGateway *v1.HttpGateway, virtualService *v1.VirtualService, ssl bool) (bool, error) {
 	if ssl != hasSsl(virtualService) {
 		return false, nil
@@ -568,23 +571,23 @@ func earlyHeaderMatchersShortCircuitLaterOnes(laterMatcher, earlyMatcher matcher
 }
 
 // special case to catch the following:
-//	- matchers:
-//	  - prefix: /foo
-//      headers:
-//	    - name: :method
-//        value: GET
-//        invertMatch: true
-//    directResponseAction:
-//      status: 405
-//      body: 'Invalid HTTP Method'
-//	...
-//	- matchers:
-//	  - methods:
-//	    - GET
-//	    - POST # this one cannot be reached
-//      prefix: /foo
-//    routeAction:
-//	    ....
+//   - matchers:
+//   - prefix: /foo
+//     headers:
+//   - name: :method
+//     value: GET
+//     invertMatch: true
+//     directResponseAction:
+//     status: 405
+//     body: 'Invalid HTTP Method'
+//     ...
+//   - matchers:
+//   - methods:
+//   - GET
+//   - POST # this one cannot be reached
+//     prefix: /foo
+//     routeAction:
+//     ....
 func laterOrRegexPartiallyShortCircuited(laterHeaderMatcher, earlyHeaderMatcher *matchers.HeaderMatcher) bool {
 
 	// regex matches simple OR regex, e.g. (GET|POST|...)

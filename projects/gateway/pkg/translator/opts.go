@@ -23,7 +23,7 @@ type Opts struct {
 	DevMode                        bool
 	ReadGatewaysFromAllNamespaces  bool
 	Validation                     *ValidationOpts
-	ConfigStatusMetricOpts         map[string]*metrics.Labels
+	ConfigStatusMetricOpts         map[string]*metrics.MetricLabels
 	IsolateVirtualHostsBySslConfig bool
 }
 
@@ -32,7 +32,6 @@ type ValidationOpts struct {
 	ValidatingWebhookPort        int
 	ValidatingWebhookCertPath    string
 	ValidatingWebhookKeyPath     string
-	IgnoreProxyValidationFailure bool
 	AlwaysAcceptResources        bool
 	AllowWarnings                bool
 	WarnOnRouteShortCircuiting   bool

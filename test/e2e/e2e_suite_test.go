@@ -3,8 +3,9 @@ package e2e_test
 import (
 	"testing"
 
-	. "github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/reporters"
+	"github.com/solo-io/gloo/test/e2e"
+
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"go.uber.org/zap/zapcore"
 
@@ -19,7 +20,9 @@ var (
 	envoyFactory  *services.EnvoyFactory
 	consulFactory *services.ConsulFactory
 
-	namespace = defaults.GlooSystem
+	testContextFactory *e2e.TestContextFactory
+
+	writeNamespace = defaults.GlooSystem
 )
 
 var _ = BeforeSuite(func() {
@@ -28,6 +31,10 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	consulFactory, err = services.NewConsulFactory()
 	Expect(err).NotTo(HaveOccurred())
+
+	testContextFactory = &e2e.TestContextFactory{
+		EnvoyFactory: envoyFactory,
+	}
 })
 
 var _ = AfterSuite(func() {
@@ -36,13 +43,11 @@ var _ = AfterSuite(func() {
 })
 
 func TestE2e(t *testing.T) {
-
 	// set default port to an unprivileged port for local testing.
 	defaults.HttpPort = 8081
 
 	helpers.RegisterCommonFailHandlers()
 	helpers.SetupLog()
 	contextutils.SetLogLevel(zapcore.DebugLevel)
-	junitReporter := reporters.NewJUnitReporter("junit.xml")
-	RunSpecsWithDefaultAndCustomReporters(t, "E2e Suite", []Reporter{junitReporter})
+	RunSpecs(t, "E2e Suite")
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/core/selectors"
+	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/ssl"
 
 	"github.com/solo-io/solo-kit/pkg/api/v2/reporter"
 	"google.golang.org/protobuf/types/known/wrapperspb"
@@ -14,8 +15,7 @@ import (
 
 	"github.com/golang/protobuf/ptypes/duration"
 	"github.com/golang/protobuf/ptypes/wrappers"
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/ginkgo/extensions/table"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	v1 "github.com/solo-io/gloo/projects/gateway/pkg/api/v1"
 	"github.com/solo-io/gloo/projects/gateway/pkg/defaults"
@@ -162,7 +162,7 @@ var _ = Describe("Hybrid Translator", func() {
 												Matcher: &v1.Matcher{
 													// This is important as it means the Gateway will only select
 													// VirtualServices with Ssl defined
-													SslConfig: &gloov1.SslConfig{},
+													SslConfig: &ssl.SslConfig{},
 													SourcePrefixRanges: []*v3.CidrRange{
 														{
 															AddressPrefix: "match1",
@@ -301,14 +301,14 @@ var _ = Describe("Hybrid Translator", func() {
 					parent *v1.DelegatedHttpGateway
 					child  *v1.MatchableHttpGateway
 
-					sslNil  *gloov1.SslConfig
-					sslZero = &gloov1.SslConfig{
+					sslNil  *ssl.SslConfig
+					sslZero = &ssl.SslConfig{
 						OneWayTls: &wrapperspb.BoolValue{
 							Value: false,
 						},
 					}
-					sslEmpty *gloov1.SslConfig = &gloov1.SslConfig{}
-					sslSet   *gloov1.SslConfig = &gloov1.SslConfig{
+					sslEmpty *ssl.SslConfig = &ssl.SslConfig{}
+					sslSet   *ssl.SslConfig = &ssl.SslConfig{
 						OneWayTls: &wrapperspb.BoolValue{
 							Value: true,
 						},
@@ -372,7 +372,7 @@ var _ = Describe("Hybrid Translator", func() {
 				})
 
 				Context("SslConfig", func() {
-					DescribeTable("SslConfig anscestry override tests", func(childSsl, parentSsl *gloov1.SslConfig, preventChildOverrides bool, desiredResult DesiredResult) {
+					DescribeTable("SslConfig anscestry override tests", func(childSsl, parentSsl *ssl.SslConfig, preventChildOverrides bool, desiredResult DesiredResult) {
 						parent.PreventChildOverrides = preventChildOverrides
 						// config setting
 						child.GetMatcher().SslConfig = childSsl
@@ -411,20 +411,20 @@ var _ = Describe("Hybrid Translator", func() {
 						}
 					},
 						/*┏(･o･)┛♪┗ (･o･) ┓			┏(･o･)┛♪┗ (･o･) ┓			┏(･o･)┛♪┗ (･o･) ┓			┏(･o･)┛♪┗ (･o･) ┓			┏(･o･)┛♪┗ (･o･) ┓
-						I am sitting here, possibly having descended into madness.  In my madness, I have found it necessary/expedient to construct a 36-entry table.
-						So some explanations are in order.  In general, a field can be affected in any 1 of 4 ways:
-							* nil		| an object not existing/instantiated.							|	ssl = nil
-							* zero		| a zero-value being set on a subfield.  ex: (0, "", false)		|	ssl.OneWayTls.Value = false
-							* empty 	| object exists, but has nil subfield.							|	ssl.OneWayTls = nil
-							* set		| object exists and has populated subfield						|	ssl.OneWayTls.Value = true
-						Since our merge operations take in (childSsl, parentSsl, PreventChildOverrides), this leaves 4*4*2 = 36 possible combinations to test.
+						  I am sitting here, possibly having descended into madness.  In my madness, I have found it necessary/expedient to construct a 36-entry table.
+						  So some explanations are in order.  In general, a field can be affected in any 1 of 4 ways:
+						  	* nil		| an object not existing/instantiated.							|	ssl = nil
+						  	* zero		| a zero-value being set on a subfield.  ex: (0, "", false)		|	ssl.OneWayTls.Value = false
+						  	* empty 	| object exists, but has nil subfield.							|	ssl.OneWayTls = nil
+						  	* set		| object exists and has populated subfield						|	ssl.OneWayTls.Value = true
+						  Since our merge operations take in (childSsl, parentSsl, PreventChildOverrides), this leaves 4*4*2 = 36 possible combinations to test.
 
-						When performing all of said combinations on a _nested_ field, such as ssl.OneWayTls.Value, there are 4 possible results:
-							* True		| ssl.OneWayTls.Value is true
-							* False		| ssl.OneWayTls.Value is false
-							* Nil		| ssl or OneWayTls is nil
-							* Error		| translation failed; when either parent XOR child has ssl defined, we should yield an error on the report
-						(┏(･o･)┛♪┗ (･o･) ┓			┏(･o･)┛♪┗ (･o･) ┓			┏(･o･)┛♪┗ (･o･) ┓			┏(･o･)┛♪┗ (･o･) ┓			┏(･o･)┛♪┗ (･o･) ┓)*/
+						  When performing all of said combinations on a _nested_ field, such as ssl.OneWayTls.Value, there are 4 possible results:
+						  	* True		| ssl.OneWayTls.Value is true
+						  	* False		| ssl.OneWayTls.Value is false
+						  	* Nil		| ssl or OneWayTls is nil
+						  	* Error		| translation failed; when either parent XOR child has ssl defined, we should yield an error on the report
+						  (┏(･o･)┛♪┗ (･o･) ┓			┏(･o･)┛♪┗ (･o･) ┓			┏(･o･)┛♪┗ (･o･) ┓			┏(･o･)┛♪┗ (･o･) ┓			┏(･o･)┛♪┗ (･o･) ┓)*/
 						Entry("nil,nil,1", sslNil, sslNil, true, Nil),
 						Entry("nil,nil,0", sslNil, sslNil, false, Nil),
 						Entry("nil,zero,1", sslNil, sslZero, true, Error),
@@ -625,7 +625,7 @@ var _ = Describe("Hybrid Translator", func() {
 										DelegatedHttpGateways: &v1.DelegatedHttpGateway{
 											// This is important as it means the Gateway will only select
 											// HttpGateways with Ssl defined
-											SslConfig: &gloov1.SslConfig{},
+											SslConfig: &ssl.SslConfig{},
 											SelectionType: &v1.DelegatedHttpGateway_Ref{
 												Ref: &core.ResourceRef{
 													Name:      "name",
@@ -645,7 +645,7 @@ var _ = Describe("Hybrid Translator", func() {
 								Matcher: &v1.MatchableHttpGateway_Matcher{
 									// This is important as it means the Gateway will only select
 									// VirtualServices with Ssl defined
-									SslConfig: &gloov1.SslConfig{},
+									SslConfig: &ssl.SslConfig{},
 									SourcePrefixRanges: []*v3.CidrRange{
 										{
 											AddressPrefix: "match1",
@@ -717,7 +717,7 @@ func createVirtualService(name, namespace string, includeSsl bool) *v1.VirtualSe
 	}
 
 	if includeSsl {
-		vs.SslConfig = &gloov1.SslConfig{
+		vs.SslConfig = &ssl.SslConfig{
 			SniDomains: []string{fmt.Sprintf("%s.com", name)},
 		}
 	}
