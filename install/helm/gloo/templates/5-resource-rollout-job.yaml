@@ -75,7 +75,7 @@ spec:
             {{- end }}
 
             # apply Gloo Edge custom resources
-            if [ $HAS_CUSTOM_RESOURCES == "true" ]
+            if [ $HAS_CUSTOM_RESOURCES = "true" ]
             then
               kubectl apply -f /etc/gloo-custom-resources/custom-resources || exit $?
             else
