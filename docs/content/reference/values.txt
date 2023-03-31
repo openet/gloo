@@ -714,6 +714,8 @@
 |gatewayProxies.gatewayProxy.topologySpreadConstraints[]|interface||configure topologySpreadConstraints for gateway proxy pods|
 |gatewayProxies.gatewayProxy.tracing.provider.NAME|interface|||
 |gatewayProxies.gatewayProxy.tracing.cluster[].NAME|interface|||
+|gatewayProxies.gatewayProxy.xdsConfig.rateLimitSettings.max_tokens|int|||
+|gatewayProxies.gatewayProxy.xdsConfig.rateLimitSettings.fill_rate|double|||
 |gatewayProxies.gatewayProxy.gatewaySettings.enabled|bool|true|enable/disable default gateways|
 |gatewayProxies.gatewayProxy.gatewaySettings.disableGeneratedGateways|bool||set to true to disable the gateway generation for a gateway proxy|
 |gatewayProxies.gatewayProxy.gatewaySettings.disableHttpGateway|bool||Set to true to disable http gateway generation.|
@@ -1008,6 +1010,7 @@
 |global.glooMtls.sdsResources.limits.cpu|string||amount of CPUs|
 |global.glooMtls.sdsResources.requests.memory|string||amount of memory|
 |global.glooMtls.sdsResources.requests.cpu|string||amount of CPUs|
+|global.glooMtls.ipv4Only|bool|true|This field if set false will bind the IPv6 address '::' on envoy-sidecar-config.|
 |global.istioSDS.enabled|bool|false|Enables SDS cert-rotator sidecar for istio mTLS cert rotation|
 |global.istioSDS.customSidecars[]|interface||Override the default Istio sidecar in gateway-proxy with a custom container. Ignored if IstioSDS.enabled is false|
 |global.istioIntegration.labelInstallNamespace|bool|false|If creating a namespace for Gloo, include the 'istio-injection: enabled' label to allow Istio sidecar injection for Gloo pods. Be aware that Istio's default injection behavior will auto-inject a sidecar into all pods in such a marked namespace. Disabling this behavior in Istio's configs or using gloo's global.istioIntegration.disableAutoinjection flag is recommended.|

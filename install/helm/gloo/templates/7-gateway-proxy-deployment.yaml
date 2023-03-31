@@ -35,10 +35,12 @@ metadata:
   name: {{ $name | kebabcase }}
   namespace: {{ .Release.Namespace }}
 spec:
+  {{- if not $spec.horizontalPodAutoscaler.enabled }}
   {{- if $spec.kind.deployment}}
   {{- if $spec.kind.deployment.replicas}}
   replicas: {{ $spec.kind.deployment.replicas }}
   {{- end}}
+  {{- end }}
   {{- end}}
   selector:
     matchLabels:
