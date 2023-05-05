@@ -763,7 +763,7 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions) error {
 
 	resourceHasher := translator.MustEnvoyCacheResourcesListToFnvHash
 
-	sharedTranslator := translator.NewTranslatorWithHasher(sslutils.NewSslConfigTranslator(), opts.Settings, extensions.PluginRegistryFactory(watchOpts.Ctx) /*pluginRegistryFactorySum*/, resourceHasher)
+	sharedTranslator := translator.NewTranslatorWithHasher(sslutils.NewSslConfigTranslator(), opts.Settings, pluginRegistryFactorySum, resourceHasher)
 	routeReplacingSanitizer, err := sanitizer.NewRouteReplacingSanitizer(opts.Settings.GetGloo().GetInvalidConfigPolicy())
 	if err != nil {
 		return err
