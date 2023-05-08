@@ -3,6 +3,7 @@ package setup
 import (
 	"context"
 	"fmt"
+	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
 	"net"
 	"net/http"
 	"os"
@@ -11,8 +12,6 @@ import (
 	"time"
 
 	"github.com/solo-io/gloo/pkg/bootstrap/leaderelector"
-
-	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
 
 	"github.com/solo-io/gloo/projects/gloo/pkg/debug"
 
@@ -51,7 +50,6 @@ import (
 	"github.com/solo-io/gloo/projects/gloo/pkg/bootstrap"
 	"github.com/solo-io/gloo/projects/gloo/pkg/defaults"
 	"github.com/solo-io/gloo/projects/gloo/pkg/discovery"
-	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
 	consulplugin "github.com/solo-io/gloo/projects/gloo/pkg/plugins/consul"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/registry"
 	extauthExt "github.com/solo-io/gloo/projects/gloo/pkg/syncer/extauth"
@@ -70,7 +68,6 @@ import (
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/kube"
 	corecache "github.com/solo-io/solo-kit/pkg/api/v1/clients/kube/cache"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/memory"
-	"github.com/solo-io/solo-kit/pkg/api/v1/control-plane/cache"
 	"github.com/solo-io/solo-kit/pkg/api/v1/control-plane/server"
 	xdsserver "github.com/solo-io/solo-kit/pkg/api/v1/control-plane/server"
 	"github.com/solo-io/solo-kit/pkg/api/v1/control-plane/types"
@@ -745,6 +742,8 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions) error {
 		IsolateVirtualHostsBySslConfig: opts.Settings.GetGateway().GetIsolateVirtualHostsBySslConfig().GetValue(),
 	}
 
+	resourceHasher := translator.EnvoyCacheResourcesListToFnvHash
+
 	// Set up the syncer extensions
 	syncerExtensionParams := syncer.TranslatorSyncerExtensionParams{
 		RateLimitServiceSettings: &ratelimit.ServiceSettings{
@@ -753,6 +752,7 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions) error {
 		},
 		Hasher: resourceHasher,
 	}
+
 	var syncerExtensions []syncer.TranslatorSyncerExtension
 	for _, syncerExtensionFactory := range extensions.SyncerExtensions {
 		syncerExtension := syncerExtensionFactory(watchOpts.Ctx, syncerExtensionParams)
@@ -766,8 +766,6 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions) error {
 	for _, plug := range pluginRegistryFactorySum(watchOpts.Ctx).GetPlugins() {
 		logger.Infof("Plugin: %s", plug.Name())
 	}
-
-	resourceHasher := translator.MustEnvoyCacheResourcesListToFnvHash
 
 	sharedTranslator := translator.NewTranslatorWithHasher(sslutils.NewSslConfigTranslator(), opts.Settings, pluginRegistryFactorySum(watchOpts.Ctx), resourceHasher)
 	routeReplacingSanitizer, err := sanitizer.NewRouteReplacingSanitizer(opts.Settings.GetGloo().GetInvalidConfigPolicy())
