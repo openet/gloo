@@ -349,7 +349,12 @@ data:
       ads_config:
         transport_api_version: {{ $spec.envoyApiVersion }}
         api_type: GRPC
-        rate_limit_settings: {}
+        {{- with $spec.xdsConfig.rateLimitSettings }}
+        rate_limit_settings:
+        {{- range $key, $value := . }}
+        {{ $key }}: {{ $value }}
+        {{- end }}
+        {{- end }}
         grpc_services:
         - envoy_grpc: {cluster_name: gloo.{{ .Release.Namespace }}.svc.{{ .Values.k8s.clusterName}}:{{ .Values.gloo.deployment.xdsPort }}}
       cds_config:

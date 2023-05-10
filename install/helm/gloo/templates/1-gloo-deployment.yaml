@@ -255,6 +255,10 @@ spec:
           failureThreshold: 3
 {{- end }}
 {{- end }}{{/* if not .Values.global.glooMtls.enabled */}}
+{{- with .Values.gloo.deployment.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+{{- end }}
 {{- end }} {{/* define "gloo.deploymentSpec "*/}}
 
 {{/* Render template with yaml overrides */}}
