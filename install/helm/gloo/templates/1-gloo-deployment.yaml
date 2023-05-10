@@ -254,6 +254,10 @@ spec:
             name: validation-certs
   {{- end }} {{/* if .Values.gateway.validation.enabled */}}
 {{- end }}{{/* if not .Values.global.glooMtls.enabled */}}
+{{- with .Values.gloo.deployment.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+{{- end }}
 {{- end }} {{/* define "gloo.deploymentSpec "*/}}
 
 {{/* Render template with yaml overrides */}}

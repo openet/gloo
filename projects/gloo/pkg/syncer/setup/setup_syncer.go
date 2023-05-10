@@ -32,6 +32,7 @@ import (
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
 	consulapi "github.com/hashicorp/consul/api"
 	vaultapi "github.com/hashicorp/vault/api"
+	errorsEris "github.com/rotisserie/eris"
 	"github.com/solo-io/gloo/pkg/utils"
 	"github.com/solo-io/gloo/pkg/utils/channelutils"
 	"github.com/solo-io/gloo/pkg/utils/setuputils"
@@ -88,7 +89,7 @@ func NewSetupFunc() setuputils.SetupFunc {
 }
 
 // used outside of this repo
-//noinspection GoUnusedExportedFunction
+// noinspection GoUnusedExportedFunction
 func NewSetupFuncWithExtensions(extensions Extensions) setuputils.SetupFunc {
 	runWithExtensions := func(opts bootstrap.Opts) error {
 		return RunGlooWithExtensions(opts, extensions)
@@ -560,16 +561,33 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions) error {
 	// Register grpc endpoints to the grpc server
 	xds.SetupEnvoyXds(opts.ControlPlane.GrpcServer, opts.ControlPlane.XDSServer, opts.ControlPlane.SnapshotCache)
 
-	pluginRegistry := extensions.PluginRegistryFactory(watchOpts.Ctx, opts)
-	var discoveryPlugins []discovery.DiscoveryPlugin
-	for _, plug := range pluginRegistry.GetPlugins() {
-		disc, ok := plug.(discovery.DiscoveryPlugin)
-		if ok {
-			discoveryPlugins = append(discoveryPlugins, disc)
+	logger := contextutils.LoggerFrom(watchOpts.Ctx)
+
+	pluginRegistryFactoryFromGlooWrapper := extensions.PluginRegistryFactory
+
+	pluginRegistryFactory := registry.GetPluginRegistryFactory(opts)
+
+	pluginRegistry := pluginRegistryFactory(watchOpts.Ctx)
+	plugs := pluginRegistry.GetPlugins()
+
+	if pluginRegistryFactoryFromGlooWrapper == nil {
+		logger.Error("No pluginRegistryFactory from GlooWrapper")
+		return errorsEris.Errorf("No pluginRegistryFactory from GlooWrapper")
+	} else {
+		pluginRegistryFromGlooWrapper := pluginRegistryFactoryFromGlooWrapper(watchOpts.Ctx, opts)
+		for _, plug := range pluginRegistryFromGlooWrapper.GetPlugins() {
+			plugs = append(plugs, plug)
 		}
 	}
 
-	logger := contextutils.LoggerFrom(watchOpts.Ctx)
+	var discoveryPlugins []discovery.DiscoveryPlugin
+	for _, plug := range plugs {
+		disc, ok := plug.(discovery.DiscoveryPlugin)
+		if ok {
+			disc.Init(plugins.InitParams{Ctx: watchOpts.Ctx, Settings: opts.Settings})
+			discoveryPlugins = append(discoveryPlugins, disc)
+		}
+	}
 
 	startRestXdsServer(opts)
 
@@ -732,10 +750,17 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions) error {
 		allowWarnings = gwOpts.Validation.AllowWarnings
 	}
 
+	pluginRegistryFactorySum := func(ctx context.Context) plugins.PluginRegistry {
+		return registry.NewPluginRegistry(plugs)
+	}
+
+	for _, plug := range pluginRegistryFactorySum(watchOpts.Ctx).GetPlugins() {
+		logger.Infof("Plugin: %s", plug.Name())
+	}
+
 	resourceHasher := translator.MustEnvoyCacheResourcesListToFnvHash
 
-	t := translator.NewTranslatorWithHasher(sslutils.NewSslConfigTranslator(), opts.Settings, pluginRegistry, resourceHasher)
-
+	sharedTranslator := translator.NewTranslatorWithHasher(sslutils.NewSslConfigTranslator(), opts.Settings, pluginRegistryFactorySum(watchOpts.Ctx), resourceHasher)
 	routeReplacingSanitizer, err := sanitizer.NewRouteReplacingSanitizer(opts.Settings.GetGloo().GetInvalidConfigPolicy())
 	if err != nil {
 		return err

@@ -19,7 +19,6 @@ import (
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/consul"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/cors"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/csrf"
-	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/enterprise_warning"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/extauth"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/faultinjection"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/grpc"
@@ -122,8 +121,6 @@ func GetPluginRegistryFactory() PluginRegistryFactory {
 	return func(ctx context.Context, opts bootstrap.Opts) plugins.PluginRegistry {
 		availablePlugins := Plugins(opts)
 
-		// To improve the UX, load a plugin that warns users if they are attempting to use enterprise configuration
-		availablePlugins = append(availablePlugins, enterprise_warning.NewPlugin())
 		return NewPluginRegistry(availablePlugins)
 	}
 }
