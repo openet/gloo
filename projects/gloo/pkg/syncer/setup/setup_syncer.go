@@ -3,6 +3,7 @@ package setup
 import (
 	"context"
 	"fmt"
+	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
 	"net"
 	"net/http"
 	"os"
@@ -565,9 +566,9 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions) error {
 
 	pluginRegistryFactoryFromGlooWrapper := extensions.PluginRegistryFactory
 
-	pluginRegistryFactory := registry.GetPluginRegistryFactory(opts)
+	pluginRegistryFactory := registry.GetPluginRegistryFactory()
 
-	pluginRegistry := pluginRegistryFactory(watchOpts.Ctx)
+	pluginRegistry := pluginRegistryFactory(watchOpts.Ctx, opts)
 	plugs := pluginRegistry.GetPlugins()
 
 	if pluginRegistryFactoryFromGlooWrapper == nil {
@@ -760,7 +761,8 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions) error {
 
 	resourceHasher := translator.MustEnvoyCacheResourcesListToFnvHash
 
-	sharedTranslator := translator.NewTranslatorWithHasher(sslutils.NewSslConfigTranslator(), opts.Settings, pluginRegistryFactorySum(watchOpts.Ctx), resourceHasher)
+	t := translator.NewTranslatorWithHasher(sslutils.NewSslConfigTranslator(), opts.Settings, pluginRegistryFactorySum(watchOpts.Ctx), resourceHasher)
+
 	routeReplacingSanitizer, err := sanitizer.NewRouteReplacingSanitizer(opts.Settings.GetGloo().GetInvalidConfigPolicy())
 	if err != nil {
 		return err
