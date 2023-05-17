@@ -352,7 +352,7 @@ data:
         {{- with $spec.xdsConfig.rateLimitSettings }}
         rate_limit_settings:
         {{- range $key, $value := . }}
-        {{ $key }}: {{ $value }}
+          {{ $key }}: {{ $value }}
         {{- end }}
         {{- end }}
         grpc_services:
