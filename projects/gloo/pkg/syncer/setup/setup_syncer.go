@@ -3,6 +3,7 @@ package setup
 import (
 	"context"
 	"fmt"
+	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
 	"net"
 	"net/http"
 	"os"
@@ -11,8 +12,6 @@ import (
 	"time"
 
 	"github.com/solo-io/gloo/pkg/bootstrap/leaderelector"
-
-	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
 
 	"github.com/solo-io/gloo/projects/gloo/pkg/debug"
 
@@ -753,6 +752,7 @@ func RunGlooWithExtensions(opts bootstrap.Opts, extensions Extensions) error {
 		},
 		Hasher: resourceHasher,
 	}
+
 	var syncerExtensions []syncer.TranslatorSyncerExtension
 	for _, syncerExtensionFactory := range extensions.SyncerExtensions {
 		syncerExtension := syncerExtensionFactory(watchOpts.Ctx, syncerExtensionParams)
