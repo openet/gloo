@@ -44,8 +44,8 @@ spec:
   {{- if $spec.kind.deployment.replicas}}
   replicas: {{ $spec.kind.deployment.replicas }}
   {{- end}}
-  {{- end}}
   {{- end }}
+  {{- end}}
   selector:
     matchLabels:
       gloo: gateway-proxy
