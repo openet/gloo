@@ -224,12 +224,13 @@ global:
     envoy:
       image:
         repository: gloo-envoy-wrapper
+    ipv4Only: true
   istioSDS:
     enabled: false
   istioIntegration:
     labelInstallNamespace: false
     whitelistDiscovery: false
-    disableAutoinjection: false
+    disableAutoinjection: true
     enableIstioSidecarOnGateway: false
   # AddEnterpriseSettings and extauthCustomYaml control differences in the settings manifest between open source and enterprise
   AddEnterpriseSettings: false
