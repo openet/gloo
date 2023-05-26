@@ -13,6 +13,7 @@ func main() {
 	ctx := context.Background()
 	probes.StartLivenessProbeServer(ctx)
 	stats.ConditionallyStartStatsServer()
+	log.Printf("(1) In main.go, main method is called...")
 	if err := setup.Main(ctx); err != nil {
 		log.Fatalf("err in main: %v", err.Error())
 	}
