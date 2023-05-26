@@ -2,6 +2,7 @@ package setup
 
 import (
 	"context"
+	"github.com/solo-io/go-utils/contextutils"
 
 	"github.com/solo-io/gloo/pkg/utils/setuputils"
 	"github.com/solo-io/gloo/pkg/version"
@@ -9,6 +10,7 @@ import (
 )
 
 func Main(customCtx context.Context) error {
+	contextutils.LoggerFrom(customCtx).Info("(2) In setup.go of discovery fds, startSetupLoop method is being called...")
 	return setuputils.Main(setuputils.SetupOpts{
 		LoggerName:  "fds",
 		Version:     version.Version,

@@ -19,7 +19,7 @@ func Main(customCtx context.Context) error {
 }
 
 func startSetupLoop(ctx context.Context) error {
-	contextutils.LoggerFrom(ctx).Info("(2) In setup.go, startSetupLoop method is being called...")
+	contextutils.LoggerFrom(ctx).Info("(2) In setup.go of gloo, startSetupLoop method is being called...")
 	return setuputils.Main(setuputils.SetupOpts{
 		LoggerName:  "gloo",
 		Version:     version.Version,

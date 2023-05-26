@@ -120,8 +120,23 @@ func fileOrKubeSettingsClient(ctx context.Context, setupNamespace, settingsDir s
 }
 
 func startLeaderElection(ctx context.Context, settingsDir string, electionConfig *leaderelector.ElectionConfig) (leaderelector.Identity, error) {
-	contextutils.LoggerFrom(ctx).Infow("(4) electionConfig = ", electionConfig)
-	contextutils.LoggerFrom(ctx).Infow("(4) (settingsDir != \"\") = ", settingsDir != "")
+	if electionConfig == nil {
+		contextutils.LoggerFrom(ctx).Infow("(4) electionConfig is nil")
+	} else {
+		contextutils.LoggerFrom(ctx).Infow("(4) electionConfig is not nil")
+	}
+
+	if settingsDir != "" {
+		contextutils.LoggerFrom(ctx).Infow("(4) settingsDir is non-empty")
+	} else {
+		contextutils.LoggerFrom(ctx).Infow("(4) settingsDir is empty")
+	}
+
+	if leaderelector.IsDisabled() {
+		contextutils.LoggerFrom(ctx).Infow("(4) leaderelector is disabled")
+	} else {
+		contextutils.LoggerFrom(ctx).Infow("(4) leaderelector is not disabled")
+	}
 	contextutils.LoggerFrom(ctx).Infow("(4) leaderelector.IsDisabled() = ", leaderelector.IsDisabled())
 	if electionConfig == nil || settingsDir != "" || leaderelector.IsDisabled() {
 		// If a component does not contain election config, it does not support HA
