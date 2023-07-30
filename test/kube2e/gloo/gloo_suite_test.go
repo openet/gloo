@@ -7,14 +7,16 @@ import (
 	"testing"
 	"time"
 
-	glootestutils "github.com/solo-io/gloo/test/testutils"
-
 	"github.com/avast/retry-go"
-	"github.com/solo-io/gloo/projects/gloo/pkg/defaults"
-	"github.com/solo-io/k8s-utils/kubeutils"
 
+	"github.com/solo-io/gloo/test/services/envoy"
+
+	"github.com/solo-io/gloo/test/services"
+
+	"github.com/solo-io/gloo/projects/gloo/pkg/defaults"
 	"github.com/solo-io/gloo/test/helpers"
 	"github.com/solo-io/gloo/test/kube2e"
+	glootestutils "github.com/solo-io/gloo/test/testutils"
 	"github.com/solo-io/go-utils/testutils"
 	"github.com/solo-io/k8s-utils/testutils/helper"
 
@@ -41,11 +43,15 @@ var (
 
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	envoyFactory envoy.Factory
+	vaultFactory *services.VaultFactory
 )
 
 var _ = BeforeSuite(func() {
-	ctx, cancel = context.WithCancel(context.Background())
 	var err error
+
+	ctx, cancel = context.WithCancel(context.Background())
 	testHelper, err = kube2e.GetTestHelper(ctx, namespace)
 	Expect(err).NotTo(HaveOccurred())
 	skhelpers.RegisterPreFailHandler(helpers.KubeDumpOnFail(GinkgoWriter, testHelper.InstallNamespace))
@@ -55,20 +61,26 @@ var _ = BeforeSuite(func() {
 		installGloo()
 	}
 
-	cfg, err := kubeutils.GetConfig("", "")
-	Expect(err).NotTo(HaveOccurred())
+	resourceClientset, err = kube2e.NewDefaultKubeResourceClientSet(ctx)
+	Expect(err).NotTo(HaveOccurred(), "can create kube resource client set")
 
-	resourceClientset, err = kube2e.NewKubeResourceClientSet(ctx, cfg)
-	Expect(err).NotTo(HaveOccurred())
+	snapshotWriter = helpers.NewSnapshotWriter(resourceClientset).
+		WithWriteNamespace(testHelper.InstallNamespace).
+		// This isn't strictly necessary, but we use to ensure that WithRetryOptions behaves correctly
+		WithRetryOptions([]retry.Option{retry.Attempts(3)})
 
-	snapshotWriter = helpers.NewSnapshotWriter(resourceClientset, []retry.Option{})
+	envoyFactory = envoy.NewFactory()
+
+	vaultFactory, err = services.NewVaultFactory()
+	Expect(err).NotTo(HaveOccurred())
 })
 
 var _ = AfterSuite(func() {
+	defer cancel()
+
 	if glootestutils.ShouldTearDown() {
 		uninstallGloo()
 	}
-	cancel()
 })
 
 func installGloo() {

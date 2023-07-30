@@ -17,6 +17,7 @@ import (
 	v1_options "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/ssl"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
+	upstream_proxy_protocol "github.com/solo-io/gloo/projects/gloo/pkg/plugins/utils/upstreamproxyprotocol"
 	"github.com/solo-io/gloo/projects/gloo/pkg/utils"
 	"github.com/solo-io/gloo/projects/gloo/pkg/xds"
 	"github.com/solo-io/go-utils/contextutils"
@@ -31,6 +32,7 @@ func (t *translatorInstance) computeClusters(
 	reports reporter.ResourceReports,
 	upstreamRefKeyToEndpoints map[string][]*v1.Endpoint,
 	proxy *v1.Proxy,
+	shouldEnforceNamespaceMatch bool,
 ) ([]*envoy_config_cluster_v3.Cluster, map[*envoy_config_cluster_v3.Cluster]*v1.Upstream) {
 
 	ctx, span := trace.StartSpan(params.Ctx, "gloo.translator.computeClusters")
@@ -45,7 +47,7 @@ func (t *translatorInstance) computeClusters(
 
 	clusterToUpstreamMap := make(map[*envoy_config_cluster_v3.Cluster]*v1.Upstream)
 	for _, upstream := range upstreams {
-		cluster := t.computeCluster(params, upstream, upstreamRefKeyToEndpoints, reports)
+		cluster := t.computeCluster(params, upstream, upstreamRefKeyToEndpoints, reports, shouldEnforceNamespaceMatch)
 		clusterToUpstreamMap[cluster] = upstream
 		clusters = append(clusters, cluster)
 	}
@@ -58,9 +60,10 @@ func (t *translatorInstance) computeCluster(
 	upstream *v1.Upstream,
 	upstreamRefKeyToEndpoints map[string][]*v1.Endpoint,
 	reports reporter.ResourceReports,
+	shouldEnforceNamespaceMatch bool,
 ) *envoy_config_cluster_v3.Cluster {
 	params.Ctx = contextutils.WithLogger(params.Ctx, upstream.GetMetadata().GetName())
-	out := t.initializeCluster(upstream, upstreamRefKeyToEndpoints, reports, &params.Snapshot.Secrets)
+	out := t.initializeCluster(upstream, upstreamRefKeyToEndpoints, reports, &params.Snapshot.Secrets, shouldEnforceNamespaceMatch)
 
 	for _, plugin := range t.pluginRegistry.GetUpstreamPlugins() {
 		if err := plugin.ProcessUpstream(params, upstream, out); err != nil {
@@ -79,8 +82,9 @@ func (t *translatorInstance) initializeCluster(
 	upstreamRefKeyToEndpoints map[string][]*v1.Endpoint,
 	reports reporter.ResourceReports,
 	secrets *v1.SecretList,
+	shouldEnforceNamespaceMatch bool,
 ) *envoy_config_cluster_v3.Cluster {
-	hcConfig, err := createHealthCheckConfig(upstream, secrets)
+	hcConfig, err := createHealthCheckConfig(upstream, secrets, shouldEnforceNamespaceMatch)
 	if err != nil {
 		reports.AddError(upstream, err)
 	}
@@ -127,6 +131,17 @@ func (t *translatorInstance) initializeCluster(
 			}
 		}
 	}
+	// proxyprotocol may be wiped by some plugins that transform transport sockets
+	// see static and failover at time of writing.
+	if upstream.GetProxyProtocolVersion() != nil {
+
+		tp, err := upstream_proxy_protocol.WrapWithPProtocol(out.GetTransportSocket(), upstream.GetProxyProtocolVersion().GetValue())
+		if err != nil {
+			reports.AddError(upstream, err)
+		} else {
+			out.TransportSocket = tp
+		}
+	}
 
 	// set Type = EDS if we have endpoints for the upstream
 	if eps, ok := upstreamRefKeyToEndpoints[upstream.GetMetadata().Ref().Key()]; ok && len(eps) > 0 {
@@ -149,7 +164,7 @@ var (
 	minimumDnsRefreshRate = prototime.DurationToProto(time.Millisecond * 1)
 )
 
-func createHealthCheckConfig(upstream *v1.Upstream, secrets *v1.SecretList) ([]*envoy_config_core_v3.HealthCheck, error) {
+func createHealthCheckConfig(upstream *v1.Upstream, secrets *v1.SecretList, shouldEnforceNamespaceMatch bool) ([]*envoy_config_core_v3.HealthCheck, error) {
 	if upstream == nil {
 		return nil, nil
 	}
@@ -165,7 +180,8 @@ func createHealthCheckConfig(upstream *v1.Upstream, secrets *v1.SecretList) ([]*
 		if hc.GetHealthChecker() == nil {
 			return nil, NilFieldError(fmt.Sprintf("HealthCheck[%d].HealthChecker", i))
 		}
-		converted, err := api_conversion.ToEnvoyHealthCheck(hc, secrets)
+		options := api_conversion.HeaderSecretOptions{UpstreamNamespace: upstream.GetMetadata().GetNamespace(), EnforceNamespaceMatch: shouldEnforceNamespaceMatch}
+		converted, err := api_conversion.ToEnvoyHealthCheck(hc, secrets, options)
 		if err != nil {
 			return nil, err
 		}

@@ -52,7 +52,7 @@ spec:
 EOF
 {{< /highlight >}}
 
-The source code for the Http service can be found in the Gloo Edge repository [here](https://github.com/solo-io/gloo/tree/master/docs/examples/http-passthrough-auth).
+The source code for the Http service can be found in the Gloo Edge repository [here](https://github.com/solo-io/gloo/tree/main/docs/examples/http-passthrough-auth).
 
 Once we create the authentication service, we also want to apply the following Service to assign it a static cluster IP.
 {{< highlight shell >}}
@@ -60,7 +60,7 @@ kubectl apply -f - <<EOF
 apiVersion: v1
 kind: Service
 metadata:
-  name: example-grpc-auth-service
+  name: example-http-auth-service
   labels:
       app: http-extauth
 spec:
