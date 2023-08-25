@@ -144,7 +144,7 @@ rules:
   resources: ["customresourcedefinitions"]
   verbs: ["get", "list"]
 ---
-kind: ClusterRoleBinding
+kind: {{ include "gloo.roleKind" . }}Binding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: gloo-resource-migration{{ include "gloo.rbacNameSuffix" . }}

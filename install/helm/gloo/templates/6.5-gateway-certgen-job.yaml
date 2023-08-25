@@ -87,7 +87,7 @@ metadata:
 
 ---
 
-kind: ClusterRoleBinding
+kind: {{ include "gloo.roleKind" . }}Binding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: gloo-gateway-vwc-update{{ include "gloo.rbacNameSuffix" . }}
