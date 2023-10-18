@@ -108,7 +108,7 @@ func generateChartYaml(version string) error {
 		return err
 	}
 
-	chart.Version = "1.14.12-OPENET"
+	chart.Version = "1.14.13-OPENET-SNAPSHOT"
 
 	return writeYaml(&chart, chartOutput)
 }
