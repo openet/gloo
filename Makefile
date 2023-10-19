@@ -89,7 +89,7 @@ else
   endif
 endif
 
-ENVOY_GLOO_IMAGE ?= quay.io/solo-io/envoy-gloo:1.25.9-patch1
+ENVOY_GLOO_IMAGE ?= quay.io/solo-io/envoy-gloo:1.25.9-patch2
 
 # The full SHA of the currently checked out commit
 CHECKED_OUT_SHA := $(shell git rev-parse HEAD)
@@ -184,11 +184,14 @@ fmt:
 fmt-changed:
 	git diff --name-only | grep '.*.go$$' | xargs -- goimports -w
 
-# must be a seperate target so that make waits for it to complete before moving on
+# must be a separate target so that make waits for it to complete before moving on
 .PHONY: mod-download
 mod-download:
 	go mod download all
 
+.PHONY: mod-tidy
+mod-tidy:
+	go mod tidy
 
 # https://github.com/go-modules-by-example/index/blob/master/010_tools/README.md
 .PHONY: install-go-tools

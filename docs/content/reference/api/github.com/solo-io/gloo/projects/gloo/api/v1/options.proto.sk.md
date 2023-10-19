@@ -109,12 +109,14 @@ connections that rarely cycle (e.g., service mesh gRPC egress).
 
 ```yaml
 "maxDirectResponseBodySizeBytes": .google.protobuf.UInt32Value
+"mostSpecificHeaderMutationsWins": .google.protobuf.BoolValue
 
 ```
 
 | Field | Type | Description |
 | ----- | ---- | ----------- | 
 | `maxDirectResponseBodySizeBytes` | [.google.protobuf.UInt32Value](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/u-int-32-value) | The maximum bytes of the response direct response body size. If not specified the default is 4096. Please refer to the [Envoy documentation](https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route.proto#envoy-v3-api-field-config-route-v3-routeconfiguration-max-direct-response-body-size-bytes) for more details about the `max_direct_response_body_size_bytes` attribute. |
+| `mostSpecificHeaderMutationsWins` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | By default, headers that should be added/removed are evaluated from most to least specific. To allow setting overrides at the route or virtual host level, this order can be reversed by setting this option to true. Refer to the [Envoy documentation](https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/route/v3/route.proto#envoy-v3-api-field-config-route-v3-routeconfiguration-most-specific-header-mutations-wins) for more details. |
 
 
 
@@ -280,6 +282,7 @@ to be usable by Gloo. (plugins currently need to be compiled into Gloo)
 "hostRewrite": string
 "autoHostRewrite": .google.protobuf.BoolValue
 "hostRewritePathRegex": .solo.io.envoy.type.matcher.v3.RegexMatchAndSubstitute
+"appendXForwardedHost": .google.protobuf.BoolValue
 "cors": .cors.options.gloo.solo.io.CorsPolicy
 "lbHash": .lbhash.options.gloo.solo.io.RouteActionHashConfig
 "upgrades": []protocol_upgrade.options.gloo.solo.io.ProtocolUpgradeConfig
@@ -320,6 +323,7 @@ to be usable by Gloo. (plugins currently need to be compiled into Gloo)
 | `hostRewrite` | `string` | Indicates that during forwarding, the host header will be swapped with this value. Only one of `hostRewrite`, `autoHostRewrite`, or `hostRewritePathRegex` can be set. |
 | `autoHostRewrite` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Enable/Disable auto host re-write. Indicates that the host header will be swapped with the hostname of the upstream host. This setting is only honored for upstreams that use DNS resolution (i.e., their generated Envoy cluster is of type STRICT_DNS or LOGICAL_DNS -- think aws, azure, or static upstreams with hostnames). Only one of `autoHostRewrite`, `hostRewrite`, or `hostRewritePathRegex` can be set. |
 | `hostRewritePathRegex` | [.solo.io.envoy.type.matcher.v3.RegexMatchAndSubstitute](../../external/envoy/type/matcher/v3/regex.proto.sk/#regexmatchandsubstitute) | Indicates that during forwarding, the host header will be swapped with the result of the regex substitution executed on path value with query and fragment removed. Only one of `hostRewritePathRegex`, `hostRewrite`, or `autoHostRewrite` can be set. |
+| `appendXForwardedHost` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | If true and there is a host rewrite, appends the x-forwarded-host header to requests. |
 | `cors` | [.cors.options.gloo.solo.io.CorsPolicy](../options/cors/cors.proto.sk/#corspolicy) | Defines a CORS policy for the route If a CORS policy is also defined on the route's virtual host, the policies are merged. |
 | `lbHash` | [.lbhash.options.gloo.solo.io.RouteActionHashConfig](../options/lbhash/lbhash.proto.sk/#routeactionhashconfig) | For routes served by a hashing load balancer, this defines the input to the hash key Gloo configures Envoy with the first available RouteActionHashConfig among the following ordered list of providers: - route, upstream, virtual service. |
 | `upgrades` | [[]protocol_upgrade.options.gloo.solo.io.ProtocolUpgradeConfig](../options/protocol_upgrade/protocol_upgrade.proto.sk/#protocolupgradeconfig) | Route configuration for protocol upgrade requests. |

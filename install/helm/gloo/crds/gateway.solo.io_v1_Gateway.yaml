@@ -76,12 +76,10 @@ spec:
                                 type: string
                             type: object
                           maxPayloadSize:
-                            properties:
-                              value:
-                                format: int64
-                                type: integer
-                                x-kubernetes-int-or-string: true
-                            type: object
+                            maximum: 4294967295
+                            minimum: 0
+                            nullable: true
+                            type: integer
                           timeout:
                             type: string
                         type: object
@@ -594,6 +592,9 @@ spec:
                             nullable: true
                             type: boolean
                           allowChunkedLength:
+                            nullable: true
+                            type: boolean
+                          appendXForwardedPort:
                             nullable: true
                             type: boolean
                           codecType:
@@ -1117,6 +1118,9 @@ spec:
                             nullable: true
                             type: boolean
                           allowChunkedLength:
+                            nullable: true
+                            type: boolean
+                          appendXForwardedPort:
                             nullable: true
                             type: boolean
                           codecType:
@@ -1658,12 +1662,10 @@ spec:
                                           type: string
                                       type: object
                                     maxPayloadSize:
-                                      properties:
-                                        value:
-                                          format: int64
-                                          type: integer
-                                          x-kubernetes-int-or-string: true
-                                      type: object
+                                      maximum: 4294967295
+                                      minimum: 0
+                                      nullable: true
+                                      type: integer
                                     timeout:
                                       type: string
                                   type: object
@@ -2176,6 +2178,9 @@ spec:
                                       nullable: true
                                       type: boolean
                                     allowChunkedLength:
+                                      nullable: true
+                                      type: boolean
+                                    appendXForwardedPort:
                                       nullable: true
                                       type: boolean
                                     codecType:
@@ -4565,6 +4570,9 @@ spec:
                     minimum: 0
                     nullable: true
                     type: integer
+                  mostSpecificHeaderMutationsWins:
+                    nullable: true
+                    type: boolean
                 type: object
               ssl:
                 type: boolean

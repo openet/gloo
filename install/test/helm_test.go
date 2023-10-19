@@ -93,6 +93,7 @@ var _ = Describe("Helm Test", func() {
 			}
 			selector         map[string]string
 			testManifest     TestManifest
+			renderErr        error
 			statsAnnotations map[string]string
 		)
 
@@ -114,8 +115,9 @@ var _ = Describe("Helm Test", func() {
 		}
 
 		BeforeEach(func() {
-			// Ensure that tests do not share manifests by accident
+			// Ensure that tests do not share manifests or renderErrs by accident
 			testManifest = nil
+			renderErr = nil
 		})
 
 		Describe(rendererTestCase.rendererName, func() {
@@ -124,6 +126,12 @@ var _ = Describe("Helm Test", func() {
 				tm, err := rendererTestCase.renderer.RenderManifest(namespace, values)
 				ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to render manifest")
 				testManifest = tm
+			}
+
+			expectRenderError := func(namespace string, values helmValues) {
+				_, err := rendererTestCase.renderer.RenderManifest(namespace, values)
+				ExpectWithOffset(1, err).To(HaveOccurred())
+				renderErr = err
 			}
 
 			// helper for passing a values file
@@ -203,6 +211,73 @@ var _ = Describe("Helm Test", func() {
 						Expect(constructResourceID(resource1)).NotTo(Equal(constructResourceID(resource2)))
 					}
 				}
+			})
+
+			It("does not create the gloo pdb by default", func() {
+				prepareMakefile(namespace, helmValues{})
+
+				testManifest.ExpectUnstructured("PodDisruptionBudget", namespace, "gloo-pdb").To(BeNil())
+			})
+
+			It("can create gloo pdb with minAvailable", func() {
+
+				prepareMakefile(namespace, helmValues{
+					valuesArgs: []string{
+						"gloo.podDisruptionBudget.minAvailable='2'",
+					},
+				})
+
+				pdb := makeUnstructured(`
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gloo-pdb
+  namespace: gloo-system
+spec:
+  minAvailable: '2'
+  selector:
+    matchLabels:
+      gloo: gloo
+`)
+
+				testManifest.ExpectUnstructured("PodDisruptionBudget", namespace, "gloo-pdb").To(BeEquivalentTo(pdb))
+			})
+
+			It("can create gloo pdb with maxUnavailable", func() {
+
+				prepareMakefile(namespace, helmValues{
+					valuesArgs: []string{
+						"gloo.podDisruptionBudget.maxUnavailable='2'",
+					},
+				})
+
+				pdb := makeUnstructured(`
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: gloo-pdb
+  namespace: gloo-system
+spec:
+  maxUnavailable: '2'
+  selector:
+    matchLabels:
+      gloo: gloo
+`)
+
+				testManifest.ExpectUnstructured("PodDisruptionBudget", namespace, "gloo-pdb").To(BeEquivalentTo(pdb))
+			})
+
+			It("errors rendering when gloo pdb has both maxUnavailable and minAvailable set", func() {
+
+				expectRenderError(namespace, helmValues{
+					valuesArgs: []string{
+						"gloo.podDisruptionBudget.maxUnavailable='2'",
+						"gloo.podDisruptionBudget.minAvailable='2'",
+					},
+				})
+
+				Expect(renderErr).NotTo(BeNil())
+				Expect(renderErr.Error()).To(ContainSubstring("gloo PDB values minAvailable and maxUnavailable are mutually exclusive"))
 			})
 
 			Context("stats server settings", func() {
@@ -2056,7 +2131,7 @@ spec:
 
 						prepareMakefile(namespace, helmValues{
 							valuesArgs: []string{
-								"gatewayProxies.gatewayProxy.podDisruptionBudget.minAvailable=2",
+								"gatewayProxies.gatewayProxy.podDisruptionBudget.minAvailable='2'",
 							},
 						})
 
@@ -2067,7 +2142,7 @@ metadata:
   name: gateway-proxy-pdb
   namespace: gloo-system
 spec:
-  minAvailable: 2
+  minAvailable: '2'
   selector:
     matchLabels:
       gateway-proxy-id: gateway-proxy
@@ -2080,7 +2155,7 @@ spec:
 
 						prepareMakefile(namespace, helmValues{
 							valuesArgs: []string{
-								"gatewayProxies.gatewayProxy.podDisruptionBudget.maxUnavailable=2",
+								"gatewayProxies.gatewayProxy.podDisruptionBudget.maxUnavailable='2'",
 							},
 						})
 
@@ -2091,7 +2166,7 @@ metadata:
   name: gateway-proxy-pdb
   namespace: gloo-system
 spec:
-  maxUnavailable: 2
+  maxUnavailable: '2'
   selector:
     matchLabels:
       gateway-proxy-id: gateway-proxy
@@ -2104,8 +2179,8 @@ spec:
 
 						prepareMakefile(namespace, helmValues{
 							valuesArgs: []string{
-								"gatewayProxies.gatewayProxy.podDisruptionBudget.maxUnavailable=2",
-								"gatewayProxies.gatewayProxyTwo.podDisruptionBudget.maxUnavailable=2",
+								"gatewayProxies.gatewayProxy.podDisruptionBudget.maxUnavailable='2'",
+								"gatewayProxies.gatewayProxyTwo.podDisruptionBudget.maxUnavailable='2'",
 							},
 						})
 
@@ -2116,7 +2191,7 @@ metadata:
   name: %s-pdb
   namespace: gloo-system
 spec:
-  maxUnavailable: 2
+  maxUnavailable: '2'
   selector:
     matchLabels:
       gateway-proxy-id: %s
@@ -4279,7 +4354,7 @@ metadata:
   namespace: ` + namespace + `
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
-    "helm.sh/hook-delete-policy": "hook-succeeded"
+    "helm.sh/hook-delete-policy": before-hook-creation
     "helm.sh/hook-weight": "10"
 spec:
   ttlSecondsAfterFinished: 60
@@ -4828,6 +4903,18 @@ metadata:
 							},
 						})
 
+					})
+
+					It("supports deploying the fips envoy image", func() {
+						discoveryDeployment.Spec.Template.Spec.Containers[0].Image = "quay.io/solo-io/discovery-ee-fips:" + version
+						prepareMakefile(namespace, helmValues{
+							valuesArgs: []string{
+								"global.image.fips=true",
+								"discovery.deployment.image.repository=discovery-ee",
+							},
+						})
+
+						testManifest.ExpectDeploymentAppsV1(discoveryDeployment)
 					})
 
 					It("can set log level env var", func() {
@@ -5759,6 +5846,11 @@ metadata:
 							if u.GetKind() == kind && u.GetName() == resourceName {
 								a := getFieldFromUnstructured(u, append(prefixPath, "spec", "ttlSecondsAfterFinished")...)
 								Expect(a).To(BeNil())
+								if kind == "Job" {
+									helmHookDeletePolicy, ok := u.GetAnnotations()["helm.sh/hook-delete-policy"]
+									Expect(ok).To(BeTrue())
+									Expect(helmHookDeletePolicy).To(ContainSubstring("hook-succeeded"))
+								}
 								return true
 							}
 							return false
@@ -5771,7 +5863,7 @@ metadata:
 				)
 
 				DescribeTable("Setting setTtlAfterFinished=true includes ttlSecondsAfterFinished on Jobs",
-					func(kind string, resourceName string, jobValuesPrefix string, extraArgs ...string) {
+					func(kind string, resourceName string, jobValuesPrefix string, expectAnnotation bool, extraArgs ...string) {
 						prepareMakefile(namespace, helmValues{
 							valuesArgs: append([]string{
 								jobValuesPrefix + ".setTtlAfterFinished=true",
@@ -5786,15 +5878,59 @@ metadata:
 							if u.GetKind() == kind && u.GetName() == resourceName {
 								a := getFieldFromUnstructured(u, append(prefixPath, "spec", "ttlSecondsAfterFinished")...)
 								Expect(a).To(Equal(int64(TTL_SECONDS_AFTER_FINISHED)))
+								if kind == "Job" {
+									helmHookDeletePolicy, ok := u.GetAnnotations()["helm.sh/hook-delete-policy"]
+									if expectAnnotation {
+										Expect(ok).To(BeTrue())
+										Expect(helmHookDeletePolicy).NotTo(ContainSubstring("hook-succeeded"))
+									} else {
+										Expect(ok).To(BeFalse())
+									}
+								}
 								return true
 							}
 							return false
 						})
 						Expect(resources.NumResources()).To(Equal(1))
 					},
-					Entry("gateway certgen job", "Job", "gateway-certgen", "gateway.certGenJob"),
-					Entry("mtls certgen job", "Job", "gloo-mtls-certgen", "gateway.certGenJob", "global.glooMtls.enabled=true"),
-					Entry("mtls certgen cronjob", "CronJob", "gloo-mtls-certgen-cronjob", "gateway.certGenJob", "global.glooMtls.enabled=true", "gateway.certGenJob.cron.enabled=true"),
+					Entry("gateway certgen job", "Job", "gateway-certgen", "gateway.certGenJob", true),
+					Entry("mtls certgen job", "Job", "gloo-mtls-certgen", "gateway.certGenJob", false, "global.glooMtls.enabled=true"),
+					Entry("mtls certgen cronjob", "CronJob", "gloo-mtls-certgen-cronjob", "gateway.certGenJob", false, "global.glooMtls.enabled=true", "gateway.certGenJob.cron.enabled=true"),
+				)
+
+				DescribeTable("When setTtlAfterFinished is unset, includes ttlSecondsAfterFinished on Jobs",
+					func(kind string, resourceName string, jobValuesPrefix string, expectAnnotation bool, extraArgs ...string) {
+						prepareMakefile(namespace, helmValues{
+							valuesArgs: append([]string{
+								jobValuesPrefix + ".ttlSecondsAfterFinished=" + strconv.Itoa(TTL_SECONDS_AFTER_FINISHED),
+							}, extraArgs...),
+						})
+						resources := testManifest.SelectResources(func(u *unstructured.Unstructured) bool {
+							var prefixPath []string
+							if kind == "CronJob" {
+								prefixPath = []string{"spec", "jobTemplate"}
+							}
+							if u.GetKind() == kind && u.GetName() == resourceName {
+								a := getFieldFromUnstructured(u, append(prefixPath, "spec", "ttlSecondsAfterFinished")...)
+								Expect(a).To(Equal(int64(TTL_SECONDS_AFTER_FINISHED)))
+								if kind == "Job" {
+									helmHookDeletePolicy, ok := u.GetAnnotations()["helm.sh/hook-delete-policy"]
+									if expectAnnotation {
+										Expect(ok).To(BeTrue())
+										Expect(helmHookDeletePolicy).NotTo(ContainSubstring("hook-succeeded"))
+									} else if resourceName == "gloo-mtls-certgen" {
+										Expect(ok).To(BeFalse())
+									}
+								}
+								return true
+							}
+							return false
+						})
+						Expect(resources.NumResources()).To(Equal(1))
+					},
+					Entry("gateway certgen job", "Job", "gateway-certgen", "gateway.certGenJob", true),
+					Entry("mtls certgen job", "Job", "gloo-mtls-certgen", "gateway.certGenJob", false, "global.glooMtls.enabled=true"),
+					Entry("mtls certgen cronjob", "CronJob", "gloo-mtls-certgen-cronjob", "gateway.certGenJob", false, "global.glooMtls.enabled=true", "gateway.certGenJob.cron.enabled=true"),
 				)
 
 				DescribeTable("by default, activeDeadlineSeconds is unset on Jobs",
@@ -6331,17 +6467,64 @@ metadata:
 			})
 
 			Context("Kube GatewayKube overrides", func() {
-				It("httpsGatewayKubeOverride allows to override ssl true value with false", func() {
+				It("can override values on default Gateways", func() {
 					prepareMakefile(namespace, helmValues{
-						valuesArgs: []string{"gatewayProxies.gatewayProxy.gatewaySettings.httpsGatewayKubeOverride.spec.ssl=false"},
+						valuesArgs: []string{
+							"gatewayProxies.gatewayProxy.gatewaySettings.httpGatewayKubeOverride.spec.bindPort=1234",
+							"gatewayProxies.gatewayProxy.gatewaySettings.httpsGatewayKubeOverride.spec.ssl=false",
+							"gatewayProxies.gatewayProxy.failover.enabled=true",
+							"gatewayProxies.gatewayProxy.failover.kubeResourceOverride.spec.bindPort=5678",
+						},
 					})
+					// expected gateways
+					gw := makeUnstructuredGateway(namespace, defaults.GatewayProxyName, false)
+					unstructured.SetNestedField(gw.Object,
+						int64(1234),
+						"spec", "bindPort")
 					gwSsl := makeUnstructuredGateway(namespace, defaults.GatewayProxyName, true)
 					unstructured.SetNestedField(gwSsl.Object,
 						false,
 						"spec", "ssl")
+					gwFailover := makeUnstructuredFailoverGateway(namespace, defaults.GatewayProxyName)
+					unstructured.SetNestedField(gwFailover.Object,
+						int64(5678),
+						"spec", "bindPort")
+
 					assertCustomResourceManifest(map[string]types.GomegaMatcher{
-						defaults.GatewayProxyName:                    Not(BeNil()),
-						getSslGatewayName(defaults.GatewayProxyName): BeEquivalentTo(gwSsl),
+						defaults.GatewayProxyName:                         BeEquivalentTo(gw),
+						getSslGatewayName(defaults.GatewayProxyName):      BeEquivalentTo(gwSsl),
+						getFailoverGatewayName(defaults.GatewayProxyName): BeEquivalentTo(gwFailover),
+					})
+				})
+
+				It("can override values on custom Gateways", func() {
+					prepareMakefile(namespace, helmValues{
+						valuesArgs: []string{
+							"gatewayProxies.gatewayProxy.disabled=true",
+							"gatewayProxies.anotherProxy.gatewaySettings.httpGatewayKubeOverride.spec.bindAddress=something",
+							"gatewayProxies.anotherProxy.gatewaySettings.httpsGatewayKubeOverride.spec.proxyNames[0]=new-proxy",
+							"gatewayProxies.anotherProxy.failover.enabled=true",
+							"gatewayProxies.anotherProxy.failover.kubeResourceOverride.spec.bindPort=5678",
+						},
+					})
+					// expected gateways
+					anotherGw := makeUnstructuredGateway(namespace, "another-proxy", false)
+					unstructured.SetNestedField(anotherGw.Object,
+						"something",
+						"spec", "bindAddress")
+					anotherGwSsl := makeUnstructuredGateway(namespace, "another-proxy", true)
+					unstructured.SetNestedStringSlice(anotherGwSsl.Object,
+						[]string{"new-proxy"},
+						"spec", "proxyNames")
+					anotherGwFailover := makeUnstructuredFailoverGateway(namespace, "another-proxy")
+					unstructured.SetNestedField(anotherGwFailover.Object,
+						int64(5678),
+						"spec", "bindPort")
+
+					assertCustomResourceManifest(map[string]types.GomegaMatcher{
+						"another-proxy":                         BeEquivalentTo(anotherGw),
+						getSslGatewayName("another-proxy"):      BeEquivalentTo(anotherGwSsl),
+						getFailoverGatewayName("another-proxy"): BeEquivalentTo(anotherGwFailover),
 					})
 				})
 			})
@@ -6660,6 +6843,32 @@ spec:
   - ` + name + `
   ssl: ` + strconv.FormatBool(ssl) + `
   useProxyProto: false
+`)
+}
+
+func makeUnstructuredFailoverGateway(namespace string, proxyName string) *unstructured.Unstructured {
+	return makeUnstructured(`
+apiVersion: gateway.solo.io/v1
+kind: Gateway
+metadata:
+  labels:
+    app: gloo
+  name: ` + getFailoverGatewayName(proxyName) + `
+  namespace: ` + namespace + `
+spec:
+  bindAddress: '::'
+  bindPort: 15443
+  proxyNames:
+  - ` + proxyName + `
+  tcpGateway:
+    tcpHosts:
+    - destination:
+        forwardSniClusterName: {}
+      name: failover
+      sslConfig:
+        secretRef:
+          name: failover-downstream
+          namespace: ` + namespace + `
 `)
 }
 
