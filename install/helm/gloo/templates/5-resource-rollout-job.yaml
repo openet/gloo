@@ -146,7 +146,6 @@ subjects:
   name: gloo-resource-rollout
   namespace: {{ .Release.Namespace }}
 ---
-{{- if not .Values.global.glooRbac.namespaced -}}
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
@@ -182,6 +181,5 @@ subjects:
 - kind: ServiceAccount
   name: gloo-resource-rollout
   namespace: {{ .Release.Namespace }}
-{{- end -}}
 {{- end -}}{{/* if .Values.global.glooRbac.create */}}
 {{- end }}{{/* if .Values.gateway.rolloutJob.enabled  */}}

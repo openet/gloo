@@ -1,5 +1,3 @@
-{{- if not .Values.global.glooRbac.namespaced -}}
-
 {{- define "gateway.validationWebhookSpec" }}
 {{- if and .Values.gateway.enabled .Values.gateway.validation.enabled .Values.gateway.validation.webhook.enabled }}
 apiVersion: admissionregistration.k8s.io/v1
@@ -76,5 +74,3 @@ specific resources, we will manage the resources that the webhook receives via t
 {{- end -}} {{/* if .Values.gateway.validation.webhook */}}
 {{- end -}} {{/* if .Values.gateway.validation */}}
 {{- include "gloo.util.merge" (list . $kubeResourceOverride "gateway.validationWebhookSpec") -}}
-
-{{- end -}}{{/*- if not .Values.global.glooRbac.namespaced -*/}}
