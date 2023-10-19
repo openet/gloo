@@ -87,7 +87,6 @@ metadata:
 
 ---
 
-{{- if not .Values.global.glooRbac.namespaced -}}
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
@@ -108,7 +107,6 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 
 ---
-{{- end -}}{{/*- if not .Values.global.glooRbac.namespaced -*/}}
 
 kind: {{ include "gloo.roleKind" . }}Binding
 apiVersion: rbac.authorization.k8s.io/v1
@@ -134,7 +132,6 @@ roleRef:
 
 ---
 
-{{- if not .Values.global.glooRbac.namespaced -}}
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
@@ -151,7 +148,6 @@ rules:
   verbs: ["get", "update"]
 
 ---
-{{- end -}}{{/*- if not .Values.global.glooRbac.namespaced -*/}}
 
 kind: {{ include "gloo.roleKind" . }}
 apiVersion: rbac.authorization.k8s.io/v1
