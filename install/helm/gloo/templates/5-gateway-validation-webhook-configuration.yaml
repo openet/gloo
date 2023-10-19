@@ -1,4 +1,5 @@
 {{- define "gateway.validationWebhookSpec" }}
+{{- if not .Values.global.glooRbac.namespaced -}}
 {{- if and .Values.gateway.enabled .Values.gateway.validation.enabled .Values.gateway.validation.webhook.enabled }}
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
@@ -64,6 +65,7 @@ specific resources, we will manage the resources that the webhook receives via t
   failurePolicy: {{ .Values.gateway.validation.failurePolicy }}
 {{- end }} {{/* if .Values.gateway.validation.failurePolicy */}}
 {{- end }} {{/* if and .Values.gateway.enabled .Values.gateway.validation.enabled .Values.gateway.validation.webhook.enabled */}}
+{{- end -}}{{/*- if not .Values.global.glooRbac.namespaced -*/}}
 {{- end }} {{/* define "gateway.validationWebhookSpec" */}}
 
 {{/* Render template with yaml overrides */}}
