@@ -50,7 +50,7 @@ weight: 5
 
 
 
-##### Source File: [github.com/solo-io/gloo/projects/gloo/api/v1/settings.proto](https://github.com/solo-io/gloo/blob/master/projects/gloo/api/v1/settings.proto)
+##### Source File: [github.com/solo-io/gloo/projects/gloo/api/v1/settings.proto](https://github.com/solo-io/gloo/blob/main/projects/gloo/api/v1/settings.proto)
 
 
 
@@ -98,6 +98,7 @@ Represents global settings for all the Gloo components.
 "upstreamOptions": .gloo.solo.io.UpstreamOptions
 "consoleOptions": .gloo.solo.io.ConsoleOptions
 "graphqlOptions": .gloo.solo.io.GraphqlOptions
+"extProc": .extproc.options.gloo.solo.io.Settings
 
 ```
 
@@ -138,6 +139,7 @@ Represents global settings for all the Gloo components.
 | `upstreamOptions` | [.gloo.solo.io.UpstreamOptions](../settings.proto.sk/#upstreamoptions) | Default configuration to use for upstreams, when not provided by specific upstream When these properties are defined on an upstream, this configuration will be ignored. |
 | `consoleOptions` | [.gloo.solo.io.ConsoleOptions](../settings.proto.sk/#consoleoptions) | Enterprise-only: Settings for the Gloo Edge Enterprise Console (UI). |
 | `graphqlOptions` | [.gloo.solo.io.GraphqlOptions](../settings.proto.sk/#graphqloptions) | Enterprise-only: GraphQL settings. |
+| `extProc` | [.extproc.options.gloo.solo.io.Settings](../enterprise/options/extproc/extproc.proto.sk/#settings) | Enterprise-only: External Processing filter settings. These settings are used as defaults globally, and can be overridden by HttpListenerOptions, VirtualHostOptions, or RouteOptions. |
 
 
 
@@ -278,8 +280,8 @@ For more info see https://developer.hashicorp.com/vault/docs/auth/aws
 | `region` | `string` | The AWS region to use for the login attempt. |
 | `iamServerIdHeader` | `string` | The IAM Server ID Header required to be included in the request. |
 | `mountPath` | `string` | The Vault path on which the AWS auth is mounted. |
-| `accessKeyId` | `string` | The Access Key ID as provided by the security credentials on the AWS IAM resource. |
-| `secretAccessKey` | `string` | The Secret Access Key as provided by the security credentials on the AWS IAM resource. |
+| `accessKeyId` | `string` | The Access Key ID as provided by the security credentials on the AWS IAM resource. Optional: In cases such as receiving temporary credentials through assumed roles with AWS Security Token Service (STS) or IAM Roles for Service Accounts (IRSA), this field can be omitted. https://developer.hashicorp.com/vault/docs/auth/aws#iam-authentication-inferences. |
+| `secretAccessKey` | `string` | The Secret Access Key as provided by the security credentials on the AWS IAM resource. Optional: In cases such as receiving temporary credentials through assumed roles with AWS Security Token Service (STS) or IAM Roles for Service Accounts (IRSA), this field can be omitted. https://developer.hashicorp.com/vault/docs/auth/aws#iam-authentication-inferences. |
 | `sessionToken` | `string` | The Session Token as provided by the security credentials on the AWS IAM resource. |
 
 
@@ -809,6 +811,7 @@ Settings specific to the Gateway controller
 "persistProxySpec": .google.protobuf.BoolValue
 "enableGatewayController": .google.protobuf.BoolValue
 "isolateVirtualHostsBySslConfig": .google.protobuf.BoolValue
+"translateEmptyGateways": .google.protobuf.BoolValue
 
 ```
 
@@ -823,6 +826,7 @@ Settings specific to the Gateway controller
 | `persistProxySpec` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Set this to persist the Proxy CRD to etcd By default, proxies are kept in memory to improve performance. Proxies can be persisted to etcd to allow external tools and other pods to read the contents the Proxy CRD. |
 | `enableGatewayController` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | This is set based on the install mode. It indicates to gloo whether or not it should run the gateway translations and validation. |
 | `isolateVirtualHostsBySslConfig` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | If set, group virtual hosts by matching ssl config, and isolate them on separate filter chains The default behavior is to aggregate all virtual hosts, and expose them on identical filter chains, each with a FilterChainMatch that corresponds to the ssl config. Individual Gateways can override this behavior by configuring the "gateway.solo.io/isolate_vhost" annotation to be a truthy ("true", "false") value. |
+| `translateEmptyGateways` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | This field is a no-op for now. |
 
 
 

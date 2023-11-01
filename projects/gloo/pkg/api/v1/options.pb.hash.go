@@ -234,6 +234,26 @@ func (m *RouteConfigurationOptions) Hash(hasher hash.Hash64) (uint64, error) {
 		}
 	}
 
+	if h, ok := interface{}(m.GetMostSpecificHeaderMutationsWins()).(safe_hasher.SafeHasher); ok {
+		if _, err = hasher.Write([]byte("MostSpecificHeaderMutationsWins")); err != nil {
+			return 0, err
+		}
+		if _, err = h.Hash(hasher); err != nil {
+			return 0, err
+		}
+	} else {
+		if fieldValue, err := hashstructure.Hash(m.GetMostSpecificHeaderMutationsWins(), nil); err != nil {
+			return 0, err
+		} else {
+			if _, err = hasher.Write([]byte("MostSpecificHeaderMutationsWins")); err != nil {
+				return 0, err
+			}
+			if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {
+				return 0, err
+			}
+		}
+	}
+
 	return hasher.Sum64(), nil
 }
 
@@ -630,6 +650,46 @@ func (m *HttpListenerOptions) Hash(hasher hash.Hash64) (uint64, error) {
 		}
 	}
 
+	if h, ok := interface{}(m.GetNetworkLocalRatelimit()).(safe_hasher.SafeHasher); ok {
+		if _, err = hasher.Write([]byte("NetworkLocalRatelimit")); err != nil {
+			return 0, err
+		}
+		if _, err = h.Hash(hasher); err != nil {
+			return 0, err
+		}
+	} else {
+		if fieldValue, err := hashstructure.Hash(m.GetNetworkLocalRatelimit(), nil); err != nil {
+			return 0, err
+		} else {
+			if _, err = hasher.Write([]byte("NetworkLocalRatelimit")); err != nil {
+				return 0, err
+			}
+			if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {
+				return 0, err
+			}
+		}
+	}
+
+	if h, ok := interface{}(m.GetHttpLocalRatelimit()).(safe_hasher.SafeHasher); ok {
+		if _, err = hasher.Write([]byte("HttpLocalRatelimit")); err != nil {
+			return 0, err
+		}
+		if _, err = h.Hash(hasher); err != nil {
+			return 0, err
+		}
+	} else {
+		if fieldValue, err := hashstructure.Hash(m.GetHttpLocalRatelimit(), nil); err != nil {
+			return 0, err
+		} else {
+			if _, err = hasher.Write([]byte("HttpLocalRatelimit")); err != nil {
+				return 0, err
+			}
+			if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {
+				return 0, err
+			}
+		}
+	}
+
 	if h, ok := interface{}(m.GetRouter()).(safe_hasher.SafeHasher); ok {
 		if _, err = hasher.Write([]byte("Router")); err != nil {
 			return 0, err
@@ -648,6 +708,54 @@ func (m *HttpListenerOptions) Hash(hasher hash.Hash64) (uint64, error) {
 				return 0, err
 			}
 		}
+	}
+
+	switch m.ExtProcConfig.(type) {
+
+	case *HttpListenerOptions_DisableExtProc:
+
+		if h, ok := interface{}(m.GetDisableExtProc()).(safe_hasher.SafeHasher); ok {
+			if _, err = hasher.Write([]byte("DisableExtProc")); err != nil {
+				return 0, err
+			}
+			if _, err = h.Hash(hasher); err != nil {
+				return 0, err
+			}
+		} else {
+			if fieldValue, err := hashstructure.Hash(m.GetDisableExtProc(), nil); err != nil {
+				return 0, err
+			} else {
+				if _, err = hasher.Write([]byte("DisableExtProc")); err != nil {
+					return 0, err
+				}
+				if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {
+					return 0, err
+				}
+			}
+		}
+
+	case *HttpListenerOptions_ExtProc:
+
+		if h, ok := interface{}(m.GetExtProc()).(safe_hasher.SafeHasher); ok {
+			if _, err = hasher.Write([]byte("ExtProc")); err != nil {
+				return 0, err
+			}
+			if _, err = h.Hash(hasher); err != nil {
+				return 0, err
+			}
+		} else {
+			if fieldValue, err := hashstructure.Hash(m.GetExtProc(), nil); err != nil {
+				return 0, err
+			} else {
+				if _, err = hasher.Write([]byte("ExtProc")); err != nil {
+					return 0, err
+				}
+				if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {
+					return 0, err
+				}
+			}
+		}
+
 	}
 
 	return hasher.Sum64(), nil
@@ -698,6 +806,26 @@ func (m *TcpListenerOptions) Hash(hasher hash.Hash64) (uint64, error) {
 			return 0, err
 		} else {
 			if _, err = hasher.Write([]byte("ConnectionLimit")); err != nil {
+				return 0, err
+			}
+			if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {
+				return 0, err
+			}
+		}
+	}
+
+	if h, ok := interface{}(m.GetLocalRatelimit()).(safe_hasher.SafeHasher); ok {
+		if _, err = hasher.Write([]byte("LocalRatelimit")); err != nil {
+			return 0, err
+		}
+		if _, err = h.Hash(hasher); err != nil {
+			return 0, err
+		}
+	} else {
+		if fieldValue, err := hashstructure.Hash(m.GetLocalRatelimit(), nil); err != nil {
+			return 0, err
+		} else {
+			if _, err = hasher.Write([]byte("LocalRatelimit")); err != nil {
 				return 0, err
 			}
 			if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {
@@ -1034,6 +1162,26 @@ func (m *VirtualHostOptions) Hash(hasher hash.Hash64) (uint64, error) {
 			return 0, err
 		} else {
 			if _, err = hasher.Write([]byte("StagedTransformations")); err != nil {
+				return 0, err
+			}
+			if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {
+				return 0, err
+			}
+		}
+	}
+
+	if h, ok := interface{}(m.GetExtProc()).(safe_hasher.SafeHasher); ok {
+		if _, err = hasher.Write([]byte("ExtProc")); err != nil {
+			return 0, err
+		}
+		if _, err = h.Hash(hasher); err != nil {
+			return 0, err
+		}
+	} else {
+		if fieldValue, err := hashstructure.Hash(m.GetExtProc(), nil); err != nil {
+			return 0, err
+		} else {
+			if _, err = hasher.Write([]byte("ExtProc")); err != nil {
 				return 0, err
 			}
 			if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {
@@ -1765,6 +1913,26 @@ func (m *RouteOptions) Hash(hasher hash.Hash64) (uint64, error) {
 			return 0, err
 		} else {
 			if _, err = hasher.Write([]byte("IdleTimeout")); err != nil {
+				return 0, err
+			}
+			if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {
+				return 0, err
+			}
+		}
+	}
+
+	if h, ok := interface{}(m.GetExtProc()).(safe_hasher.SafeHasher); ok {
+		if _, err = hasher.Write([]byte("ExtProc")); err != nil {
+			return 0, err
+		}
+		if _, err = h.Hash(hasher); err != nil {
+			return 0, err
+		}
+	} else {
+		if fieldValue, err := hashstructure.Hash(m.GetExtProc(), nil); err != nil {
+			return 0, err
+		} else {
+			if _, err = hasher.Write([]byte("ExtProc")); err != nil {
 				return 0, err
 			}
 			if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {

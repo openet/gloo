@@ -76,12 +76,10 @@ spec:
                                 type: string
                             type: object
                           maxPayloadSize:
-                            properties:
-                              value:
-                                format: int64
-                                type: integer
-                                x-kubernetes-int-or-string: true
-                            type: object
+                            maximum: 4294967295
+                            minimum: 0
+                            nullable: true
+                            type: integer
                           timeout:
                             type: string
                         type: object
@@ -90,12 +88,10 @@ spec:
                           delayBeforeClose:
                             type: string
                           maxActiveConnections:
-                            properties:
-                              value:
-                                format: int64
-                                type: integer
-                                x-kubernetes-int-or-string: true
-                            type: object
+                            maximum: 4294967295
+                            minimum: 0
+                            nullable: true
+                            type: integer
                         type: object
                       csrf:
                         properties:
@@ -154,6 +150,9 @@ spec:
                                 type: string
                             type: object
                         type: object
+                      disableExtProc:
+                        nullable: true
+                        type: boolean
                       dlp:
                         properties:
                           dlpRules:
@@ -426,6 +425,221 @@ spec:
                                   type: string
                                 type: array
                             type: object
+                        type: object
+                      extProc:
+                        properties:
+                          allowModeOverride:
+                            nullable: true
+                            type: boolean
+                          asyncMode:
+                            nullable: true
+                            type: boolean
+                          disableClearRouteCache:
+                            nullable: true
+                            type: boolean
+                          failureModeAllow:
+                            nullable: true
+                            type: boolean
+                          filterMetadata:
+                            type: object
+                            x-kubernetes-preserve-unknown-fields: true
+                          filterStage:
+                            properties:
+                              predicate:
+                                type: string
+                                x-kubernetes-int-or-string: true
+                              stage:
+                                type: string
+                                x-kubernetes-int-or-string: true
+                            type: object
+                          forwardRules:
+                            properties:
+                              allowedHeaders:
+                                properties:
+                                  patterns:
+                                    items:
+                                      properties:
+                                        exact:
+                                          type: string
+                                        ignoreCase:
+                                          type: boolean
+                                        prefix:
+                                          type: string
+                                        safeRegex:
+                                          properties:
+                                            googleRe2:
+                                              properties:
+                                                maxProgramSize:
+                                                  maximum: 4294967295
+                                                  minimum: 0
+                                                  nullable: true
+                                                  type: integer
+                                              type: object
+                                            regex:
+                                              type: string
+                                          type: object
+                                        suffix:
+                                          type: string
+                                      type: object
+                                    type: array
+                                type: object
+                              disallowedHeaders:
+                                properties:
+                                  patterns:
+                                    items:
+                                      properties:
+                                        exact:
+                                          type: string
+                                        ignoreCase:
+                                          type: boolean
+                                        prefix:
+                                          type: string
+                                        safeRegex:
+                                          properties:
+                                            googleRe2:
+                                              properties:
+                                                maxProgramSize:
+                                                  maximum: 4294967295
+                                                  minimum: 0
+                                                  nullable: true
+                                                  type: integer
+                                              type: object
+                                            regex:
+                                              type: string
+                                          type: object
+                                        suffix:
+                                          type: string
+                                      type: object
+                                    type: array
+                                type: object
+                            type: object
+                          grpcService:
+                            properties:
+                              authority:
+                                nullable: true
+                                type: string
+                              extProcServerRef:
+                                properties:
+                                  name:
+                                    type: string
+                                  namespace:
+                                    type: string
+                                type: object
+                              initialMetadata:
+                                items:
+                                  properties:
+                                    key:
+                                      type: string
+                                    value:
+                                      type: string
+                                  type: object
+                                type: array
+                              retryPolicy:
+                                properties:
+                                  numRetries:
+                                    maximum: 4294967295
+                                    minimum: 0
+                                    nullable: true
+                                    type: integer
+                                  retryBackOff:
+                                    properties:
+                                      baseInterval:
+                                        type: string
+                                      maxInterval:
+                                        type: string
+                                    type: object
+                                type: object
+                              timeout:
+                                type: string
+                            type: object
+                          maxMessageTimeout:
+                            type: string
+                          messageTimeout:
+                            type: string
+                          metadataContextNamespaces:
+                            items:
+                              type: string
+                            type: array
+                          mutationRules:
+                            properties:
+                              allowAllRouting:
+                                nullable: true
+                                type: boolean
+                              allowEnvoy:
+                                nullable: true
+                                type: boolean
+                              allowExpression:
+                                properties:
+                                  googleRe2:
+                                    properties:
+                                      maxProgramSize:
+                                        maximum: 4294967295
+                                        minimum: 0
+                                        nullable: true
+                                        type: integer
+                                    type: object
+                                  regex:
+                                    type: string
+                                type: object
+                              disallowAll:
+                                nullable: true
+                                type: boolean
+                              disallowExpression:
+                                properties:
+                                  googleRe2:
+                                    properties:
+                                      maxProgramSize:
+                                        maximum: 4294967295
+                                        minimum: 0
+                                        nullable: true
+                                        type: integer
+                                    type: object
+                                  regex:
+                                    type: string
+                                type: object
+                              disallowIsError:
+                                nullable: true
+                                type: boolean
+                              disallowSystem:
+                                nullable: true
+                                type: boolean
+                            type: object
+                          processingMode:
+                            properties:
+                              requestBodyMode:
+                                type: string
+                                x-kubernetes-int-or-string: true
+                              requestHeaderMode:
+                                type: string
+                                x-kubernetes-int-or-string: true
+                              requestTrailerMode:
+                                type: string
+                                x-kubernetes-int-or-string: true
+                              responseBodyMode:
+                                type: string
+                                x-kubernetes-int-or-string: true
+                              responseHeaderMode:
+                                type: string
+                                x-kubernetes-int-or-string: true
+                              responseTrailerMode:
+                                type: string
+                                x-kubernetes-int-or-string: true
+                            type: object
+                          requestAttributes:
+                            items:
+                              type: string
+                            type: array
+                          responseAttributes:
+                            items:
+                              type: string
+                            type: array
+                          statPrefix:
+                            nullable: true
+                            type: string
+                          typedMetadataContextNamespaces:
+                            items:
+                              type: string
+                            type: array
                         type: object
                       extauth:
                         properties:
@@ -947,9 +1161,44 @@ spec:
                             nullable: true
                             type: integer
                         type: object
+                      httpLocalRatelimit:
+                        properties:
+                          defaultLimit:
+                            properties:
+                              fillInterval:
+                                type: string
+                              maxTokens:
+                                format: int32
+                                type: integer
+                              tokensPerFill:
+                                maximum: 4294967295
+                                minimum: 0
+                                nullable: true
+                                type: integer
+                            type: object
+                          enableXRatelimitHeaders:
+                            nullable: true
+                            type: boolean
+                          localRateLimitPerDownstreamConnection:
+                            nullable: true
+                            type: boolean
+                        type: object
                       leftmostXffAddress:
                         nullable: true
                         type: boolean
+                      networkLocalRatelimit:
+                        properties:
+                          fillInterval:
+                            type: string
+                          maxTokens:
+                            format: int32
+                            type: integer
+                          tokensPerFill:
+                            maximum: 4294967295
+                            minimum: 0
+                            nullable: true
+                            type: integer
+                        type: object
                       proxyLatency:
                         properties:
                           chargeClusterStat:
@@ -1676,12 +1925,10 @@ spec:
                                           type: string
                                       type: object
                                     maxPayloadSize:
-                                      properties:
-                                        value:
-                                          format: int64
-                                          type: integer
-                                          x-kubernetes-int-or-string: true
-                                      type: object
+                                      maximum: 4294967295
+                                      minimum: 0
+                                      nullable: true
+                                      type: integer
                                     timeout:
                                       type: string
                                   type: object
@@ -1690,12 +1937,10 @@ spec:
                                     delayBeforeClose:
                                       type: string
                                     maxActiveConnections:
-                                      properties:
-                                        value:
-                                          format: int64
-                                          type: integer
-                                          x-kubernetes-int-or-string: true
-                                      type: object
+                                      maximum: 4294967295
+                                      minimum: 0
+                                      nullable: true
+                                      type: integer
                                   type: object
                                 csrf:
                                   properties:
@@ -1754,6 +1999,9 @@ spec:
                                           type: string
                                       type: object
                                   type: object
+                                disableExtProc:
+                                  nullable: true
+                                  type: boolean
                                 dlp:
                                   properties:
                                     dlpRules:
@@ -2026,6 +2274,221 @@ spec:
                                             type: string
                                           type: array
                                       type: object
+                                  type: object
+                                extProc:
+                                  properties:
+                                    allowModeOverride:
+                                      nullable: true
+                                      type: boolean
+                                    asyncMode:
+                                      nullable: true
+                                      type: boolean
+                                    disableClearRouteCache:
+                                      nullable: true
+                                      type: boolean
+                                    failureModeAllow:
+                                      nullable: true
+                                      type: boolean
+                                    filterMetadata:
+                                      type: object
+                                      x-kubernetes-preserve-unknown-fields: true
+                                    filterStage:
+                                      properties:
+                                        predicate:
+                                          type: string
+                                          x-kubernetes-int-or-string: true
+                                        stage:
+                                          type: string
+                                          x-kubernetes-int-or-string: true
+                                      type: object
+                                    forwardRules:
+                                      properties:
+                                        allowedHeaders:
+                                          properties:
+                                            patterns:
+                                              items:
+                                                properties:
+                                                  exact:
+                                                    type: string
+                                                  ignoreCase:
+                                                    type: boolean
+                                                  prefix:
+                                                    type: string
+                                                  safeRegex:
+                                                    properties:
+                                                      googleRe2:
+                                                        properties:
+                                                          maxProgramSize:
+                                                            maximum: 4294967295
+                                                            minimum: 0
+                                                            nullable: true
+                                                            type: integer
+                                                        type: object
+                                                      regex:
+                                                        type: string
+                                                    type: object
+                                                  suffix:
+                                                    type: string
+                                                type: object
+                                              type: array
+                                          type: object
+                                        disallowedHeaders:
+                                          properties:
+                                            patterns:
+                                              items:
+                                                properties:
+                                                  exact:
+                                                    type: string
+                                                  ignoreCase:
+                                                    type: boolean
+                                                  prefix:
+                                                    type: string
+                                                  safeRegex:
+                                                    properties:
+                                                      googleRe2:
+                                                        properties:
+                                                          maxProgramSize:
+                                                            maximum: 4294967295
+                                                            minimum: 0
+                                                            nullable: true
+                                                            type: integer
+                                                        type: object
+                                                      regex:
+                                                        type: string
+                                                    type: object
+                                                  suffix:
+                                                    type: string
+                                                type: object
+                                              type: array
+                                          type: object
+                                      type: object
+                                    grpcService:
+                                      properties:
+                                        authority:
+                                          nullable: true
+                                          type: string
+                                        extProcServerRef:
+                                          properties:
+                                            name:
+                                              type: string
+                                            namespace:
+                                              type: string
+                                          type: object
+                                        initialMetadata:
+                                          items:
+                                            properties:
+                                              key:
+                                                type: string
+                                              value:
+                                                type: string
+                                            type: object
+                                          type: array
+                                        retryPolicy:
+                                          properties:
+                                            numRetries:
+                                              maximum: 4294967295
+                                              minimum: 0
+                                              nullable: true
+                                              type: integer
+                                            retryBackOff:
+                                              properties:
+                                                baseInterval:
+                                                  type: string
+                                                maxInterval:
+                                                  type: string
+                                              type: object
+                                          type: object
+                                        timeout:
+                                          type: string
+                                      type: object
+                                    maxMessageTimeout:
+                                      type: string
+                                    messageTimeout:
+                                      type: string
+                                    metadataContextNamespaces:
+                                      items:
+                                        type: string
+                                      type: array
+                                    mutationRules:
+                                      properties:
+                                        allowAllRouting:
+                                          nullable: true
+                                          type: boolean
+                                        allowEnvoy:
+                                          nullable: true
+                                          type: boolean
+                                        allowExpression:
+                                          properties:
+                                            googleRe2:
+                                              properties:
+                                                maxProgramSize:
+                                                  maximum: 4294967295
+                                                  minimum: 0
+                                                  nullable: true
+                                                  type: integer
+                                              type: object
+                                            regex:
+                                              type: string
+                                          type: object
+                                        disallowAll:
+                                          nullable: true
+                                          type: boolean
+                                        disallowExpression:
+                                          properties:
+                                            googleRe2:
+                                              properties:
+                                                maxProgramSize:
+                                                  maximum: 4294967295
+                                                  minimum: 0
+                                                  nullable: true
+                                                  type: integer
+                                              type: object
+                                            regex:
+                                              type: string
+                                          type: object
+                                        disallowIsError:
+                                          nullable: true
+                                          type: boolean
+                                        disallowSystem:
+                                          nullable: true
+                                          type: boolean
+                                      type: object
+                                    processingMode:
+                                      properties:
+                                        requestBodyMode:
+                                          type: string
+                                          x-kubernetes-int-or-string: true
+                                        requestHeaderMode:
+                                          type: string
+                                          x-kubernetes-int-or-string: true
+                                        requestTrailerMode:
+                                          type: string
+                                          x-kubernetes-int-or-string: true
+                                        responseBodyMode:
+                                          type: string
+                                          x-kubernetes-int-or-string: true
+                                        responseHeaderMode:
+                                          type: string
+                                          x-kubernetes-int-or-string: true
+                                        responseTrailerMode:
+                                          type: string
+                                          x-kubernetes-int-or-string: true
+                                      type: object
+                                    requestAttributes:
+                                      items:
+                                        type: string
+                                      type: array
+                                    responseAttributes:
+                                      items:
+                                        type: string
+                                      type: array
+                                    statPrefix:
+                                      nullable: true
+                                      type: string
+                                    typedMetadataContextNamespaces:
+                                      items:
+                                        type: string
+                                      type: array
                                   type: object
                                 extauth:
                                   properties:
@@ -2547,9 +3010,44 @@ spec:
                                       nullable: true
                                       type: integer
                                   type: object
+                                httpLocalRatelimit:
+                                  properties:
+                                    defaultLimit:
+                                      properties:
+                                        fillInterval:
+                                          type: string
+                                        maxTokens:
+                                          format: int32
+                                          type: integer
+                                        tokensPerFill:
+                                          maximum: 4294967295
+                                          minimum: 0
+                                          nullable: true
+                                          type: integer
+                                      type: object
+                                    enableXRatelimitHeaders:
+                                      nullable: true
+                                      type: boolean
+                                    localRateLimitPerDownstreamConnection:
+                                      nullable: true
+                                      type: boolean
+                                  type: object
                                 leftmostXffAddress:
                                   nullable: true
                                   type: boolean
+                                networkLocalRatelimit:
+                                  properties:
+                                    fillInterval:
+                                      type: string
+                                    maxTokens:
+                                      format: int32
+                                      type: integer
+                                    tokensPerFill:
+                                      maximum: 4294967295
+                                      minimum: 0
+                                      nullable: true
+                                      type: integer
+                                  type: object
                                 proxyLatency:
                                   properties:
                                     chargeClusterStat:
@@ -2832,12 +3330,23 @@ spec:
                                     delayBeforeClose:
                                       type: string
                                     maxActiveConnections:
-                                      properties:
-                                        value:
-                                          format: int64
-                                          type: integer
-                                          x-kubernetes-int-or-string: true
-                                      type: object
+                                      maximum: 4294967295
+                                      minimum: 0
+                                      nullable: true
+                                      type: integer
+                                  type: object
+                                localRatelimit:
+                                  properties:
+                                    fillInterval:
+                                      type: string
+                                    maxTokens:
+                                      format: int32
+                                      type: integer
+                                    tokensPerFill:
+                                      maximum: 4294967295
+                                      minimum: 0
+                                      nullable: true
+                                      type: integer
                                   type: object
                                 tcpProxySettings:
                                   properties:
@@ -4641,6 +5150,9 @@ spec:
                     minimum: 0
                     nullable: true
                     type: integer
+                  mostSpecificHeaderMutationsWins:
+                    nullable: true
+                    type: boolean
                 type: object
               ssl:
                 type: boolean
@@ -4653,12 +5165,23 @@ spec:
                           delayBeforeClose:
                             type: string
                           maxActiveConnections:
-                            properties:
-                              value:
-                                format: int64
-                                type: integer
-                                x-kubernetes-int-or-string: true
-                            type: object
+                            maximum: 4294967295
+                            minimum: 0
+                            nullable: true
+                            type: integer
+                        type: object
+                      localRatelimit:
+                        properties:
+                          fillInterval:
+                            type: string
+                          maxTokens:
+                            format: int32
+                            type: integer
+                          tokensPerFill:
+                            maximum: 4294967295
+                            minimum: 0
+                            nullable: true
+                            type: integer
                         type: object
                       tcpProxySettings:
                         properties:

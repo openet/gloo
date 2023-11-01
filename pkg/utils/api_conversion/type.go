@@ -1,6 +1,8 @@
 package api_conversion
 
 import (
+	"strings"
+
 	envoy_config_core_v3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoy_type_v3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
 	envoytype_gloo "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/type"
@@ -69,16 +71,35 @@ func ToEnvoyHeaderValueOptionList(option []*envoycore_sk.HeaderValueOption, secr
 	return result, nil
 }
 
+// CheckForbiddenCustomHeaders checks whether the custom header is allowed to be modified as per https://www.envoyproxy.io/docs/envoy/latest/configuration/http/http_conn_man/headers#custom-request-response-headers
+func CheckForbiddenCustomHeaders(header envoycore_sk.HeaderValue) error {
+	key := header.GetKey()
+	if strings.HasPrefix(key, ":") || strings.ToLower(key) == "host" {
+		return errors.Errorf(": -prefixed or host headers may not be modified. Received '%s' header", key)
+	}
+	return nil
+}
+
 func ToEnvoyHeaderValueOptions(option *envoycore_sk.HeaderValueOption, secrets *v1.SecretList, secretOptions HeaderSecretOptions) ([]*envoy_config_core_v3.HeaderValueOption, error) {
+	appendAction := envoy_config_core_v3.HeaderValueOption_APPEND_IF_EXISTS_OR_ADD
+	if appendOption := option.GetAppend(); appendOption != nil {
+		if appendOption.GetValue() == false {
+			appendAction = envoy_config_core_v3.HeaderValueOption_OVERWRITE_IF_EXISTS_OR_ADD
+		}
+	}
+
 	switch typedOption := option.GetHeaderOption().(type) {
 	case *envoycore_sk.HeaderValueOption_Header:
+		if err := CheckForbiddenCustomHeaders(*typedOption.Header); err != nil {
+			return nil, err
+		}
 		return []*envoy_config_core_v3.HeaderValueOption{
 			{
 				Header: &envoy_config_core_v3.HeaderValue{
 					Key:   typedOption.Header.GetKey(),
 					Value: typedOption.Header.GetValue(),
 				},
-				Append: option.GetAppend(),
+				AppendAction: appendAction,
 			},
 		}, nil
 	case *envoycore_sk.HeaderValueOption_HeaderSecretRef:
@@ -103,7 +124,7 @@ func ToEnvoyHeaderValueOptions(option *envoycore_sk.HeaderValueOption, secrets *
 					Key:   key,
 					Value: value,
 				},
-				Append: option.GetAppend(),
+				AppendAction: appendAction,
 			})
 		}
 		return result, nil
