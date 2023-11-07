@@ -2,6 +2,7 @@
 {{- $image := .Values.gloo.deployment.image }}
 {{- $statsConfig := coalesce .Values.gloo.deployment.stats .Values.global.glooStats -}}
 {{- if .Values.global  }}
+{{- $spec := deepCopy $glooSpec | mergeOverwrite (deepCopy $gloo) -}}
 {{- $image = merge .Values.gloo.deployment.image .Values.global.image }}
 {{- end }}
 apiVersion: apps/v1
@@ -100,12 +101,20 @@ spec:
           failureThreshold: 3
 {{- if .Values.gloo.deployment.livenessProbeEnabled }}
         livenessProbe:
-          httpGet:
-            path: /healthz
-            port: 8765
+{{- if $spec.podTemplate.customLivenessProbe }}
+{{ toYaml $spec.podTemplate.customLivenessProbe | indent 10}}
+{{- else }}
+          exec:
+            command:
+            - wget
+            - -O
+            - /dev/null
+            - {{ $spec.loopBackAddress }}:19000/server_info
           initialDelaySeconds: 3
           periodSeconds: 10
           failureThreshold: 3
+{{- end }}{{/*if $spec.podTemplate.customLivenessProbe*/}}
+{{- end }}{{/*if $spec.podTemplate.livenessProbeEnabled*/}}
 {{- end}}
         volumeMounts:
         - mountPath: /etc/envoy
@@ -242,7 +251,7 @@ spec:
           - name: HEADER_SECRET_REF_NS_MATCHES_US
             value: "true"
         {{- end}}
-{{- if not .Values.global.glooMtls.enabled }}
+{{- if .Values.gloo.deployment.readinessProbeEnabled }}
         readinessProbe:
           tcpSocket:
             port: {{ .Values.gloo.deployment.xdsPort }}
