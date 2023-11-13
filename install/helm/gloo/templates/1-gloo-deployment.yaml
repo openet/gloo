@@ -267,7 +267,7 @@ spec:
           periodSeconds: 10
           failureThreshold: 3
 {{- end }}
-{{- end }}{{/* if not .Values.global.glooMtls.enabled */}}
+{{- end }}{{/* if .Values.gloo.deployment.readinessProbeEnabled */}}
 {{- with .Values.gloo.deployment.nodeSelector }}
       nodeSelector:
 {{ toYaml . | indent 8 }}
