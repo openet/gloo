@@ -1,10 +1,27 @@
 {{ define "gloo.deploymentSpec" }}
-{{- $image := .Values.gloo.deployment.image }}
-{{- $statsConfig := coalesce .Values.gloo.deployment.stats .Values.global.glooStats -}}
-{{- if .Values.global  }}
+{{- $name := (index . 1) }}
+{{- $glooSpec := (index . 2) }}
+{{- with (first .) }}
+{{- $global := .Values.global }}
+{{- $settings := .Values.settings }}
+{{- $isUpgrade := .Values.gloo.upgrade }}
+{{- $glooProxy := .Values.glooProxies.glooProxy -}}
 {{- $spec := deepCopy $glooSpec | mergeOverwrite (deepCopy $gloo) -}}
-{{- $image = merge .Values.gloo.deployment.image .Values.global.image }}
+{{- $ports := list }}
+{{- if not (empty $spec.podTemplate) }}
+  {{- $ports = (list $spec.podTemplate.httpPort $spec.podTemplate.httpsPort $spec.podTemplate.extraPorts) }}
 {{- end }}
+{{- if not (empty $glooSpec.podTemplate) }}
+  {{- if not (empty $glooSpec.podTemplate.nodeSelector) }}
+    {{- $_ := set $spec.podTemplate "nodeSelector" $glooSpec.podTemplate.nodeSelector }}
+  {{- end }}
+{{- end }}
+{{- $image := .Values.gloo.deployment.image }}
+{{- if .Values.global  }}
+{{- $image = merge $spec.podTemplate.image $global.image }}
+{{- end }}
+{{- $statsConfig := coalesce .Values.gloo.deployment.stats .Values.global.glooStats -}}
+{{- if not $spec.disabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
