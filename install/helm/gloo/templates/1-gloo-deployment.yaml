@@ -6,7 +6,7 @@
 {{- $settings := .Values.settings }}
 {{- $isUpgrade := .Values.gloo.upgrade }}
 {{- $glooProxy := .Values.glooProxies.glooProxy -}}
-{{- $spec := deepCopy $glooSpec | mergeOverwrite (deepCopy $gloo) -}}
+{{- $spec := deepCopy $glooSpec | mergeOverwrite (deepCopy $glooProxy) -}}
 {{- $ports := list }}
 {{- if not (empty $spec.podTemplate) }}
   {{- $ports = (list $spec.podTemplate.httpPort $spec.podTemplate.httpsPort $spec.podTemplate.extraPorts) }}
