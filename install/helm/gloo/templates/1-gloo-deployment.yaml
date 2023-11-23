@@ -132,7 +132,6 @@ spec:
           failureThreshold: 3
 {{- end }}{{/*if $spec.podTemplate.customLivenessProbe*/}}
 {{- end }}{{/*if $spec.podTemplate.livenessProbeEnabled*/}}
-{{- end}}
         volumeMounts:
         - mountPath: /etc/envoy
           name: envoy-sidecar-config
@@ -184,6 +183,7 @@ spec:
           requests:
             cpu: 500m
             memory: 256Mi
+{{- end}}
 {{- end}}
         {{- $capabilities := dict "drop" (list "ALL") -}}
         {{- $securityDefaults := dict "runAsNonRoot" true "capabilities" $capabilities "readOnlyRootFilesystem" true "allowPrivilegeEscalation" false }}
