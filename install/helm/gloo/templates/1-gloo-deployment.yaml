@@ -21,7 +21,6 @@
 {{- $image = merge $spec.podTemplate.image $global.image }}
 {{- end }}
 {{- $statsConfig := coalesce .Values.gloo.deployment.stats .Values.global.glooStats -}}
-{{- if not $spec.disabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
