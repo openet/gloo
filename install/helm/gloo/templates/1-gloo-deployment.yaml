@@ -17,10 +17,10 @@
   {{- end }}
 {{- end }}
 {{- $image := .Values.gloo.deployment.image }}
+{{- $statsConfig := coalesce .Values.gloo.deployment.stats .Values.global.glooStats -}}
 {{- if .Values.global  }}
 {{- $image = merge $spec.podTemplate.image $global.image }}
 {{- end }}
-{{- $statsConfig := coalesce .Values.gloo.deployment.stats .Values.global.glooStats -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
