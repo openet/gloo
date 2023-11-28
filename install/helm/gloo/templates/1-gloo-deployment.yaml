@@ -17,7 +17,7 @@
   {{- end }}
 {{- end }}
 {{- $image := .Values.gloo.deployment.image }}
-{{- $statsConfig := coalesce .Values.gloo.deployment.stats .Values.global.glooStats -}}
+{{- $statsConfig := coalesce $spec.stats $global.glooStats }}
 {{- if .Values.global  }}
 {{- $image = merge $spec.podTemplate.image $global.image }}
 {{- end }}
