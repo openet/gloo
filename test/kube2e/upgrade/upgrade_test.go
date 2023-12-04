@@ -311,6 +311,13 @@ func upgradeCrds(crdDir string) {
 }
 
 func upgradeGloo(testHelper *helper.SoloTestHelper, chartUri string, targetReleasedVersion string, crdDir string, strictValidation bool, additionalArgs []string) {
+	// With the fix for custom readiness probe : https://github.com/solo-io/gloo/pull/8831
+	// The resource rollout job is not longer in a post hook and the job ttl has changed from 60 to 300
+	// As a consequence the job is not automatically cleaned as part of the hook deletion policy
+	// or within the time between installing gloo and upgrading it in the test.
+	// So we wait until the job ttl has expired to be cleaned up to ensure the upgrade passes
+	runAndCleanCommand("kubectl", "-n", defaults.GlooSystem, "wait", "--for=delete", "job", "gloo-resource-rollout", "--timeout=600s")
+
 	upgradeCrds(crdDir)
 
 	valueOverrideFile, cleanupFunc := getHelmUpgradeValuesOverrideFile()
@@ -347,7 +354,7 @@ func upgradeGloo(testHelper *helper.SoloTestHelper, chartUri string, targetRelea
 
 func uninstallGloo(testHelper *helper.SoloTestHelper, ctx context.Context, cancel context.CancelFunc) {
 	Expect(testHelper).ToNot(BeNil())
-	err := testHelper.UninstallGloo()
+	err := testHelper.UninstallGlooAll()
 	Expect(err).NotTo(HaveOccurred())
 	_, err = kube2e.MustKubeClient().CoreV1().Namespaces().Get(ctx, testHelper.InstallNamespace, metav1.GetOptions{})
 	Expect(apierrors.IsNotFound(err)).To(BeTrue())
