@@ -430,7 +430,12 @@ This is used with custom auth servers.
 ---
 ### BasicAuth
 
+ 
+This is the legacy/simple basic auth config. It supports the APR and SHA-1 hashing algorithms.
 
+When using basic auth, requests can pass only one `Authorization` header. You cannot use basic auth config in
+conjunction with other auth configs that rely on the `Authorization` header as well. In case of such a conflict,
+use a different type of auth config or configure a different header, such as `X-Auth`.
 
 ```yaml
 "realm": string
@@ -454,7 +459,6 @@ This is used with custom auth servers.
 ### Apr
 
  
-This is the legacy/simple basic auth config. It supports the APR hashing algorithm and an inline userlist.
 If 'apr' is defined, 'encryption' and 'user_source' must not be defined or the config will fail validation
 
 ```yaml
@@ -1092,6 +1096,9 @@ Map a single claim from an OAuth2 or OIDC token to a header in the request to th
 
  
 Optional: Map a single claim from an OAuth2 access token to a header in the request to the upstream destination.
+Gloo Mesh products only: Note that if you want to clear the route cache to force the proxy to recalculate the
+routing destination after adding the claims, you must create an additional JwtPolicy or TransformationPolicy, 
+and configure the `clearRouteCache` or `recalculateRoutingDestination` options.
 
 ```yaml
 "claimsToHeaders": []enterprise.gloo.solo.io.ClaimToHeader

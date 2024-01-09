@@ -860,7 +860,6 @@ var _ = Describe("Kube2e: gateway", func() {
 		})
 
 		It("correctly delegates options from VirtualHostOption", func() {
-
 			Eventually(func(g Gomega) {
 				// https://onsi.github.io/gomega/#category-3-making-assertions-eminem-the-function-passed-into-codeeventuallycode
 				getProxy := func() (resources.InputResource, error) {
@@ -915,7 +914,7 @@ var _ = Describe("Kube2e: gateway", func() {
 				// properly and should fail
 				helpers.EventuallyResourceAccepted(getProxy)
 
-			})
+			}, "30s", "1s").Should(Succeed())
 		})
 	})
 
@@ -1019,7 +1018,6 @@ var _ = Describe("Kube2e: gateway", func() {
 		})
 
 		It("correctly delegates options from RouteOption", func() {
-
 			Eventually(func(g Gomega) {
 				// https://onsi.github.io/gomega/#category-3-making-assertions-eminem-the-function-passed-into-codeeventuallycode
 				getProxy := func() (resources.InputResource, error) {
@@ -1075,7 +1073,8 @@ var _ = Describe("Kube2e: gateway", func() {
 				// If the Proxy has the necessary values, but the resource has been rejected, this test is not behaving
 				// properly and should fail
 				helpers.EventuallyResourceAccepted(getProxy)
-			})
+
+			}, "30s", "1s").Should(Succeed())
 		})
 	})
 
@@ -1467,6 +1466,30 @@ var _ = Describe("Kube2e: gateway", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			upstreamName = kubernetesplugin.UpstreamName(testHelper.InstallNamespace, service.Name, 5678)
+			// wait for upstream to get created by discovery
+			helpers.EventuallyResourceAccepted(func() (resources.InputResource, error) {
+				return resourceClientset.UpstreamClient().Read(testHelper.InstallNamespace, upstreamName, clients.ReadOpts{Ctx: ctx})
+			})
+			// add subset spec to upstream
+			err = helpers.PatchResource(
+				ctx,
+				&core.ResourceRef{
+					Namespace: testHelper.InstallNamespace,
+					Name:      upstreamName,
+				},
+				func(resource resources.Resource) resources.Resource {
+					us := resource.(*gloov1.Upstream)
+					us.UpstreamType.(*gloov1.Upstream_Kube).Kube.SubsetSpec = &gloov1plugins.SubsetSpec{
+						Selectors: []*gloov1plugins.Selector{{
+							Keys: []string{"text"},
+						}},
+					}
+					return us
+				},
+				resourceClientset.UpstreamClient().BaseClient(),
+			)
+			Expect(err).NotTo(HaveOccurred())
+
 			upstreamRef := &core.ResourceRef{
 				Name:      upstreamName,
 				Namespace: testHelper.InstallNamespace,
@@ -1607,24 +1630,6 @@ var _ = Describe("Kube2e: gateway", func() {
 		})
 
 		It("routes to subsets and upstream groups", func() {
-			err := helpers.PatchResource(
-				ctx,
-				&core.ResourceRef{
-					Namespace: testHelper.InstallNamespace,
-					Name:      upstreamName,
-				},
-				func(resource resources.Resource) resources.Resource {
-					us := resource.(*gloov1.Upstream)
-					us.UpstreamType.(*gloov1.Upstream_Kube).Kube.SubsetSpec = &gloov1plugins.SubsetSpec{
-						Selectors: []*gloov1plugins.Selector{{
-							Keys: []string{"text"},
-						}},
-					}
-					return us
-				},
-				resourceClientset.UpstreamClient().BaseClient(),
-			)
-			Expect(err).NotTo(HaveOccurred())
 
 			// make sure we get all three upstreams:
 			testHelper.CurlEventuallyShouldRespond(helper.CurlOpts{
@@ -2273,7 +2278,7 @@ spec:
 							clients.ReadOpts{Ctx: ctx})
 						g.Expect(err).NotTo(HaveOccurred())
 						g.Expect(vs.GetVirtualHost().GetOptions().GetTransformations()).To(gloo_matchers.MatchProto(invalidTransformation))
-					})
+					}).Should(Succeed())
 
 				})
 			})
