@@ -109,7 +109,6 @@ spec:
                   kubectl -n {{ .Release.Namespace }} get job gloo-resource-rollout &> /dev/null
                   
                   if [ $? -eq 0 ]
-                  then
                     echo "Waiting for the resource rollout job to complete"
                     kubectl -n {{ .Release.Namespace }} wait --for=condition=complete job gloo-resource-rollout --timeout={{ .Values.gateway.rolloutJob.timeout }}s || exit 1
     
