@@ -102,7 +102,6 @@ spec:
                 no_of_attempts=20
                 i=0
                 until [ $i -eq $no_of_attempts ]
-                do
                   sleep 5
                   echo "Iteration $i..."
                   i=$((i+1))
