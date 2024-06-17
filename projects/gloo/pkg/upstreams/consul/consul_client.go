@@ -4,6 +4,7 @@ import (
 	consulapi "github.com/hashicorp/consul/api"
 	"github.com/rotisserie/eris"
 	glooConsul "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/consul"
+	"github.com/solo-io/go-utils/contextutils"
 )
 
 //go:generate mockgen -destination=./mocks/mock_consul_client.go -source consul_client.go
@@ -94,6 +95,8 @@ func (c *consul) Services(q *consulapi.QueryOptions) (map[string][]string, *cons
 	}
 	services, queryMeta, err := c.api.Services(q)
 	services = c.filterServices(services)
+	logger := contextutils.LoggerFrom(q.Context())
+	logger.Infof("In consul_client Services(), services=%v", services)
 	return services, queryMeta, err
 }
 
@@ -146,6 +149,7 @@ func (c *consul) filterServices(services map[string][]string) map[string][]strin
 			}
 		}
 	}
+
 	return filteredServices
 }
 

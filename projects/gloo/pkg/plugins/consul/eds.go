@@ -120,6 +120,8 @@ func (p *plugin) WatchEndpoints(writeNamespace string, upstreamsToTrack v1.Upstr
 		}
 
 		logger := contextutils.LoggerFrom(opts.Ctx)
+		//TODO Log line here
+		logger.Infof("In WatchEndpoints, trackedServiceToUpstreams=%v", trackedServiceToUpstreams)
 
 		for {
 			select {
@@ -506,6 +508,7 @@ func buildEndpointsFromSpecs(
 				endpoints = append(endpoints, eps...)
 			}
 		}
+		contextutils.LoggerFrom(ctx).Infof(">>>In buildEndpointsFromSpec, Endpoints: %v", endpoints)
 	}
 
 	// Sort by name in ascending order for idempotency
