@@ -82,7 +82,9 @@ func (p *plugin) CreateTcpFilterChains(params plugins.Params, parentListener *v1
 
 		tcpFilters, err := p.tcpProxyFilters(params, tcpHost, tcpListenerOptions, statPrefix, alsSettings)
 		if err != nil {
-			if _, ok := err.(*pluginutils.DestinationNotFoundError); ok {
+			var configErr *plugins.BaseConfigurationError
+			if errors.As(err, &configErr) && configErr.IsWarning() {
+				hostNumDurable := hostNum
 				// this error will be treated as just a warning; wrap in a
 				// special error object, and the caller will handle conversion
 				// from error to warning
@@ -91,7 +93,7 @@ func (p *plugin) CreateTcpFilterChains(params plugins.Params, parentListener *v1
 					Err:      err,
 					ErrLevel: validation.ErrorLevels_WARNING,
 					Context: validation.ErrorLevelContext{
-						HostNum: &hostNum,
+						HostNum: &hostNumDurable,
 					},
 				})
 			} else {
@@ -163,7 +165,7 @@ func (p *plugin) tcpProxyFilters(
 		upstreamGroupRef := dest.UpstreamGroup
 		upstreamGroup, err := params.Snapshot.UpstreamGroups.Find(upstreamGroupRef.GetNamespace(), upstreamGroupRef.GetName())
 		if err != nil {
-			return nil, pluginutils.NewUpstreamGroupNotFoundErr(*upstreamGroupRef)
+			return nil, pluginutils.NewUpstreamGroupNotFoundErr(upstreamGroupRef)
 		}
 		md := &v1.MultiDestination{
 			Destinations: upstreamGroup.GetDestinations(),

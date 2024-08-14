@@ -9,27 +9,30 @@ import (
 	"strings"
 	"time"
 
-	exec_utils "github.com/solo-io/go-utils/testutils/exec"
-	"github.com/solo-io/k8s-utils/kubeutils"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
+	"github.com/solo-io/gloo/pkg/utils/helmutils"
+
+	kubetestclients "github.com/solo-io/gloo/test/kubernetes/testutils/clients"
 
 	"github.com/solo-io/gloo/projects/gloo/cli/pkg/helpers"
+	exec_utils "github.com/solo-io/go-utils/testutils/exec"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/version"
 	"github.com/solo-io/gloo/projects/gloo/pkg/defaults"
 	"github.com/solo-io/gloo/test/kube2e"
-	"github.com/solo-io/k8s-utils/testutils/helper"
+	"github.com/solo-io/gloo/test/kube2e/helper"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 )
 
 const namespace = defaults.GlooSystem
+
+var variant = os.Getenv("IMAGE_VARIANT")
 
 var _ = Describe("Kube2e: Upgrade Tests", func() {
 
@@ -96,15 +99,10 @@ var _ = Describe("Kube2e: Upgrade Tests", func() {
 	})
 
 	Context("Validation webhook upgrade tests", func() {
-		var cfg *rest.Config
-		var err error
 		var kubeClientset kubernetes.Interface
 
 		BeforeEach(func() {
-			cfg, err = kubeutils.GetConfig("", "")
-			Expect(err).NotTo(HaveOccurred())
-			kubeClientset, err = kubernetes.NewForConfig(cfg)
-			Expect(err).NotTo(HaveOccurred())
+			kubeClientset = kubetestclients.MustClientset()
 			strictValidation = true
 		})
 
@@ -216,7 +214,7 @@ func addSecondGatewayProxySeparateNamespaceTest(ctx context.Context, crdDir stri
 	// Ensures namespace is cleaned up before continuing
 	runAndCleanCommand("kubectl", "delete", "ns", externalNamespace)
 	Eventually(func() bool {
-		_, err := kube2e.MustKubeClient().CoreV1().Namespaces().Get(ctx, externalNamespace, metav1.GetOptions{})
+		_, err := kubetestclients.MustClientset().CoreV1().Namespaces().Get(ctx, externalNamespace, metav1.GetOptions{})
 		return apierrors.IsNotFound(err)
 	}, "60s", "1s").Should(BeTrue())
 }
@@ -270,8 +268,8 @@ func installGloo(testHelper *helper.SoloTestHelper, fromRelease string, strictVa
 	var args = []string{"install", testHelper.HelmChartName}
 
 	runAndCleanCommand("helm", "repo", "add", testHelper.HelmChartName,
-		"https://storage.googleapis.com/solo-public-helm", "--force-update")
-	args = append(args, "gloo/gloo",
+		helmutils.ChartRepositoryUrl, "--force-update")
+	args = append(args, helmutils.RemoteChartName,
 		"--version", fromRelease)
 
 	args = append(args, "-n", testHelper.InstallNamespace,
@@ -290,6 +288,9 @@ func installGloo(testHelper *helper.SoloTestHelper, fromRelease string, strictVa
 		"--values", helmValuesFile)
 	if strictValidation {
 		args = append(args, strictValidationArgs...)
+	}
+	if variant != "" {
+		args = append(args, "--set", "global.image.variant="+variant)
 	}
 
 	fmt.Printf("running helm with args: %v\n", args)
@@ -343,6 +344,10 @@ func upgradeGloo(testHelper *helper.SoloTestHelper, chartUri string, targetRelea
 	if strictValidation {
 		args = append(args, strictValidationArgs...)
 	}
+	if variant != "" {
+		args = append(args, "--set", "global.image.variant="+variant)
+	}
+
 	args = append(args, additionalArgs...)
 
 	fmt.Printf("running helm with args: %v\n", args)
@@ -356,7 +361,7 @@ func uninstallGloo(testHelper *helper.SoloTestHelper, ctx context.Context, cance
 	Expect(testHelper).ToNot(BeNil())
 	err := testHelper.UninstallGlooAll()
 	Expect(err).NotTo(HaveOccurred())
-	_, err = kube2e.MustKubeClient().CoreV1().Namespaces().Get(ctx, testHelper.InstallNamespace, metav1.GetOptions{})
+	_, err = kubetestclients.MustClientset().CoreV1().Namespaces().Get(ctx, testHelper.InstallNamespace, metav1.GetOptions{})
 	Expect(apierrors.IsNotFound(err)).To(BeTrue())
 	cancel()
 }
@@ -429,5 +434,5 @@ func checkGlooHealthy(testHelper *helper.SoloTestHelper) {
 	for _, deploymentName := range deploymentNames {
 		runAndCleanCommand("kubectl", "rollout", "status", "deployment", "-n", testHelper.InstallNamespace, deploymentName)
 	}
-	kube2e.GlooctlCheckEventuallyHealthy(2, testHelper, "90s")
+	kube2e.GlooctlCheckEventuallyHealthy(2, testHelper.InstallNamespace, "90s")
 }

@@ -18,11 +18,11 @@ All Solo customers have access to various channels for obtaining technical assis
 * Open a support ticket in the [Support Portal](https://support.solo.io).
 * Join the community of Solo users in [Slack](https://soloio.slack.com), or talk to your Account Executive to be added to the private Solo Slack space.
 * Contact Solo Support by sending an email to `support@solo.io`. 
-* Call the Support Hotline at `+1-601-476-5646` (for **urgent priority, production-related** issues only).
+* For urgent priority issues that impact production, call the [Support Hotline](https://support.solo.io/hc/en-us/articles/25251551340692-Support-Number).
 
 For more information, see the following resources: 
 * [Submit a request]({{% versioned_link_path fromRoot="/support/support-ticket/#submit-a-ticket" %}}): Learn how to create a ticket by using the Support Portal or email. 
-* [Details to include in your support request]({{% versioned_link_path fromRoot="/support/support-ticket/#ticket-details" %}}): Review what Solo Support needs to understand your request and provide timely, accurate assistance. 
+* [Add support information]({{< versioned_link_path fromRoot="/support/support-info/" >}}): Review what Solo Support needs to understand your request and provide timely, accurate assistance. 
 * [Priority levels]({{% versioned_link_path fromRoot="/support/support-ticket/#priority-levels" %}}): Learn more about priority levels and how to assign the right priority level to your support request.
 * [Targeted times for initial response]({{% versioned_link_path fromRoot="/support/support-ticket/#response-time" %}}): Review response times from Solo Support based on the priority level that you chose for your request. 
 * [Join the Solo.io Slack community]({{% versioned_link_path fromRoot="/support/support-ticket/#slack" %}}): Learn about which channels to join, and how to open a Support ticket in Zendesk by using Slack. 
@@ -49,11 +49,11 @@ For guidance on what products may be right for you, to request a demo, and to le
 
 ## Support for Istio
 
-Solo Support offers technical assistance for Istio in English for Solo-supported images of Istio only. Support for upstream Istio images is not included. For more information, see [Solo Istio](https://docs.solo.io/gloo-mesh-enterprise/main/reference/version/gloo_mesh_istio/).
+Solo Support offers technical assistance for Istio in English for Solo-supported images of Istio only. Support for upstream Istio images is not included. For more information, see [Solo distribution of Istio](https://docs.solo.io/gloo-mesh-enterprise/main/reference/version/gloo_mesh_istio/).
 
 We are committed to helping you successfully utilize Istio by: 
 
-* Addressing specific questions and concerns related to the installation and maintenance of Solo Istio images.
+* Addressing specific questions and concerns related to the installation and maintenance of Solo distributions of Istio.
 * Assisting with break/fix troubleshooting.
 * Helping resolve errors or failures encountered during installation or use of our products.
 * Identifying and documenting reported bugs, as well as providing workaround solutions when possible.
@@ -63,7 +63,7 @@ All Solo.io customers have access to various channels for obtaining technical as
 * Open a support ticket in the [Support Portal](https://support.solo.io).
 * Join the community of Solo users in [Slack](https://soloio.slack.com), or talk to your Account Executive to be added to the private Solo Slack space.
 * Contact Solo Support by sending an email to `support@solo.io`. 
-* Call the Support Hotline at `+1-601-476-5646` (for **urgent priority, production-related** issues only).
+* For urgent priority issues that impact production, call the [Support Hotline](https://support.solo.io/hc/en-us/articles/25251551340692-Support-Number).
  
 ### Istio-support only: Targeted time for initial response
 
@@ -71,13 +71,13 @@ When you contact Solo Support, you can choose a priority for your request. For m
 
 |Priority level|Targeted time for initial response|
 |--|--|
-|Urgent**|1 hour (24/7/365)|
+|Urgent`**`|1 hour (24/7/365)|
 |High|4 business hours  (Monday - Friday 9:00 am - 6:00 pm US Eastern Time)|
 |Normal|8 business hours  (Monday - Friday 9:00 am - 6:00 pm US Eastern Time)|
 |Low|24 business hours  (Monday - Friday 9:00 am - 6:00 pm US Eastern Time)|
 
 {{% alert context="danger" %}}
-**To report Urgent priority, production-related issues, you must contact Solo’s Support Hotline at `+1-601-476-5646`. 
+`**`For urgent priority issues that impact production, call the [Support Hotline](https://support.solo.io/hc/en-us/articles/25251551340692-Support-Number).
 {{% /alert %}} 
 
 {{% alert %}}

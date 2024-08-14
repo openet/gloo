@@ -5,41 +5,44 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/dashboard"
-	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/debug"
-	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/demo"
-	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/federation"
-	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/istio"
-	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/plugin"
-	"github.com/solo-io/gloo/projects/gloo/cli/pkg/constants"
-	"k8s.io/kubectl/pkg/cmd"
-
 	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/add"
 	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/check"
 	check_crds "github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/check-crds"
 	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/create"
+	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/dashboard"
+	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/debug"
 	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/del"
+	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/demo"
 	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/edit"
+	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/federation"
+	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/gateway"
 	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/get"
 	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/initpluginmanager"
 	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/install"
+	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/istio"
+	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/license"
+	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/options"
+	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/plugin"
 	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/remove"
 	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/route"
 	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/upgrade"
 	versioncmd "github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/version"
+	"github.com/solo-io/gloo/projects/gloo/cli/pkg/constants"
 	"github.com/solo-io/gloo/projects/gloo/cli/pkg/flagutils"
 	"github.com/solo-io/gloo/projects/gloo/cli/pkg/prerun"
 	"github.com/solo-io/go-utils/cliutils"
-
-	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/gateway"
-	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/options"
 	"github.com/spf13/cobra"
+	"k8s.io/kubectl/pkg/cmd"
+)
+
+const (
+	Name = "glooctl"
 )
 
 func App(opts *options.Options, preRunFuncs []RunnableCommand, postRunFuncs []RunnableCommand, optionsFunc ...cliutils.OptionsFunc) *cobra.Command {
 
 	app := &cobra.Command{
-		Use:   "glooctl",
+		Use:   Name,
 		Short: "CLI for Gloo",
 		Long: `glooctl is the unified CLI for Gloo.
 	Find more information at https://solo.io`,
@@ -88,10 +91,10 @@ func App(opts *options.Options, preRunFuncs []RunnableCommand, postRunFuncs []Ru
 	return app
 }
 
-func GlooCli() *cobra.Command {
+func CommandWithContext(ctx context.Context) *cobra.Command {
 	opts := &options.Options{
 		Top: options.Top{
-			Ctx: context.Background(),
+			Ctx: ctx,
 		},
 	}
 
@@ -126,7 +129,11 @@ func GlooCli() *cobra.Command {
 			federation.RootCmd(opts),
 			plugin.RootCmd(opts),
 			istio.RootCmd(opts),
+			license.RootCmd(opts),
 			initpluginmanager.Command(context.Background()),
+			// TODO: re-enable this when it's working again
+			// kubegateway.InstallCmd(opts),
+			// kubegateway.UninstallCmd(opts),
 			completionCmd(),
 		)
 	}
@@ -142,6 +149,10 @@ func GlooCli() *cobra.Command {
 	var postRunFuncs []RunnableCommand
 
 	return App(opts, preRunFuncs, postRunFuncs, optionsFunc)
+}
+
+func GlooCli() *cobra.Command {
+	return CommandWithContext(context.Background())
 }
 
 type RunnableCommand func(*options.Options, *cobra.Command) error

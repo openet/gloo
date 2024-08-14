@@ -26,7 +26,8 @@ spec:
               bindAddress:
                 type: string
               bindPort:
-                format: int32
+                maximum: 4294967295
+                minimum: 0
                 type: integer
               httpGateway:
                 properties:
@@ -129,7 +130,8 @@ spec:
                                     type: string
                                     x-kubernetes-int-or-string: true
                                   numerator:
-                                    format: int32
+                                    maximum: 4294967295
+                                    minimum: 0
                                     type: integer
                                 type: object
                               runtimeKey:
@@ -143,7 +145,8 @@ spec:
                                     type: string
                                     x-kubernetes-int-or-string: true
                                   numerator:
-                                    format: int32
+                                    maximum: 4294967295
+                                    minimum: 0
                                     type: integer
                                 type: object
                               runtimeKey:
@@ -185,7 +188,8 @@ spec:
                                                 regex:
                                                   type: string
                                                 subgroup:
-                                                  format: int32
+                                                  maximum: 4294967295
+                                                  minimum: 0
                                                   type: integer
                                               type: object
                                             type: array
@@ -277,7 +281,8 @@ spec:
                                         pipe:
                                           properties:
                                             mode:
-                                              format: int32
+                                              maximum: 4294967295
+                                              minimum: 0
                                               type: integer
                                             path:
                                               type: string
@@ -291,7 +296,8 @@ spec:
                                             namedPort:
                                               type: string
                                             portValue:
-                                              format: int32
+                                              maximum: 4294967295
+                                              minimum: 0
                                               type: integer
                                             protocol:
                                               type: string
@@ -341,7 +347,8 @@ spec:
                                     namedPort:
                                       type: string
                                     portValue:
-                                      format: int32
+                                      maximum: 4294967295
+                                      minimum: 0
                                       type: integer
                                     protocol:
                                       type: string
@@ -362,6 +369,9 @@ spec:
                                 items:
                                   type: string
                                 type: array
+                              oneWayTls:
+                                nullable: true
+                                type: boolean
                               parameters:
                                 properties:
                                   cipherSuites:
@@ -699,7 +709,8 @@ spec:
                               allowPartialMessage:
                                 type: boolean
                               maxRequestBytes:
-                                format: int32
+                                maximum: 4294967295
+                                minimum: 0
                                 type: integer
                               packAsBytes:
                                 type: boolean
@@ -709,7 +720,8 @@ spec:
                           statPrefix:
                             type: string
                           statusOnError:
-                            format: int32
+                            maximum: 4294967295
+                            minimum: 0
                             type: integer
                           transportApiVersion:
                             type: string
@@ -808,6 +820,12 @@ spec:
                             minimum: 0
                             nullable: true
                             type: integer
+                        type: object
+                      headerValidationSettings:
+                        properties:
+                          disableHttp1MethodValidation:
+                            maxProperties: 0
+                            type: object
                         type: object
                       healthCheck:
                         properties:
@@ -1168,7 +1186,8 @@ spec:
                               fillInterval:
                                 type: string
                               maxTokens:
-                                format: int32
+                                maximum: 4294967295
+                                minimum: 0
                                 type: integer
                               tokensPerFill:
                                 maximum: 4294967295
@@ -1191,7 +1210,8 @@ spec:
                           fillInterval:
                             type: string
                           maxTokens:
-                            format: int32
+                            maximum: 4294967295
+                            minimum: 0
                             type: integer
                           tokensPerFill:
                             maximum: 4294967295
@@ -1225,6 +1245,11 @@ spec:
                             type: boolean
                           enableXRatelimitHeaders:
                             type: boolean
+                          grpcService:
+                            properties:
+                              authority:
+                                type: string
+                            type: object
                           rateLimitBeforeAuth:
                             type: boolean
                           ratelimitServerRef:
@@ -1239,6 +1264,9 @@ spec:
                         type: object
                       router:
                         properties:
+                          dynamicStats:
+                            nullable: true
+                            type: boolean
                           suppressEnvoyHeaders:
                             nullable: true
                             type: boolean
@@ -1246,6 +1274,28 @@ spec:
                       sanitizeClusterHeader:
                         nullable: true
                         type: boolean
+                      statefulSession:
+                        properties:
+                          cookieBased:
+                            properties:
+                              cookie:
+                                properties:
+                                  name:
+                                    type: string
+                                  path:
+                                    type: string
+                                  ttl:
+                                    type: string
+                                type: object
+                            type: object
+                          headerBased:
+                            properties:
+                              headerName:
+                                type: string
+                            type: object
+                          strict:
+                            type: boolean
+                        type: object
                       tap:
                         properties:
                           sinks:
@@ -2008,7 +2058,8 @@ spec:
                                               type: string
                                               x-kubernetes-int-or-string: true
                                             numerator:
-                                              format: int32
+                                              maximum: 4294967295
+                                              minimum: 0
                                               type: integer
                                           type: object
                                         runtimeKey:
@@ -2022,7 +2073,8 @@ spec:
                                               type: string
                                               x-kubernetes-int-or-string: true
                                             numerator:
-                                              format: int32
+                                              maximum: 4294967295
+                                              minimum: 0
                                               type: integer
                                           type: object
                                         runtimeKey:
@@ -2064,7 +2116,8 @@ spec:
                                                           regex:
                                                             type: string
                                                           subgroup:
-                                                            format: int32
+                                                            maximum: 4294967295
+                                                            minimum: 0
                                                             type: integer
                                                         type: object
                                                       type: array
@@ -2156,7 +2209,8 @@ spec:
                                                   pipe:
                                                     properties:
                                                       mode:
-                                                        format: int32
+                                                        maximum: 4294967295
+                                                        minimum: 0
                                                         type: integer
                                                       path:
                                                         type: string
@@ -2170,7 +2224,8 @@ spec:
                                                       namedPort:
                                                         type: string
                                                       portValue:
-                                                        format: int32
+                                                        maximum: 4294967295
+                                                        minimum: 0
                                                         type: integer
                                                       protocol:
                                                         type: string
@@ -2220,7 +2275,8 @@ spec:
                                               namedPort:
                                                 type: string
                                               portValue:
-                                                format: int32
+                                                maximum: 4294967295
+                                                minimum: 0
                                                 type: integer
                                               protocol:
                                                 type: string
@@ -2241,6 +2297,9 @@ spec:
                                           items:
                                             type: string
                                           type: array
+                                        oneWayTls:
+                                          nullable: true
+                                          type: boolean
                                         parameters:
                                           properties:
                                             cipherSuites:
@@ -2578,7 +2637,8 @@ spec:
                                         allowPartialMessage:
                                           type: boolean
                                         maxRequestBytes:
-                                          format: int32
+                                          maximum: 4294967295
+                                          minimum: 0
                                           type: integer
                                         packAsBytes:
                                           type: boolean
@@ -2588,7 +2648,8 @@ spec:
                                     statPrefix:
                                       type: string
                                     statusOnError:
-                                      format: int32
+                                      maximum: 4294967295
+                                      minimum: 0
                                       type: integer
                                     transportApiVersion:
                                       type: string
@@ -2687,6 +2748,12 @@ spec:
                                       minimum: 0
                                       nullable: true
                                       type: integer
+                                  type: object
+                                headerValidationSettings:
+                                  properties:
+                                    disableHttp1MethodValidation:
+                                      maxProperties: 0
+                                      type: object
                                   type: object
                                 healthCheck:
                                   properties:
@@ -3047,7 +3114,8 @@ spec:
                                         fillInterval:
                                           type: string
                                         maxTokens:
-                                          format: int32
+                                          maximum: 4294967295
+                                          minimum: 0
                                           type: integer
                                         tokensPerFill:
                                           maximum: 4294967295
@@ -3070,7 +3138,8 @@ spec:
                                     fillInterval:
                                       type: string
                                     maxTokens:
-                                      format: int32
+                                      maximum: 4294967295
+                                      minimum: 0
                                       type: integer
                                     tokensPerFill:
                                       maximum: 4294967295
@@ -3104,6 +3173,11 @@ spec:
                                       type: boolean
                                     enableXRatelimitHeaders:
                                       type: boolean
+                                    grpcService:
+                                      properties:
+                                        authority:
+                                          type: string
+                                      type: object
                                     rateLimitBeforeAuth:
                                       type: boolean
                                     ratelimitServerRef:
@@ -3118,6 +3192,9 @@ spec:
                                   type: object
                                 router:
                                   properties:
+                                    dynamicStats:
+                                      nullable: true
+                                      type: boolean
                                     suppressEnvoyHeaders:
                                       nullable: true
                                       type: boolean
@@ -3125,6 +3202,28 @@ spec:
                                 sanitizeClusterHeader:
                                   nullable: true
                                   type: boolean
+                                statefulSession:
+                                  properties:
+                                    cookieBased:
+                                      properties:
+                                        cookie:
+                                          properties:
+                                            name:
+                                              type: string
+                                            path:
+                                              type: string
+                                            ttl:
+                                              type: string
+                                          type: object
+                                      type: object
+                                    headerBased:
+                                      properties:
+                                        headerName:
+                                          type: string
+                                      type: object
+                                    strict:
+                                      type: boolean
+                                  type: object
                                 tap:
                                   properties:
                                     sinks:
@@ -3400,7 +3499,8 @@ spec:
                                     fillInterval:
                                       type: string
                                     maxTokens:
-                                      format: int32
+                                      maximum: 4294967295
+                                      minimum: 0
                                       type: integer
                                     tokensPerFill:
                                       maximum: 4294967295
@@ -3539,6 +3639,8 @@ spec:
                                                                 dynamicMetadataValues:
                                                                   items:
                                                                     properties:
+                                                                      jsonToProto:
+                                                                        type: boolean
                                                                       key:
                                                                         type: string
                                                                       metadataNamespace:
@@ -3560,10 +3662,17 @@ spec:
                                                                         type: object
                                                                       header:
                                                                         type: string
+                                                                      mode:
+                                                                        type: string
+                                                                        x-kubernetes-int-or-string: true
                                                                       regex:
                                                                         type: string
+                                                                      replacementText:
+                                                                        nullable: true
+                                                                        type: string
                                                                       subgroup:
-                                                                        format: int32
+                                                                        maximum: 4294967295
+                                                                        minimum: 0
                                                                         type: integer
                                                                     type: object
                                                                   type: object
@@ -3594,6 +3703,21 @@ spec:
                                                                   type: boolean
                                                                 mergeExtractorsToBody:
                                                                   type: object
+                                                                mergeJsonKeys:
+                                                                  properties:
+                                                                    jsonKeys:
+                                                                      additionalProperties:
+                                                                        properties:
+                                                                          overrideEmpty:
+                                                                            type: boolean
+                                                                          tmpl:
+                                                                            properties:
+                                                                              text:
+                                                                                type: string
+                                                                            type: object
+                                                                        type: object
+                                                                      type: object
+                                                                  type: object
                                                                 parseBodyBehavior:
                                                                   type: string
                                                                   x-kubernetes-int-or-string: true
@@ -3605,7 +3729,8 @@ spec:
                                                     kube:
                                                       properties:
                                                         port:
-                                                          format: int32
+                                                          maximum: 4294967295
+                                                          minimum: 0
                                                           type: integer
                                                         ref:
                                                           properties:
@@ -3681,7 +3806,8 @@ spec:
                                                                   type: string
                                                                   x-kubernetes-int-or-string: true
                                                                 numerator:
-                                                                  format: int32
+                                                                  maximum: 4294967295
+                                                                  minimum: 0
                                                                   type: integer
                                                               type: object
                                                             runtimeKey:
@@ -3695,7 +3821,8 @@ spec:
                                                                   type: string
                                                                   x-kubernetes-int-or-string: true
                                                                 numerator:
-                                                                  format: int32
+                                                                  maximum: 4294967295
+                                                                  minimum: 0
                                                                   type: integer
                                                               type: object
                                                             runtimeKey:
@@ -3851,6 +3978,8 @@ spec:
                                                                           dynamicMetadataValues:
                                                                             items:
                                                                               properties:
+                                                                                jsonToProto:
+                                                                                  type: boolean
                                                                                 key:
                                                                                   type: string
                                                                                 metadataNamespace:
@@ -3873,10 +4002,17 @@ spec:
                                                                                   type: object
                                                                                 header:
                                                                                   type: string
+                                                                                mode:
+                                                                                  type: string
+                                                                                  x-kubernetes-int-or-string: true
                                                                                 regex:
                                                                                   type: string
+                                                                                replacementText:
+                                                                                  nullable: true
+                                                                                  type: string
                                                                                 subgroup:
-                                                                                  format: int32
+                                                                                  maximum: 4294967295
+                                                                                  minimum: 0
                                                                                   type: integer
                                                                               type: object
                                                                             type: object
@@ -3906,6 +4042,21 @@ spec:
                                                                           ignoreErrorOnParse:
                                                                             type: boolean
                                                                           mergeExtractorsToBody:
+                                                                            type: object
+                                                                          mergeJsonKeys:
+                                                                            properties:
+                                                                              jsonKeys:
+                                                                                additionalProperties:
+                                                                                  properties:
+                                                                                    overrideEmpty:
+                                                                                      type: boolean
+                                                                                    tmpl:
+                                                                                      properties:
+                                                                                        text:
+                                                                                          type: string
+                                                                                      type: object
+                                                                                  type: object
+                                                                                type: object
                                                                             type: object
                                                                           parseBodyBehavior:
                                                                             type: string
@@ -3944,6 +4095,8 @@ spec:
                                                                           dynamicMetadataValues:
                                                                             items:
                                                                               properties:
+                                                                                jsonToProto:
+                                                                                  type: boolean
                                                                                 key:
                                                                                   type: string
                                                                                 metadataNamespace:
@@ -3966,10 +4119,17 @@ spec:
                                                                                   type: object
                                                                                 header:
                                                                                   type: string
+                                                                                mode:
+                                                                                  type: string
+                                                                                  x-kubernetes-int-or-string: true
                                                                                 regex:
                                                                                   type: string
+                                                                                replacementText:
+                                                                                  nullable: true
+                                                                                  type: string
                                                                                 subgroup:
-                                                                                  format: int32
+                                                                                  maximum: 4294967295
+                                                                                  minimum: 0
                                                                                   type: integer
                                                                               type: object
                                                                             type: object
@@ -3999,6 +4159,21 @@ spec:
                                                                           ignoreErrorOnParse:
                                                                             type: boolean
                                                                           mergeExtractorsToBody:
+                                                                            type: object
+                                                                          mergeJsonKeys:
+                                                                            properties:
+                                                                              jsonKeys:
+                                                                                additionalProperties:
+                                                                                  properties:
+                                                                                    overrideEmpty:
+                                                                                      type: boolean
+                                                                                    tmpl:
+                                                                                      properties:
+                                                                                        text:
+                                                                                          type: string
+                                                                                      type: object
+                                                                                  type: object
+                                                                                type: object
                                                                             type: object
                                                                           parseBodyBehavior:
                                                                             type: string
@@ -4057,6 +4232,8 @@ spec:
                                                                           dynamicMetadataValues:
                                                                             items:
                                                                               properties:
+                                                                                jsonToProto:
+                                                                                  type: boolean
                                                                                 key:
                                                                                   type: string
                                                                                 metadataNamespace:
@@ -4079,10 +4256,17 @@ spec:
                                                                                   type: object
                                                                                 header:
                                                                                   type: string
+                                                                                mode:
+                                                                                  type: string
+                                                                                  x-kubernetes-int-or-string: true
                                                                                 regex:
                                                                                   type: string
+                                                                                replacementText:
+                                                                                  nullable: true
+                                                                                  type: string
                                                                                 subgroup:
-                                                                                  format: int32
+                                                                                  maximum: 4294967295
+                                                                                  minimum: 0
                                                                                   type: integer
                                                                               type: object
                                                                             type: object
@@ -4113,6 +4297,21 @@ spec:
                                                                             type: boolean
                                                                           mergeExtractorsToBody:
                                                                             type: object
+                                                                          mergeJsonKeys:
+                                                                            properties:
+                                                                              jsonKeys:
+                                                                                additionalProperties:
+                                                                                  properties:
+                                                                                    overrideEmpty:
+                                                                                      type: boolean
+                                                                                    tmpl:
+                                                                                      properties:
+                                                                                        text:
+                                                                                          type: string
+                                                                                      type: object
+                                                                                  type: object
+                                                                                type: object
+                                                                            type: object
                                                                           parseBodyBehavior:
                                                                             type: string
                                                                             x-kubernetes-int-or-string: true
@@ -4140,6 +4339,429 @@ spec:
                                                         logRequestResponseInfo:
                                                           nullable: true
                                                           type: boolean
+                                                        postRouting:
+                                                          properties:
+                                                            requestTransforms:
+                                                              items:
+                                                                properties:
+                                                                  clearRouteCache:
+                                                                    type: boolean
+                                                                  matcher:
+                                                                    properties:
+                                                                      caseSensitive:
+                                                                        nullable: true
+                                                                        type: boolean
+                                                                      connectMatcher:
+                                                                        type: object
+                                                                      exact:
+                                                                        type: string
+                                                                      headers:
+                                                                        items:
+                                                                          properties:
+                                                                            invertMatch:
+                                                                              type: boolean
+                                                                            name:
+                                                                              type: string
+                                                                            regex:
+                                                                              type: boolean
+                                                                            value:
+                                                                              type: string
+                                                                          type: object
+                                                                        type: array
+                                                                      methods:
+                                                                        items:
+                                                                          type: string
+                                                                        type: array
+                                                                      prefix:
+                                                                        type: string
+                                                                      queryParameters:
+                                                                        items:
+                                                                          properties:
+                                                                            name:
+                                                                              type: string
+                                                                            regex:
+                                                                              type: boolean
+                                                                            value:
+                                                                              type: string
+                                                                          type: object
+                                                                        type: array
+                                                                      regex:
+                                                                        type: string
+                                                                    type: object
+                                                                  requestTransformation:
+                                                                    properties:
+                                                                      headerBodyTransform:
+                                                                        properties:
+                                                                          addRequestMetadata:
+                                                                            type: boolean
+                                                                        type: object
+                                                                      logRequestResponseInfo:
+                                                                        type: boolean
+                                                                      transformationTemplate:
+                                                                        properties:
+                                                                          advancedTemplates:
+                                                                            type: boolean
+                                                                          body:
+                                                                            properties:
+                                                                              text:
+                                                                                type: string
+                                                                            type: object
+                                                                          dynamicMetadataValues:
+                                                                            items:
+                                                                              properties:
+                                                                                jsonToProto:
+                                                                                  type: boolean
+                                                                                key:
+                                                                                  type: string
+                                                                                metadataNamespace:
+                                                                                  type: string
+                                                                                value:
+                                                                                  properties:
+                                                                                    text:
+                                                                                      type: string
+                                                                                  type: object
+                                                                              type: object
+                                                                            type: array
+                                                                          escapeCharacters:
+                                                                            nullable: true
+                                                                            type: boolean
+                                                                          extractors:
+                                                                            additionalProperties:
+                                                                              properties:
+                                                                                body:
+                                                                                  maxProperties: 0
+                                                                                  type: object
+                                                                                header:
+                                                                                  type: string
+                                                                                mode:
+                                                                                  type: string
+                                                                                  x-kubernetes-int-or-string: true
+                                                                                regex:
+                                                                                  type: string
+                                                                                replacementText:
+                                                                                  nullable: true
+                                                                                  type: string
+                                                                                subgroup:
+                                                                                  maximum: 4294967295
+                                                                                  minimum: 0
+                                                                                  type: integer
+                                                                              type: object
+                                                                            type: object
+                                                                          headers:
+                                                                            additionalProperties:
+                                                                              properties:
+                                                                                text:
+                                                                                  type: string
+                                                                              type: object
+                                                                            type: object
+                                                                          headersToAppend:
+                                                                            items:
+                                                                              properties:
+                                                                                key:
+                                                                                  type: string
+                                                                                value:
+                                                                                  properties:
+                                                                                    text:
+                                                                                      type: string
+                                                                                  type: object
+                                                                              type: object
+                                                                            type: array
+                                                                          headersToRemove:
+                                                                            items:
+                                                                              type: string
+                                                                            type: array
+                                                                          ignoreErrorOnParse:
+                                                                            type: boolean
+                                                                          mergeExtractorsToBody:
+                                                                            type: object
+                                                                          mergeJsonKeys:
+                                                                            properties:
+                                                                              jsonKeys:
+                                                                                additionalProperties:
+                                                                                  properties:
+                                                                                    overrideEmpty:
+                                                                                      type: boolean
+                                                                                    tmpl:
+                                                                                      properties:
+                                                                                        text:
+                                                                                          type: string
+                                                                                      type: object
+                                                                                  type: object
+                                                                                type: object
+                                                                            type: object
+                                                                          parseBodyBehavior:
+                                                                            type: string
+                                                                            x-kubernetes-int-or-string: true
+                                                                          passthrough:
+                                                                            type: object
+                                                                        type: object
+                                                                      xsltTransformation:
+                                                                        properties:
+                                                                          nonXmlTransform:
+                                                                            type: boolean
+                                                                          setContentType:
+                                                                            type: string
+                                                                          xslt:
+                                                                            type: string
+                                                                        type: object
+                                                                    type: object
+                                                                  responseTransformation:
+                                                                    properties:
+                                                                      headerBodyTransform:
+                                                                        properties:
+                                                                          addRequestMetadata:
+                                                                            type: boolean
+                                                                        type: object
+                                                                      logRequestResponseInfo:
+                                                                        type: boolean
+                                                                      transformationTemplate:
+                                                                        properties:
+                                                                          advancedTemplates:
+                                                                            type: boolean
+                                                                          body:
+                                                                            properties:
+                                                                              text:
+                                                                                type: string
+                                                                            type: object
+                                                                          dynamicMetadataValues:
+                                                                            items:
+                                                                              properties:
+                                                                                jsonToProto:
+                                                                                  type: boolean
+                                                                                key:
+                                                                                  type: string
+                                                                                metadataNamespace:
+                                                                                  type: string
+                                                                                value:
+                                                                                  properties:
+                                                                                    text:
+                                                                                      type: string
+                                                                                  type: object
+                                                                              type: object
+                                                                            type: array
+                                                                          escapeCharacters:
+                                                                            nullable: true
+                                                                            type: boolean
+                                                                          extractors:
+                                                                            additionalProperties:
+                                                                              properties:
+                                                                                body:
+                                                                                  maxProperties: 0
+                                                                                  type: object
+                                                                                header:
+                                                                                  type: string
+                                                                                mode:
+                                                                                  type: string
+                                                                                  x-kubernetes-int-or-string: true
+                                                                                regex:
+                                                                                  type: string
+                                                                                replacementText:
+                                                                                  nullable: true
+                                                                                  type: string
+                                                                                subgroup:
+                                                                                  maximum: 4294967295
+                                                                                  minimum: 0
+                                                                                  type: integer
+                                                                              type: object
+                                                                            type: object
+                                                                          headers:
+                                                                            additionalProperties:
+                                                                              properties:
+                                                                                text:
+                                                                                  type: string
+                                                                              type: object
+                                                                            type: object
+                                                                          headersToAppend:
+                                                                            items:
+                                                                              properties:
+                                                                                key:
+                                                                                  type: string
+                                                                                value:
+                                                                                  properties:
+                                                                                    text:
+                                                                                      type: string
+                                                                                  type: object
+                                                                              type: object
+                                                                            type: array
+                                                                          headersToRemove:
+                                                                            items:
+                                                                              type: string
+                                                                            type: array
+                                                                          ignoreErrorOnParse:
+                                                                            type: boolean
+                                                                          mergeExtractorsToBody:
+                                                                            type: object
+                                                                          mergeJsonKeys:
+                                                                            properties:
+                                                                              jsonKeys:
+                                                                                additionalProperties:
+                                                                                  properties:
+                                                                                    overrideEmpty:
+                                                                                      type: boolean
+                                                                                    tmpl:
+                                                                                      properties:
+                                                                                        text:
+                                                                                          type: string
+                                                                                      type: object
+                                                                                  type: object
+                                                                                type: object
+                                                                            type: object
+                                                                          parseBodyBehavior:
+                                                                            type: string
+                                                                            x-kubernetes-int-or-string: true
+                                                                          passthrough:
+                                                                            type: object
+                                                                        type: object
+                                                                      xsltTransformation:
+                                                                        properties:
+                                                                          nonXmlTransform:
+                                                                            type: boolean
+                                                                          setContentType:
+                                                                            type: string
+                                                                          xslt:
+                                                                            type: string
+                                                                        type: object
+                                                                    type: object
+                                                                type: object
+                                                              type: array
+                                                            responseTransforms:
+                                                              items:
+                                                                properties:
+                                                                  matchers:
+                                                                    items:
+                                                                      properties:
+                                                                        invertMatch:
+                                                                          type: boolean
+                                                                        name:
+                                                                          type: string
+                                                                        regex:
+                                                                          type: boolean
+                                                                        value:
+                                                                          type: string
+                                                                      type: object
+                                                                    type: array
+                                                                  responseCodeDetails:
+                                                                    type: string
+                                                                  responseTransformation:
+                                                                    properties:
+                                                                      headerBodyTransform:
+                                                                        properties:
+                                                                          addRequestMetadata:
+                                                                            type: boolean
+                                                                        type: object
+                                                                      logRequestResponseInfo:
+                                                                        type: boolean
+                                                                      transformationTemplate:
+                                                                        properties:
+                                                                          advancedTemplates:
+                                                                            type: boolean
+                                                                          body:
+                                                                            properties:
+                                                                              text:
+                                                                                type: string
+                                                                            type: object
+                                                                          dynamicMetadataValues:
+                                                                            items:
+                                                                              properties:
+                                                                                jsonToProto:
+                                                                                  type: boolean
+                                                                                key:
+                                                                                  type: string
+                                                                                metadataNamespace:
+                                                                                  type: string
+                                                                                value:
+                                                                                  properties:
+                                                                                    text:
+                                                                                      type: string
+                                                                                  type: object
+                                                                              type: object
+                                                                            type: array
+                                                                          escapeCharacters:
+                                                                            nullable: true
+                                                                            type: boolean
+                                                                          extractors:
+                                                                            additionalProperties:
+                                                                              properties:
+                                                                                body:
+                                                                                  maxProperties: 0
+                                                                                  type: object
+                                                                                header:
+                                                                                  type: string
+                                                                                mode:
+                                                                                  type: string
+                                                                                  x-kubernetes-int-or-string: true
+                                                                                regex:
+                                                                                  type: string
+                                                                                replacementText:
+                                                                                  nullable: true
+                                                                                  type: string
+                                                                                subgroup:
+                                                                                  maximum: 4294967295
+                                                                                  minimum: 0
+                                                                                  type: integer
+                                                                              type: object
+                                                                            type: object
+                                                                          headers:
+                                                                            additionalProperties:
+                                                                              properties:
+                                                                                text:
+                                                                                  type: string
+                                                                              type: object
+                                                                            type: object
+                                                                          headersToAppend:
+                                                                            items:
+                                                                              properties:
+                                                                                key:
+                                                                                  type: string
+                                                                                value:
+                                                                                  properties:
+                                                                                    text:
+                                                                                      type: string
+                                                                                  type: object
+                                                                              type: object
+                                                                            type: array
+                                                                          headersToRemove:
+                                                                            items:
+                                                                              type: string
+                                                                            type: array
+                                                                          ignoreErrorOnParse:
+                                                                            type: boolean
+                                                                          mergeExtractorsToBody:
+                                                                            type: object
+                                                                          mergeJsonKeys:
+                                                                            properties:
+                                                                              jsonKeys:
+                                                                                additionalProperties:
+                                                                                  properties:
+                                                                                    overrideEmpty:
+                                                                                      type: boolean
+                                                                                    tmpl:
+                                                                                      properties:
+                                                                                        text:
+                                                                                          type: string
+                                                                                      type: object
+                                                                                  type: object
+                                                                                type: object
+                                                                            type: object
+                                                                          parseBodyBehavior:
+                                                                            type: string
+                                                                            x-kubernetes-int-or-string: true
+                                                                          passthrough:
+                                                                            type: object
+                                                                        type: object
+                                                                      xsltTransformation:
+                                                                        properties:
+                                                                          nonXmlTransform:
+                                                                            type: boolean
+                                                                          setContentType:
+                                                                            type: string
+                                                                          xslt:
+                                                                            type: string
+                                                                        type: object
+                                                                    type: object
+                                                                type: object
+                                                              type: array
+                                                          type: object
                                                         regular:
                                                           properties:
                                                             requestTransforms:
@@ -4210,6 +4832,8 @@ spec:
                                                                           dynamicMetadataValues:
                                                                             items:
                                                                               properties:
+                                                                                jsonToProto:
+                                                                                  type: boolean
                                                                                 key:
                                                                                   type: string
                                                                                 metadataNamespace:
@@ -4232,10 +4856,17 @@ spec:
                                                                                   type: object
                                                                                 header:
                                                                                   type: string
+                                                                                mode:
+                                                                                  type: string
+                                                                                  x-kubernetes-int-or-string: true
                                                                                 regex:
                                                                                   type: string
+                                                                                replacementText:
+                                                                                  nullable: true
+                                                                                  type: string
                                                                                 subgroup:
-                                                                                  format: int32
+                                                                                  maximum: 4294967295
+                                                                                  minimum: 0
                                                                                   type: integer
                                                                               type: object
                                                                             type: object
@@ -4265,6 +4896,21 @@ spec:
                                                                           ignoreErrorOnParse:
                                                                             type: boolean
                                                                           mergeExtractorsToBody:
+                                                                            type: object
+                                                                          mergeJsonKeys:
+                                                                            properties:
+                                                                              jsonKeys:
+                                                                                additionalProperties:
+                                                                                  properties:
+                                                                                    overrideEmpty:
+                                                                                      type: boolean
+                                                                                    tmpl:
+                                                                                      properties:
+                                                                                        text:
+                                                                                          type: string
+                                                                                      type: object
+                                                                                  type: object
+                                                                                type: object
                                                                             type: object
                                                                           parseBodyBehavior:
                                                                             type: string
@@ -4303,6 +4949,8 @@ spec:
                                                                           dynamicMetadataValues:
                                                                             items:
                                                                               properties:
+                                                                                jsonToProto:
+                                                                                  type: boolean
                                                                                 key:
                                                                                   type: string
                                                                                 metadataNamespace:
@@ -4325,10 +4973,17 @@ spec:
                                                                                   type: object
                                                                                 header:
                                                                                   type: string
+                                                                                mode:
+                                                                                  type: string
+                                                                                  x-kubernetes-int-or-string: true
                                                                                 regex:
                                                                                   type: string
+                                                                                replacementText:
+                                                                                  nullable: true
+                                                                                  type: string
                                                                                 subgroup:
-                                                                                  format: int32
+                                                                                  maximum: 4294967295
+                                                                                  minimum: 0
                                                                                   type: integer
                                                                               type: object
                                                                             type: object
@@ -4358,6 +5013,21 @@ spec:
                                                                           ignoreErrorOnParse:
                                                                             type: boolean
                                                                           mergeExtractorsToBody:
+                                                                            type: object
+                                                                          mergeJsonKeys:
+                                                                            properties:
+                                                                              jsonKeys:
+                                                                                additionalProperties:
+                                                                                  properties:
+                                                                                    overrideEmpty:
+                                                                                      type: boolean
+                                                                                    tmpl:
+                                                                                      properties:
+                                                                                        text:
+                                                                                          type: string
+                                                                                      type: object
+                                                                                  type: object
+                                                                                type: object
                                                                             type: object
                                                                           parseBodyBehavior:
                                                                             type: string
@@ -4416,6 +5086,8 @@ spec:
                                                                           dynamicMetadataValues:
                                                                             items:
                                                                               properties:
+                                                                                jsonToProto:
+                                                                                  type: boolean
                                                                                 key:
                                                                                   type: string
                                                                                 metadataNamespace:
@@ -4438,10 +5110,17 @@ spec:
                                                                                   type: object
                                                                                 header:
                                                                                   type: string
+                                                                                mode:
+                                                                                  type: string
+                                                                                  x-kubernetes-int-or-string: true
                                                                                 regex:
                                                                                   type: string
+                                                                                replacementText:
+                                                                                  nullable: true
+                                                                                  type: string
                                                                                 subgroup:
-                                                                                  format: int32
+                                                                                  maximum: 4294967295
+                                                                                  minimum: 0
                                                                                   type: integer
                                                                               type: object
                                                                             type: object
@@ -4471,6 +5150,21 @@ spec:
                                                                           ignoreErrorOnParse:
                                                                             type: boolean
                                                                           mergeExtractorsToBody:
+                                                                            type: object
+                                                                          mergeJsonKeys:
+                                                                            properties:
+                                                                              jsonKeys:
+                                                                                additionalProperties:
+                                                                                  properties:
+                                                                                    overrideEmpty:
+                                                                                      type: boolean
+                                                                                    tmpl:
+                                                                                      properties:
+                                                                                        text:
+                                                                                          type: string
+                                                                                      type: object
+                                                                                  type: object
+                                                                                type: object
                                                                             type: object
                                                                           parseBodyBehavior:
                                                                             type: string
@@ -4517,6 +5211,8 @@ spec:
                                                                 dynamicMetadataValues:
                                                                   items:
                                                                     properties:
+                                                                      jsonToProto:
+                                                                        type: boolean
                                                                       key:
                                                                         type: string
                                                                       metadataNamespace:
@@ -4539,10 +5235,17 @@ spec:
                                                                         type: object
                                                                       header:
                                                                         type: string
+                                                                      mode:
+                                                                        type: string
+                                                                        x-kubernetes-int-or-string: true
                                                                       regex:
                                                                         type: string
+                                                                      replacementText:
+                                                                        nullable: true
+                                                                        type: string
                                                                       subgroup:
-                                                                        format: int32
+                                                                        maximum: 4294967295
+                                                                        minimum: 0
                                                                         type: integer
                                                                     type: object
                                                                   type: object
@@ -4572,6 +5275,21 @@ spec:
                                                                 ignoreErrorOnParse:
                                                                   type: boolean
                                                                 mergeExtractorsToBody:
+                                                                  type: object
+                                                                mergeJsonKeys:
+                                                                  properties:
+                                                                    jsonKeys:
+                                                                      additionalProperties:
+                                                                        properties:
+                                                                          overrideEmpty:
+                                                                            type: boolean
+                                                                          tmpl:
+                                                                            properties:
+                                                                              text:
+                                                                                type: string
+                                                                            type: object
+                                                                        type: object
+                                                                      type: object
                                                                   type: object
                                                                 parseBodyBehavior:
                                                                   type: string
@@ -4610,6 +5328,8 @@ spec:
                                                                 dynamicMetadataValues:
                                                                   items:
                                                                     properties:
+                                                                      jsonToProto:
+                                                                        type: boolean
                                                                       key:
                                                                         type: string
                                                                       metadataNamespace:
@@ -4632,10 +5352,17 @@ spec:
                                                                         type: object
                                                                       header:
                                                                         type: string
+                                                                      mode:
+                                                                        type: string
+                                                                        x-kubernetes-int-or-string: true
                                                                       regex:
                                                                         type: string
+                                                                      replacementText:
+                                                                        nullable: true
+                                                                        type: string
                                                                       subgroup:
-                                                                        format: int32
+                                                                        maximum: 4294967295
+                                                                        minimum: 0
                                                                         type: integer
                                                                     type: object
                                                                   type: object
@@ -4665,6 +5392,21 @@ spec:
                                                                 ignoreErrorOnParse:
                                                                   type: boolean
                                                                 mergeExtractorsToBody:
+                                                                  type: object
+                                                                mergeJsonKeys:
+                                                                  properties:
+                                                                    jsonKeys:
+                                                                      additionalProperties:
+                                                                        properties:
+                                                                          overrideEmpty:
+                                                                            type: boolean
+                                                                          tmpl:
+                                                                            properties:
+                                                                              text:
+                                                                                type: string
+                                                                            type: object
+                                                                        type: object
+                                                                      type: object
                                                                   type: object
                                                                 parseBodyBehavior:
                                                                   type: string
@@ -4777,6 +5519,8 @@ spec:
                                                       dynamicMetadataValues:
                                                         items:
                                                           properties:
+                                                            jsonToProto:
+                                                              type: boolean
                                                             key:
                                                               type: string
                                                             metadataNamespace:
@@ -4798,10 +5542,17 @@ spec:
                                                               type: object
                                                             header:
                                                               type: string
+                                                            mode:
+                                                              type: string
+                                                              x-kubernetes-int-or-string: true
                                                             regex:
                                                               type: string
+                                                            replacementText:
+                                                              nullable: true
+                                                              type: string
                                                             subgroup:
-                                                              format: int32
+                                                              maximum: 4294967295
+                                                              minimum: 0
                                                               type: integer
                                                           type: object
                                                         type: object
@@ -4832,6 +5583,21 @@ spec:
                                                         type: boolean
                                                       mergeExtractorsToBody:
                                                         type: object
+                                                      mergeJsonKeys:
+                                                        properties:
+                                                          jsonKeys:
+                                                            additionalProperties:
+                                                              properties:
+                                                                overrideEmpty:
+                                                                  type: boolean
+                                                                tmpl:
+                                                                  properties:
+                                                                    text:
+                                                                      type: string
+                                                                  type: object
+                                                              type: object
+                                                            type: object
+                                                        type: object
                                                       parseBodyBehavior:
                                                         type: string
                                                         x-kubernetes-int-or-string: true
@@ -4843,7 +5609,8 @@ spec:
                                           kube:
                                             properties:
                                               port:
-                                                format: int32
+                                                maximum: 4294967295
+                                                minimum: 0
                                                 type: integer
                                               ref:
                                                 properties:
@@ -5006,7 +5773,8 @@ spec:
                                         value:
                                           properties:
                                             defaultValue:
-                                              format: int32
+                                              maximum: 4294967295
+                                              minimum: 0
                                               type: integer
                                             runtimeKey:
                                               type: string
@@ -5085,7 +5853,8 @@ spec:
                                           type: string
                                           x-kubernetes-int-or-string: true
                                         numerator:
-                                          format: int32
+                                          maximum: 4294967295
+                                          minimum: 0
                                           type: integer
                                       type: object
                                     runtimeKey:
@@ -5103,7 +5872,8 @@ spec:
                                         value:
                                           properties:
                                             defaultValue:
-                                              format: int32
+                                              maximum: 4294967295
+                                              minimum: 0
                                               type: integer
                                             runtimeKey:
                                               type: string
@@ -5148,6 +5918,168 @@ spec:
                           x-kubernetes-preserve-unknown-fields: true
                         type: object
                     type: object
+                  listenerAccessLoggingService:
+                    properties:
+                      accessLog:
+                        items:
+                          properties:
+                            fileSink:
+                              properties:
+                                jsonFormat:
+                                  type: object
+                                  x-kubernetes-preserve-unknown-fields: true
+                                path:
+                                  type: string
+                                stringFormat:
+                                  type: string
+                              type: object
+                            filter:
+                              properties:
+                                andFilter:
+                                  type: object
+                                  x-kubernetes-preserve-unknown-fields: true
+                                durationFilter:
+                                  properties:
+                                    comparison:
+                                      properties:
+                                        op:
+                                          type: string
+                                          x-kubernetes-int-or-string: true
+                                        value:
+                                          properties:
+                                            defaultValue:
+                                              maximum: 4294967295
+                                              minimum: 0
+                                              type: integer
+                                            runtimeKey:
+                                              type: string
+                                          type: object
+                                      type: object
+                                  type: object
+                                grpcStatusFilter:
+                                  properties:
+                                    exclude:
+                                      type: boolean
+                                    statuses:
+                                      items:
+                                        type: string
+                                        x-kubernetes-int-or-string: true
+                                      type: array
+                                  type: object
+                                headerFilter:
+                                  properties:
+                                    header:
+                                      properties:
+                                        exactMatch:
+                                          type: string
+                                        invertMatch:
+                                          type: boolean
+                                        name:
+                                          type: string
+                                        prefixMatch:
+                                          type: string
+                                        presentMatch:
+                                          type: boolean
+                                        rangeMatch:
+                                          properties:
+                                            end:
+                                              format: int64
+                                              type: integer
+                                              x-kubernetes-int-or-string: true
+                                            start:
+                                              format: int64
+                                              type: integer
+                                              x-kubernetes-int-or-string: true
+                                          type: object
+                                        safeRegexMatch:
+                                          properties:
+                                            googleRe2:
+                                              properties:
+                                                maxProgramSize:
+                                                  maximum: 4294967295
+                                                  minimum: 0
+                                                  nullable: true
+                                                  type: integer
+                                              type: object
+                                            regex:
+                                              type: string
+                                          type: object
+                                        suffixMatch:
+                                          type: string
+                                      type: object
+                                  type: object
+                                notHealthCheckFilter:
+                                  type: object
+                                orFilter:
+                                  type: object
+                                  x-kubernetes-preserve-unknown-fields: true
+                                responseFlagFilter:
+                                  properties:
+                                    flags:
+                                      items:
+                                        type: string
+                                      type: array
+                                  type: object
+                                runtimeFilter:
+                                  properties:
+                                    percentSampled:
+                                      properties:
+                                        denominator:
+                                          type: string
+                                          x-kubernetes-int-or-string: true
+                                        numerator:
+                                          maximum: 4294967295
+                                          minimum: 0
+                                          type: integer
+                                      type: object
+                                    runtimeKey:
+                                      type: string
+                                    useIndependentRandomness:
+                                      type: boolean
+                                  type: object
+                                statusCodeFilter:
+                                  properties:
+                                    comparison:
+                                      properties:
+                                        op:
+                                          type: string
+                                          x-kubernetes-int-or-string: true
+                                        value:
+                                          properties:
+                                            defaultValue:
+                                              maximum: 4294967295
+                                              minimum: 0
+                                              type: integer
+                                            runtimeKey:
+                                              type: string
+                                          type: object
+                                      type: object
+                                  type: object
+                                traceableFilter:
+                                  type: object
+                              type: object
+                            grpcService:
+                              properties:
+                                additionalRequestHeadersToLog:
+                                  items:
+                                    type: string
+                                  type: array
+                                additionalResponseHeadersToLog:
+                                  items:
+                                    type: string
+                                  type: array
+                                additionalResponseTrailersToLog:
+                                  items:
+                                    type: string
+                                  type: array
+                                logName:
+                                  type: string
+                                staticClusterName:
+                                  type: string
+                              type: object
+                          type: object
+                        type: array
+                    type: object
                   perConnectionBufferLimitBytes:
                     maximum: 4294967295
                     minimum: 0
@@ -5168,7 +6100,8 @@ spec:
                                   type: string
                               type: object
                             tlvType:
-                              format: int32
+                              maximum: 4294967295
+                              minimum: 0
                               type: integer
                           type: object
                         type: array
@@ -5235,7 +6168,8 @@ spec:
                           fillInterval:
                             type: string
                           maxTokens:
-                            format: int32
+                            maximum: 4294967295
+                            minimum: 0
                             type: integer
                           tokensPerFill:
                             maximum: 4294967295
@@ -5374,6 +6308,8 @@ spec:
                                                       dynamicMetadataValues:
                                                         items:
                                                           properties:
+                                                            jsonToProto:
+                                                              type: boolean
                                                             key:
                                                               type: string
                                                             metadataNamespace:
@@ -5395,10 +6331,17 @@ spec:
                                                               type: object
                                                             header:
                                                               type: string
+                                                            mode:
+                                                              type: string
+                                                              x-kubernetes-int-or-string: true
                                                             regex:
                                                               type: string
+                                                            replacementText:
+                                                              nullable: true
+                                                              type: string
                                                             subgroup:
-                                                              format: int32
+                                                              maximum: 4294967295
+                                                              minimum: 0
                                                               type: integer
                                                           type: object
                                                         type: object
@@ -5429,6 +6372,21 @@ spec:
                                                         type: boolean
                                                       mergeExtractorsToBody:
                                                         type: object
+                                                      mergeJsonKeys:
+                                                        properties:
+                                                          jsonKeys:
+                                                            additionalProperties:
+                                                              properties:
+                                                                overrideEmpty:
+                                                                  type: boolean
+                                                                tmpl:
+                                                                  properties:
+                                                                    text:
+                                                                      type: string
+                                                                  type: object
+                                                              type: object
+                                                            type: object
+                                                        type: object
                                                       parseBodyBehavior:
                                                         type: string
                                                         x-kubernetes-int-or-string: true
@@ -5440,7 +6398,8 @@ spec:
                                           kube:
                                             properties:
                                               port:
-                                                format: int32
+                                                maximum: 4294967295
+                                                minimum: 0
                                                 type: integer
                                               ref:
                                                 properties:
@@ -5516,7 +6475,8 @@ spec:
                                                         type: string
                                                         x-kubernetes-int-or-string: true
                                                       numerator:
-                                                        format: int32
+                                                        maximum: 4294967295
+                                                        minimum: 0
                                                         type: integer
                                                     type: object
                                                   runtimeKey:
@@ -5530,7 +6490,8 @@ spec:
                                                         type: string
                                                         x-kubernetes-int-or-string: true
                                                       numerator:
-                                                        format: int32
+                                                        maximum: 4294967295
+                                                        minimum: 0
                                                         type: integer
                                                     type: object
                                                   runtimeKey:
@@ -5686,6 +6647,8 @@ spec:
                                                                 dynamicMetadataValues:
                                                                   items:
                                                                     properties:
+                                                                      jsonToProto:
+                                                                        type: boolean
                                                                       key:
                                                                         type: string
                                                                       metadataNamespace:
@@ -5708,10 +6671,17 @@ spec:
                                                                         type: object
                                                                       header:
                                                                         type: string
+                                                                      mode:
+                                                                        type: string
+                                                                        x-kubernetes-int-or-string: true
                                                                       regex:
                                                                         type: string
+                                                                      replacementText:
+                                                                        nullable: true
+                                                                        type: string
                                                                       subgroup:
-                                                                        format: int32
+                                                                        maximum: 4294967295
+                                                                        minimum: 0
                                                                         type: integer
                                                                     type: object
                                                                   type: object
@@ -5741,6 +6711,21 @@ spec:
                                                                 ignoreErrorOnParse:
                                                                   type: boolean
                                                                 mergeExtractorsToBody:
+                                                                  type: object
+                                                                mergeJsonKeys:
+                                                                  properties:
+                                                                    jsonKeys:
+                                                                      additionalProperties:
+                                                                        properties:
+                                                                          overrideEmpty:
+                                                                            type: boolean
+                                                                          tmpl:
+                                                                            properties:
+                                                                              text:
+                                                                                type: string
+                                                                            type: object
+                                                                        type: object
+                                                                      type: object
                                                                   type: object
                                                                 parseBodyBehavior:
                                                                   type: string
@@ -5779,6 +6764,8 @@ spec:
                                                                 dynamicMetadataValues:
                                                                   items:
                                                                     properties:
+                                                                      jsonToProto:
+                                                                        type: boolean
                                                                       key:
                                                                         type: string
                                                                       metadataNamespace:
@@ -5801,10 +6788,17 @@ spec:
                                                                         type: object
                                                                       header:
                                                                         type: string
+                                                                      mode:
+                                                                        type: string
+                                                                        x-kubernetes-int-or-string: true
                                                                       regex:
                                                                         type: string
+                                                                      replacementText:
+                                                                        nullable: true
+                                                                        type: string
                                                                       subgroup:
-                                                                        format: int32
+                                                                        maximum: 4294967295
+                                                                        minimum: 0
                                                                         type: integer
                                                                     type: object
                                                                   type: object
@@ -5834,6 +6828,21 @@ spec:
                                                                 ignoreErrorOnParse:
                                                                   type: boolean
                                                                 mergeExtractorsToBody:
+                                                                  type: object
+                                                                mergeJsonKeys:
+                                                                  properties:
+                                                                    jsonKeys:
+                                                                      additionalProperties:
+                                                                        properties:
+                                                                          overrideEmpty:
+                                                                            type: boolean
+                                                                          tmpl:
+                                                                            properties:
+                                                                              text:
+                                                                                type: string
+                                                                            type: object
+                                                                        type: object
+                                                                      type: object
                                                                   type: object
                                                                 parseBodyBehavior:
                                                                   type: string
@@ -5892,6 +6901,8 @@ spec:
                                                                 dynamicMetadataValues:
                                                                   items:
                                                                     properties:
+                                                                      jsonToProto:
+                                                                        type: boolean
                                                                       key:
                                                                         type: string
                                                                       metadataNamespace:
@@ -5914,10 +6925,17 @@ spec:
                                                                         type: object
                                                                       header:
                                                                         type: string
+                                                                      mode:
+                                                                        type: string
+                                                                        x-kubernetes-int-or-string: true
                                                                       regex:
                                                                         type: string
+                                                                      replacementText:
+                                                                        nullable: true
+                                                                        type: string
                                                                       subgroup:
-                                                                        format: int32
+                                                                        maximum: 4294967295
+                                                                        minimum: 0
                                                                         type: integer
                                                                     type: object
                                                                   type: object
@@ -5948,6 +6966,21 @@ spec:
                                                                   type: boolean
                                                                 mergeExtractorsToBody:
                                                                   type: object
+                                                                mergeJsonKeys:
+                                                                  properties:
+                                                                    jsonKeys:
+                                                                      additionalProperties:
+                                                                        properties:
+                                                                          overrideEmpty:
+                                                                            type: boolean
+                                                                          tmpl:
+                                                                            properties:
+                                                                              text:
+                                                                                type: string
+                                                                            type: object
+                                                                        type: object
+                                                                      type: object
+                                                                  type: object
                                                                 parseBodyBehavior:
                                                                   type: string
                                                                   x-kubernetes-int-or-string: true
@@ -5975,6 +7008,429 @@ spec:
                                               logRequestResponseInfo:
                                                 nullable: true
                                                 type: boolean
+                                              postRouting:
+                                                properties:
+                                                  requestTransforms:
+                                                    items:
+                                                      properties:
+                                                        clearRouteCache:
+                                                          type: boolean
+                                                        matcher:
+                                                          properties:
+                                                            caseSensitive:
+                                                              nullable: true
+                                                              type: boolean
+                                                            connectMatcher:
+                                                              type: object
+                                                            exact:
+                                                              type: string
+                                                            headers:
+                                                              items:
+                                                                properties:
+                                                                  invertMatch:
+                                                                    type: boolean
+                                                                  name:
+                                                                    type: string
+                                                                  regex:
+                                                                    type: boolean
+                                                                  value:
+                                                                    type: string
+                                                                type: object
+                                                              type: array
+                                                            methods:
+                                                              items:
+                                                                type: string
+                                                              type: array
+                                                            prefix:
+                                                              type: string
+                                                            queryParameters:
+                                                              items:
+                                                                properties:
+                                                                  name:
+                                                                    type: string
+                                                                  regex:
+                                                                    type: boolean
+                                                                  value:
+                                                                    type: string
+                                                                type: object
+                                                              type: array
+                                                            regex:
+                                                              type: string
+                                                          type: object
+                                                        requestTransformation:
+                                                          properties:
+                                                            headerBodyTransform:
+                                                              properties:
+                                                                addRequestMetadata:
+                                                                  type: boolean
+                                                              type: object
+                                                            logRequestResponseInfo:
+                                                              type: boolean
+                                                            transformationTemplate:
+                                                              properties:
+                                                                advancedTemplates:
+                                                                  type: boolean
+                                                                body:
+                                                                  properties:
+                                                                    text:
+                                                                      type: string
+                                                                  type: object
+                                                                dynamicMetadataValues:
+                                                                  items:
+                                                                    properties:
+                                                                      jsonToProto:
+                                                                        type: boolean
+                                                                      key:
+                                                                        type: string
+                                                                      metadataNamespace:
+                                                                        type: string
+                                                                      value:
+                                                                        properties:
+                                                                          text:
+                                                                            type: string
+                                                                        type: object
+                                                                    type: object
+                                                                  type: array
+                                                                escapeCharacters:
+                                                                  nullable: true
+                                                                  type: boolean
+                                                                extractors:
+                                                                  additionalProperties:
+                                                                    properties:
+                                                                      body:
+                                                                        maxProperties: 0
+                                                                        type: object
+                                                                      header:
+                                                                        type: string
+                                                                      mode:
+                                                                        type: string
+                                                                        x-kubernetes-int-or-string: true
+                                                                      regex:
+                                                                        type: string
+                                                                      replacementText:
+                                                                        nullable: true
+                                                                        type: string
+                                                                      subgroup:
+                                                                        maximum: 4294967295
+                                                                        minimum: 0
+                                                                        type: integer
+                                                                    type: object
+                                                                  type: object
+                                                                headers:
+                                                                  additionalProperties:
+                                                                    properties:
+                                                                      text:
+                                                                        type: string
+                                                                    type: object
+                                                                  type: object
+                                                                headersToAppend:
+                                                                  items:
+                                                                    properties:
+                                                                      key:
+                                                                        type: string
+                                                                      value:
+                                                                        properties:
+                                                                          text:
+                                                                            type: string
+                                                                        type: object
+                                                                    type: object
+                                                                  type: array
+                                                                headersToRemove:
+                                                                  items:
+                                                                    type: string
+                                                                  type: array
+                                                                ignoreErrorOnParse:
+                                                                  type: boolean
+                                                                mergeExtractorsToBody:
+                                                                  type: object
+                                                                mergeJsonKeys:
+                                                                  properties:
+                                                                    jsonKeys:
+                                                                      additionalProperties:
+                                                                        properties:
+                                                                          overrideEmpty:
+                                                                            type: boolean
+                                                                          tmpl:
+                                                                            properties:
+                                                                              text:
+                                                                                type: string
+                                                                            type: object
+                                                                        type: object
+                                                                      type: object
+                                                                  type: object
+                                                                parseBodyBehavior:
+                                                                  type: string
+                                                                  x-kubernetes-int-or-string: true
+                                                                passthrough:
+                                                                  type: object
+                                                              type: object
+                                                            xsltTransformation:
+                                                              properties:
+                                                                nonXmlTransform:
+                                                                  type: boolean
+                                                                setContentType:
+                                                                  type: string
+                                                                xslt:
+                                                                  type: string
+                                                              type: object
+                                                          type: object
+                                                        responseTransformation:
+                                                          properties:
+                                                            headerBodyTransform:
+                                                              properties:
+                                                                addRequestMetadata:
+                                                                  type: boolean
+                                                              type: object
+                                                            logRequestResponseInfo:
+                                                              type: boolean
+                                                            transformationTemplate:
+                                                              properties:
+                                                                advancedTemplates:
+                                                                  type: boolean
+                                                                body:
+                                                                  properties:
+                                                                    text:
+                                                                      type: string
+                                                                  type: object
+                                                                dynamicMetadataValues:
+                                                                  items:
+                                                                    properties:
+                                                                      jsonToProto:
+                                                                        type: boolean
+                                                                      key:
+                                                                        type: string
+                                                                      metadataNamespace:
+                                                                        type: string
+                                                                      value:
+                                                                        properties:
+                                                                          text:
+                                                                            type: string
+                                                                        type: object
+                                                                    type: object
+                                                                  type: array
+                                                                escapeCharacters:
+                                                                  nullable: true
+                                                                  type: boolean
+                                                                extractors:
+                                                                  additionalProperties:
+                                                                    properties:
+                                                                      body:
+                                                                        maxProperties: 0
+                                                                        type: object
+                                                                      header:
+                                                                        type: string
+                                                                      mode:
+                                                                        type: string
+                                                                        x-kubernetes-int-or-string: true
+                                                                      regex:
+                                                                        type: string
+                                                                      replacementText:
+                                                                        nullable: true
+                                                                        type: string
+                                                                      subgroup:
+                                                                        maximum: 4294967295
+                                                                        minimum: 0
+                                                                        type: integer
+                                                                    type: object
+                                                                  type: object
+                                                                headers:
+                                                                  additionalProperties:
+                                                                    properties:
+                                                                      text:
+                                                                        type: string
+                                                                    type: object
+                                                                  type: object
+                                                                headersToAppend:
+                                                                  items:
+                                                                    properties:
+                                                                      key:
+                                                                        type: string
+                                                                      value:
+                                                                        properties:
+                                                                          text:
+                                                                            type: string
+                                                                        type: object
+                                                                    type: object
+                                                                  type: array
+                                                                headersToRemove:
+                                                                  items:
+                                                                    type: string
+                                                                  type: array
+                                                                ignoreErrorOnParse:
+                                                                  type: boolean
+                                                                mergeExtractorsToBody:
+                                                                  type: object
+                                                                mergeJsonKeys:
+                                                                  properties:
+                                                                    jsonKeys:
+                                                                      additionalProperties:
+                                                                        properties:
+                                                                          overrideEmpty:
+                                                                            type: boolean
+                                                                          tmpl:
+                                                                            properties:
+                                                                              text:
+                                                                                type: string
+                                                                            type: object
+                                                                        type: object
+                                                                      type: object
+                                                                  type: object
+                                                                parseBodyBehavior:
+                                                                  type: string
+                                                                  x-kubernetes-int-or-string: true
+                                                                passthrough:
+                                                                  type: object
+                                                              type: object
+                                                            xsltTransformation:
+                                                              properties:
+                                                                nonXmlTransform:
+                                                                  type: boolean
+                                                                setContentType:
+                                                                  type: string
+                                                                xslt:
+                                                                  type: string
+                                                              type: object
+                                                          type: object
+                                                      type: object
+                                                    type: array
+                                                  responseTransforms:
+                                                    items:
+                                                      properties:
+                                                        matchers:
+                                                          items:
+                                                            properties:
+                                                              invertMatch:
+                                                                type: boolean
+                                                              name:
+                                                                type: string
+                                                              regex:
+                                                                type: boolean
+                                                              value:
+                                                                type: string
+                                                            type: object
+                                                          type: array
+                                                        responseCodeDetails:
+                                                          type: string
+                                                        responseTransformation:
+                                                          properties:
+                                                            headerBodyTransform:
+                                                              properties:
+                                                                addRequestMetadata:
+                                                                  type: boolean
+                                                              type: object
+                                                            logRequestResponseInfo:
+                                                              type: boolean
+                                                            transformationTemplate:
+                                                              properties:
+                                                                advancedTemplates:
+                                                                  type: boolean
+                                                                body:
+                                                                  properties:
+                                                                    text:
+                                                                      type: string
+                                                                  type: object
+                                                                dynamicMetadataValues:
+                                                                  items:
+                                                                    properties:
+                                                                      jsonToProto:
+                                                                        type: boolean
+                                                                      key:
+                                                                        type: string
+                                                                      metadataNamespace:
+                                                                        type: string
+                                                                      value:
+                                                                        properties:
+                                                                          text:
+                                                                            type: string
+                                                                        type: object
+                                                                    type: object
+                                                                  type: array
+                                                                escapeCharacters:
+                                                                  nullable: true
+                                                                  type: boolean
+                                                                extractors:
+                                                                  additionalProperties:
+                                                                    properties:
+                                                                      body:
+                                                                        maxProperties: 0
+                                                                        type: object
+                                                                      header:
+                                                                        type: string
+                                                                      mode:
+                                                                        type: string
+                                                                        x-kubernetes-int-or-string: true
+                                                                      regex:
+                                                                        type: string
+                                                                      replacementText:
+                                                                        nullable: true
+                                                                        type: string
+                                                                      subgroup:
+                                                                        maximum: 4294967295
+                                                                        minimum: 0
+                                                                        type: integer
+                                                                    type: object
+                                                                  type: object
+                                                                headers:
+                                                                  additionalProperties:
+                                                                    properties:
+                                                                      text:
+                                                                        type: string
+                                                                    type: object
+                                                                  type: object
+                                                                headersToAppend:
+                                                                  items:
+                                                                    properties:
+                                                                      key:
+                                                                        type: string
+                                                                      value:
+                                                                        properties:
+                                                                          text:
+                                                                            type: string
+                                                                        type: object
+                                                                    type: object
+                                                                  type: array
+                                                                headersToRemove:
+                                                                  items:
+                                                                    type: string
+                                                                  type: array
+                                                                ignoreErrorOnParse:
+                                                                  type: boolean
+                                                                mergeExtractorsToBody:
+                                                                  type: object
+                                                                mergeJsonKeys:
+                                                                  properties:
+                                                                    jsonKeys:
+                                                                      additionalProperties:
+                                                                        properties:
+                                                                          overrideEmpty:
+                                                                            type: boolean
+                                                                          tmpl:
+                                                                            properties:
+                                                                              text:
+                                                                                type: string
+                                                                            type: object
+                                                                        type: object
+                                                                      type: object
+                                                                  type: object
+                                                                parseBodyBehavior:
+                                                                  type: string
+                                                                  x-kubernetes-int-or-string: true
+                                                                passthrough:
+                                                                  type: object
+                                                              type: object
+                                                            xsltTransformation:
+                                                              properties:
+                                                                nonXmlTransform:
+                                                                  type: boolean
+                                                                setContentType:
+                                                                  type: string
+                                                                xslt:
+                                                                  type: string
+                                                              type: object
+                                                          type: object
+                                                      type: object
+                                                    type: array
+                                                type: object
                                               regular:
                                                 properties:
                                                   requestTransforms:
@@ -6045,6 +7501,8 @@ spec:
                                                                 dynamicMetadataValues:
                                                                   items:
                                                                     properties:
+                                                                      jsonToProto:
+                                                                        type: boolean
                                                                       key:
                                                                         type: string
                                                                       metadataNamespace:
@@ -6067,10 +7525,17 @@ spec:
                                                                         type: object
                                                                       header:
                                                                         type: string
+                                                                      mode:
+                                                                        type: string
+                                                                        x-kubernetes-int-or-string: true
                                                                       regex:
                                                                         type: string
+                                                                      replacementText:
+                                                                        nullable: true
+                                                                        type: string
                                                                       subgroup:
-                                                                        format: int32
+                                                                        maximum: 4294967295
+                                                                        minimum: 0
                                                                         type: integer
                                                                     type: object
                                                                   type: object
@@ -6100,6 +7565,21 @@ spec:
                                                                 ignoreErrorOnParse:
                                                                   type: boolean
                                                                 mergeExtractorsToBody:
+                                                                  type: object
+                                                                mergeJsonKeys:
+                                                                  properties:
+                                                                    jsonKeys:
+                                                                      additionalProperties:
+                                                                        properties:
+                                                                          overrideEmpty:
+                                                                            type: boolean
+                                                                          tmpl:
+                                                                            properties:
+                                                                              text:
+                                                                                type: string
+                                                                            type: object
+                                                                        type: object
+                                                                      type: object
                                                                   type: object
                                                                 parseBodyBehavior:
                                                                   type: string
@@ -6138,6 +7618,8 @@ spec:
                                                                 dynamicMetadataValues:
                                                                   items:
                                                                     properties:
+                                                                      jsonToProto:
+                                                                        type: boolean
                                                                       key:
                                                                         type: string
                                                                       metadataNamespace:
@@ -6160,10 +7642,17 @@ spec:
                                                                         type: object
                                                                       header:
                                                                         type: string
+                                                                      mode:
+                                                                        type: string
+                                                                        x-kubernetes-int-or-string: true
                                                                       regex:
                                                                         type: string
+                                                                      replacementText:
+                                                                        nullable: true
+                                                                        type: string
                                                                       subgroup:
-                                                                        format: int32
+                                                                        maximum: 4294967295
+                                                                        minimum: 0
                                                                         type: integer
                                                                     type: object
                                                                   type: object
@@ -6193,6 +7682,21 @@ spec:
                                                                 ignoreErrorOnParse:
                                                                   type: boolean
                                                                 mergeExtractorsToBody:
+                                                                  type: object
+                                                                mergeJsonKeys:
+                                                                  properties:
+                                                                    jsonKeys:
+                                                                      additionalProperties:
+                                                                        properties:
+                                                                          overrideEmpty:
+                                                                            type: boolean
+                                                                          tmpl:
+                                                                            properties:
+                                                                              text:
+                                                                                type: string
+                                                                            type: object
+                                                                        type: object
+                                                                      type: object
                                                                   type: object
                                                                 parseBodyBehavior:
                                                                   type: string
@@ -6251,6 +7755,8 @@ spec:
                                                                 dynamicMetadataValues:
                                                                   items:
                                                                     properties:
+                                                                      jsonToProto:
+                                                                        type: boolean
                                                                       key:
                                                                         type: string
                                                                       metadataNamespace:
@@ -6273,10 +7779,17 @@ spec:
                                                                         type: object
                                                                       header:
                                                                         type: string
+                                                                      mode:
+                                                                        type: string
+                                                                        x-kubernetes-int-or-string: true
                                                                       regex:
                                                                         type: string
+                                                                      replacementText:
+                                                                        nullable: true
+                                                                        type: string
                                                                       subgroup:
-                                                                        format: int32
+                                                                        maximum: 4294967295
+                                                                        minimum: 0
                                                                         type: integer
                                                                     type: object
                                                                   type: object
@@ -6306,6 +7819,21 @@ spec:
                                                                 ignoreErrorOnParse:
                                                                   type: boolean
                                                                 mergeExtractorsToBody:
+                                                                  type: object
+                                                                mergeJsonKeys:
+                                                                  properties:
+                                                                    jsonKeys:
+                                                                      additionalProperties:
+                                                                        properties:
+                                                                          overrideEmpty:
+                                                                            type: boolean
+                                                                          tmpl:
+                                                                            properties:
+                                                                              text:
+                                                                                type: string
+                                                                            type: object
+                                                                        type: object
+                                                                      type: object
                                                                   type: object
                                                                 parseBodyBehavior:
                                                                   type: string
@@ -6352,6 +7880,8 @@ spec:
                                                       dynamicMetadataValues:
                                                         items:
                                                           properties:
+                                                            jsonToProto:
+                                                              type: boolean
                                                             key:
                                                               type: string
                                                             metadataNamespace:
@@ -6374,10 +7904,17 @@ spec:
                                                               type: object
                                                             header:
                                                               type: string
+                                                            mode:
+                                                              type: string
+                                                              x-kubernetes-int-or-string: true
                                                             regex:
                                                               type: string
+                                                            replacementText:
+                                                              nullable: true
+                                                              type: string
                                                             subgroup:
-                                                              format: int32
+                                                              maximum: 4294967295
+                                                              minimum: 0
                                                               type: integer
                                                           type: object
                                                         type: object
@@ -6407,6 +7944,21 @@ spec:
                                                       ignoreErrorOnParse:
                                                         type: boolean
                                                       mergeExtractorsToBody:
+                                                        type: object
+                                                      mergeJsonKeys:
+                                                        properties:
+                                                          jsonKeys:
+                                                            additionalProperties:
+                                                              properties:
+                                                                overrideEmpty:
+                                                                  type: boolean
+                                                                tmpl:
+                                                                  properties:
+                                                                    text:
+                                                                      type: string
+                                                                  type: object
+                                                              type: object
+                                                            type: object
                                                         type: object
                                                       parseBodyBehavior:
                                                         type: string
@@ -6445,6 +7997,8 @@ spec:
                                                       dynamicMetadataValues:
                                                         items:
                                                           properties:
+                                                            jsonToProto:
+                                                              type: boolean
                                                             key:
                                                               type: string
                                                             metadataNamespace:
@@ -6467,10 +8021,17 @@ spec:
                                                               type: object
                                                             header:
                                                               type: string
+                                                            mode:
+                                                              type: string
+                                                              x-kubernetes-int-or-string: true
                                                             regex:
                                                               type: string
+                                                            replacementText:
+                                                              nullable: true
+                                                              type: string
                                                             subgroup:
-                                                              format: int32
+                                                              maximum: 4294967295
+                                                              minimum: 0
                                                               type: integer
                                                           type: object
                                                         type: object
@@ -6500,6 +8061,21 @@ spec:
                                                       ignoreErrorOnParse:
                                                         type: boolean
                                                       mergeExtractorsToBody:
+                                                        type: object
+                                                      mergeJsonKeys:
+                                                        properties:
+                                                          jsonKeys:
+                                                            additionalProperties:
+                                                              properties:
+                                                                overrideEmpty:
+                                                                  type: boolean
+                                                                tmpl:
+                                                                  properties:
+                                                                    text:
+                                                                      type: string
+                                                                  type: object
+                                                              type: object
+                                                            type: object
                                                         type: object
                                                       parseBodyBehavior:
                                                         type: string
@@ -6612,6 +8188,8 @@ spec:
                                             dynamicMetadataValues:
                                               items:
                                                 properties:
+                                                  jsonToProto:
+                                                    type: boolean
                                                   key:
                                                     type: string
                                                   metadataNamespace:
@@ -6633,10 +8211,17 @@ spec:
                                                     type: object
                                                   header:
                                                     type: string
+                                                  mode:
+                                                    type: string
+                                                    x-kubernetes-int-or-string: true
                                                   regex:
                                                     type: string
+                                                  replacementText:
+                                                    nullable: true
+                                                    type: string
                                                   subgroup:
-                                                    format: int32
+                                                    maximum: 4294967295
+                                                    minimum: 0
                                                     type: integer
                                                 type: object
                                               type: object
@@ -6667,6 +8252,21 @@ spec:
                                               type: boolean
                                             mergeExtractorsToBody:
                                               type: object
+                                            mergeJsonKeys:
+                                              properties:
+                                                jsonKeys:
+                                                  additionalProperties:
+                                                    properties:
+                                                      overrideEmpty:
+                                                        type: boolean
+                                                      tmpl:
+                                                        properties:
+                                                          text:
+                                                            type: string
+                                                        type: object
+                                                    type: object
+                                                  type: object
+                                              type: object
                                             parseBodyBehavior:
                                               type: string
                                               x-kubernetes-int-or-string: true
@@ -6678,7 +8278,8 @@ spec:
                                 kube:
                                   properties:
                                     port:
-                                      format: int32
+                                      maximum: 4294967295
+                                      minimum: 0
                                       type: integer
                                     ref:
                                       properties:

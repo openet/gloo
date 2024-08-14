@@ -491,6 +491,26 @@ func (m *Upstream) Hash(hasher hash.Hash64) (uint64, error) {
 		}
 	}
 
+	if h, ok := interface{}(m.GetDisableIstioAutoMtls()).(safe_hasher.SafeHasher); ok {
+		if _, err = hasher.Write([]byte("DisableIstioAutoMtls")); err != nil {
+			return 0, err
+		}
+		if _, err = h.Hash(hasher); err != nil {
+			return 0, err
+		}
+	} else {
+		if fieldValue, err := hashstructure.Hash(m.GetDisableIstioAutoMtls(), nil); err != nil {
+			return 0, err
+		} else {
+			if _, err = hasher.Write([]byte("DisableIstioAutoMtls")); err != nil {
+				return 0, err
+			}
+			if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {
+				return 0, err
+			}
+		}
+	}
+
 	switch m.UpstreamType.(type) {
 
 	case *Upstream_Kube:
@@ -639,6 +659,50 @@ func (m *Upstream) Hash(hasher hash.Hash64) (uint64, error) {
 				return 0, err
 			} else {
 				if _, err = hasher.Write([]byte("AwsEc2")); err != nil {
+					return 0, err
+				}
+				if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {
+					return 0, err
+				}
+			}
+		}
+
+	case *Upstream_Gcp:
+
+		if h, ok := interface{}(m.GetGcp()).(safe_hasher.SafeHasher); ok {
+			if _, err = hasher.Write([]byte("Gcp")); err != nil {
+				return 0, err
+			}
+			if _, err = h.Hash(hasher); err != nil {
+				return 0, err
+			}
+		} else {
+			if fieldValue, err := hashstructure.Hash(m.GetGcp(), nil); err != nil {
+				return 0, err
+			} else {
+				if _, err = hasher.Write([]byte("Gcp")); err != nil {
+					return 0, err
+				}
+				if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {
+					return 0, err
+				}
+			}
+		}
+
+	case *Upstream_Ai:
+
+		if h, ok := interface{}(m.GetAi()).(safe_hasher.SafeHasher); ok {
+			if _, err = hasher.Write([]byte("Ai")); err != nil {
+				return 0, err
+			}
+			if _, err = h.Hash(hasher); err != nil {
+				return 0, err
+			}
+		} else {
+			if fieldValue, err := hashstructure.Hash(m.GetAi(), nil); err != nil {
+				return 0, err
+			} else {
+				if _, err = hasher.Write([]byte("Ai")); err != nil {
 					return 0, err
 				}
 				if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {

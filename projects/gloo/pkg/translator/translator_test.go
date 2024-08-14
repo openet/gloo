@@ -6,49 +6,59 @@ import (
 	"fmt"
 	"os"
 
-	types2 "github.com/onsi/gomega/types"
-
-	_struct "github.com/golang/protobuf/ptypes/struct"
-	v3 "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/config/core/v3"
-	envoy_v3 "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/extensions/filters/http/buffer/v3"
-	csrf_v31 "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/extensions/filters/http/csrf/v3"
-	v31 "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/type/matcher/v3"
-	v32 "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/type/matcher/v3"
-	v1snap "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/gloosnapshot"
-	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/protocol_upgrade"
-	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/ssl"
-	"github.com/solo-io/solo-apis/pkg/api/ratelimit.solo.io/v1alpha1"
-	"google.golang.org/protobuf/types/known/wrapperspb"
-
-	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
-
 	envoy_config_cluster_v3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	envoy_config_core_v3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	envoy_config_endpoint_v3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
 	envoy_config_listener_v3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
+	listenerv3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	envoy_config_route_v3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
 	envoyhttp "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	envoytcp "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/tcp_proxy/v3"
 	envoyauth "github.com/envoyproxy/go-control-plane/envoy/extensions/transport_sockets/tls/v3"
 	envoy_type_matcher_v3 "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	envoy_type_v3 "github.com/envoyproxy/go-control-plane/envoy/type/v3"
+	"github.com/envoyproxy/go-control-plane/pkg/wellknown"
 	"github.com/golang/mock/gomock"
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/duration"
+	_struct "github.com/golang/protobuf/ptypes/struct"
 	structpb "github.com/golang/protobuf/ptypes/struct"
 	"github.com/golang/protobuf/ptypes/wrappers"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	gomega_types "github.com/onsi/gomega/types"
+	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
+
+	"github.com/solo-io/solo-apis/pkg/api/ratelimit.solo.io/v1alpha1"
+	envoycore_sk "github.com/solo-io/solo-kit/pkg/api/external/envoy/api/v2/core"
+	"github.com/solo-io/solo-kit/pkg/api/v1/clients/factory"
+	"github.com/solo-io/solo-kit/pkg/api/v1/clients/memory"
+	envoycache "github.com/solo-io/solo-kit/pkg/api/v1/control-plane/cache"
+	"github.com/solo-io/solo-kit/pkg/api/v1/control-plane/types"
+	"github.com/solo-io/solo-kit/pkg/api/v1/resources"
+	skkube "github.com/solo-io/solo-kit/pkg/api/v1/resources/common/kubernetes"
+	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
+	. "github.com/solo-io/solo-kit/test/matchers"
+
 	"github.com/solo-io/gloo/pkg/utils/api_conversion"
 	"github.com/solo-io/gloo/pkg/utils/settingsutil"
 	"github.com/solo-io/gloo/projects/gloo/constants"
 	gloo_envoy_core "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/api/v2/core"
+	v3 "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/config/core/v3"
+	bufferv3 "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/extensions/filters/http/buffer/v3"
+	gloocsrf "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/extensions/filters/http/csrf/v3"
+	v31 "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/type/matcher/v3"
+	v32 "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/type/matcher/v3"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/grpc/validation"
 	v1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/core/matchers"
 	extauth "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/enterprise/options/extauth/v1"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/enterprise/options/ratelimit"
+	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/filters"
+	v1snap "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/gloosnapshot"
 	v1plugins "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/aws"
 	consul2 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/consul"
@@ -56,10 +66,12 @@ import (
 	v1grpc "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/grpc"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/headers"
 	v1kubernetes "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/kubernetes"
+	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/protocol_upgrade"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/retries"
 	v1static "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/static"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/tracing"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/transformation"
+	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/ssl"
 	"github.com/solo-io/gloo/projects/gloo/pkg/bootstrap"
 	"github.com/solo-io/gloo/projects/gloo/pkg/defaults"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
@@ -71,17 +83,6 @@ import (
 	glooutils "github.com/solo-io/gloo/projects/gloo/pkg/utils"
 	validationutils "github.com/solo-io/gloo/projects/gloo/pkg/utils/validation"
 	gloohelpers "github.com/solo-io/gloo/test/helpers"
-	envoycore_sk "github.com/solo-io/solo-kit/pkg/api/external/envoy/api/v2/core"
-	"github.com/solo-io/solo-kit/pkg/api/v1/clients/factory"
-	"github.com/solo-io/solo-kit/pkg/api/v1/clients/memory"
-	envoycache "github.com/solo-io/solo-kit/pkg/api/v1/control-plane/cache"
-	"github.com/solo-io/solo-kit/pkg/api/v1/control-plane/types"
-	"github.com/solo-io/solo-kit/pkg/api/v1/resources"
-	skkube "github.com/solo-io/solo-kit/pkg/api/v1/resources/common/kubernetes"
-	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
-	. "github.com/solo-io/solo-kit/test/matchers"
-	k8scorev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 var _ = Describe("Translator", func() {
@@ -97,22 +98,35 @@ var _ = Describe("Translator", func() {
 		matcher           *matchers.Matcher
 		routes            []*v1.Route
 
-		snapshot           envoycache.Snapshot
-		cluster            *envoy_config_cluster_v3.Cluster
-		listener           *envoy_config_listener_v3.Listener
-		endpoints          envoycache.Resources
-		hcmCfg             *envoyhttp.HttpConnectionManager
-		routeConfiguration *envoy_config_route_v3.RouteConfiguration
-		virtualHostName    string
+		snapshot            envoycache.Snapshot
+		cluster             *envoy_config_cluster_v3.Cluster
+		listener            *envoy_config_listener_v3.Listener
+		endpoints           envoycache.Resources
+		hcmCfg              *envoyhttp.HttpConnectionManager
+		routeConfiguration  *envoy_config_route_v3.RouteConfiguration
+		virtualHostName     string
+		memoryClientFactory *factory.MemoryResourceClientFactory
 	)
 
 	beforeEach := func() {
-
 		ctrl = gomock.NewController(T)
 
 		cluster = nil
-		settings = &v1.Settings{}
-		memoryClientFactory := &factory.MemoryResourceClientFactory{
+		settings = &v1.Settings{
+			Gateway: &v1.GatewayOptions{
+				Validation: &v1.GatewayOptions_ValidationOptions{
+					// To validate transformations, we call out to an Envoy binary running in validate mode
+					// https://github.com/solo-io/gloo/blob/01d04751f72c168e304977c4f67fdbcbf30232a9/projects/gloo/pkg/bootstrap/bootstrap_validation.go#L28
+					// This binary is present in our CI/CD pipeline. But when running locally it is not, so we fallback to the Upstream Envoy binary
+					// which doesn't have the custom Solo.io types registered with the deserializer. Therefore, when running locally tests will fail,
+					// and the logs will contain:
+					//	"Invalid type URL, unknown type: envoy.api.v2.filter.http.RouteTransformations for type Any)"
+					// We do not perform transformation validation as part of our translator tests, so we explicitly disable this
+					DisableTransformationValidation: &wrappers.BoolValue{Value: true},
+				},
+			},
+		}
+		memoryClientFactory = &factory.MemoryResourceClientFactory{
 			Cache: memory.NewInMemoryResourceCache(),
 		}
 		opts := bootstrap.Opts{
@@ -189,7 +203,11 @@ var _ = Describe("Translator", func() {
 	justBeforeEach := func() {
 		pluginRegistry := registry.NewPluginRegistry(registeredPlugins)
 
-		translator = NewTranslatorWithHasher(glooutils.NewSslConfigTranslator(), settings, pluginRegistry, EnvoyCacheResourcesListToFnvHash)
+		translator = NewTranslatorWithHasher(
+			glooutils.NewSslConfigTranslator(),
+			settings,
+			pluginRegistry,
+			EnvoyCacheResourcesListToFnvHash)
 		httpListener := &v1.Listener{
 			Name:        "http-listener",
 			BindAddress: "127.0.0.1",
@@ -363,14 +381,17 @@ var _ = Describe("Translator", func() {
 		ExpectWithOffset(1, err).To(HaveOccurred())
 		Expect(err.Error()).To(ContainSubstring("cannot contain [/../]"))
 		return report
-
 	}
 
 	translateWithBuggyHasher := func() *validation.ProxyReport {
 		buggyHasher := func(resources []envoycache.Resource) (uint64, error) {
 			return 0, errors.New("This is a buggy hasher error")
 		}
-		translator = NewTranslatorWithHasher(glooutils.NewSslConfigTranslator(), settings, registry.NewPluginRegistry(registeredPlugins), buggyHasher)
+		translator = NewTranslatorWithHasher(
+			glooutils.NewSslConfigTranslator(),
+			settings,
+			registry.NewPluginRegistry(registeredPlugins),
+			buggyHasher)
 		snapshot, _, report := translator.Translate(params, proxy)
 		Expect(snapshot.GetResources(types.EndpointTypeV3).Version).To(Equal("endpoints-hashErr"))
 		Expect(snapshot.GetResources(types.ClusterTypeV3).Version).To(Equal("clusters-hashErr"))
@@ -409,7 +430,6 @@ var _ = Describe("Translator", func() {
 		endpoints = snap.GetResources(types.EndpointTypeV3)
 
 		snapshot = snap
-
 	}
 
 	It("sanitizes an invalid virtual host name", func() {
@@ -480,14 +500,13 @@ var _ = Describe("Translator", func() {
 	Context("Auth configs", func() {
 		It("will error if auth config is missing", func() {
 			proxyClone := proto.Clone(proxy).(*v1.Proxy)
-			proxyClone.GetListeners()[0].GetHttpListener().GetVirtualHosts()[0].Options =
-				&v1.VirtualHostOptions{
-					Extauth: &extauth.ExtAuthExtension{
-						Spec: &extauth.ExtAuthExtension_ConfigRef{
-							ConfigRef: &core.ResourceRef{},
-						},
+			proxyClone.GetListeners()[0].GetHttpListener().GetVirtualHosts()[0].Options = &v1.VirtualHostOptions{
+				Extauth: &extauth.ExtAuthExtension{
+					Spec: &extauth.ExtAuthExtension_ConfigRef{
+						ConfigRef: &core.ResourceRef{},
 					},
-				}
+				},
+			}
 
 			_, errs, _ := translator.Translate(params, proxyClone)
 			Expect(errs.Validate()).To(HaveOccurred())
@@ -496,14 +515,13 @@ var _ = Describe("Translator", func() {
 
 		It("will error if auth config is missing from a hybrid listener", func() {
 			proxyClone := proto.Clone(proxy).(*v1.Proxy)
-			proxyClone.GetListeners()[2].GetHybridListener().GetMatchedListeners()[1].GetHttpListener().GetVirtualHosts()[0].Options =
-				&v1.VirtualHostOptions{
-					Extauth: &extauth.ExtAuthExtension{
-						Spec: &extauth.ExtAuthExtension_ConfigRef{
-							ConfigRef: &core.ResourceRef{},
-						},
+			proxyClone.GetListeners()[2].GetHybridListener().GetMatchedListeners()[1].GetHttpListener().GetVirtualHosts()[0].Options = &v1.VirtualHostOptions{
+				Extauth: &extauth.ExtAuthExtension{
+					Spec: &extauth.ExtAuthExtension_ConfigRef{
+						ConfigRef: &core.ResourceRef{},
 					},
-				}
+				},
+			}
 
 			_, errs, _ := translator.Translate(params, proxyClone)
 			Expect(errs.Validate()).To(HaveOccurred())
@@ -590,7 +608,6 @@ var _ = Describe("Translator", func() {
 
 	Context("route path match - sensitive case", func() {
 		It("should translate path matcher with sensitive case", func() {
-
 			routes[0].Matchers = []*matchers.Matcher{
 				{
 					PathSpecifier: &matchers.Matcher_Prefix{
@@ -607,7 +624,6 @@ var _ = Describe("Translator", func() {
 		})
 
 		It("should translate path matcher with case insensitive", func() {
-
 			routes[0].Matchers = []*matchers.Matcher{
 				{
 					PathSpecifier: &matchers.Matcher_Prefix{
@@ -624,7 +640,6 @@ var _ = Describe("Translator", func() {
 		})
 
 		It("should translate path matcher with regex rewrite on redirectAction", func() {
-
 			glooRoute := &v1.Route{
 				Action: &v1.Route_RedirectAction{
 					RedirectAction: &v1.RedirectAction{
@@ -652,7 +667,6 @@ var _ = Describe("Translator", func() {
 			routes[0] = glooRoute
 
 			expectedRedirectAction := &envoy_config_route_v3.Route_Redirect{
-
 				Redirect: &envoy_config_route_v3.RedirectAction{
 					PathRewriteSpecifier: &envoy_config_route_v3.RedirectAction_RegexRewrite{
 						RegexRewrite: &envoy_type_matcher_v3.RegexMatchAndSubstitute{
@@ -663,7 +677,7 @@ var _ = Describe("Translator", func() {
 						},
 					},
 
-					//PathRewriteSpecifier: envoy_config_route_v3.RedirectAction_RegexRewrite{},
+					// PathRewriteSpecifier: envoy_config_route_v3.RedirectAction_RegexRewrite{},
 					ResponseCode: 301,
 					StripQuery:   false,
 				},
@@ -776,7 +790,6 @@ var _ = Describe("Translator", func() {
 
 	Context("route header match", func() {
 		It("should translate header matcher with no value to a PresentMatch", func() {
-
 			matcher.Headers = []*matchers.HeaderMatcher{
 				{
 					Name: "test",
@@ -791,7 +804,6 @@ var _ = Describe("Translator", func() {
 		})
 
 		It("should translate header matcher with value to exact match", func() {
-
 			matcher.Headers = []*matchers.HeaderMatcher{
 				{
 					Name:  "test",
@@ -808,7 +820,6 @@ var _ = Describe("Translator", func() {
 		})
 
 		It("should translate header matcher with regex becomes regex match", func() {
-
 			matcher.Headers = []*matchers.HeaderMatcher{
 				{
 					Name:  "test",
@@ -826,7 +837,6 @@ var _ = Describe("Translator", func() {
 		})
 
 		It("should translate header matcher with regex becomes regex match, with non default program size", func() {
-
 			settings := &v1.Settings{
 				Gloo: &v1.GlooOptions{
 					RegexMaxProgramSize: &wrappers.UInt32Value{Value: 200},
@@ -853,7 +863,6 @@ var _ = Describe("Translator", func() {
 		})
 
 		It("should translate header matcher logic inversion flag", func() {
-
 			matcher.Headers = []*matchers.HeaderMatcher{
 				{
 					Name:        "test",
@@ -923,12 +932,12 @@ var _ = Describe("Translator", func() {
 				Transformations:    &transformation.Transformations{ClearRouteCache: true},
 				Tracing:            &tracing.RouteTracingSettings{},
 				HeaderManipulation: &headers.HeaderManipulation{RequestHeadersToRemove: []string{"test-header"}},
-				BufferPerRoute: &envoy_v3.BufferPerRoute{
-					Override: &envoy_v3.BufferPerRoute_Disabled{
+				BufferPerRoute: &bufferv3.BufferPerRoute{
+					Override: &bufferv3.BufferPerRoute_Disabled{
 						Disabled: true,
 					},
 				},
-				Csrf: &csrf_v31.CsrfPolicy{
+				Csrf: &gloocsrf.CsrfPolicy{
 					FilterEnabled: &v3.RuntimeFractionalPercent{
 						RuntimeKey: "test-key",
 					},
@@ -1038,7 +1047,6 @@ var _ = Describe("Translator", func() {
 	})
 
 	Context("Health check config", func() {
-
 		It("will error if required field is nil", func() {
 			upstream.HealthChecks = []*gloo_envoy_core.HealthCheck{
 				{
@@ -1394,14 +1402,12 @@ var _ = Describe("Translator", func() {
 	})
 
 	Context("circuit breakers", func() {
-
 		It("should NOT translate circuit breakers on upstream", func() {
 			translate()
 			Expect(cluster.CircuitBreakers).To(BeNil())
 		})
 
 		It("should translate circuit breakers on upstream", func() {
-
 			upstream.CircuitBreakers = &v1.CircuitBreakerConfig{
 				MaxConnections:     &wrappers.UInt32Value{Value: 1},
 				MaxPendingRequests: &wrappers.UInt32Value{Value: 2},
@@ -1425,7 +1431,6 @@ var _ = Describe("Translator", func() {
 		})
 
 		It("should translate circuit breakers on settings", func() {
-
 			settings.Gloo = &v1.GlooOptions{}
 			settings.Gloo.CircuitBreakers = &v1.CircuitBreakerConfig{
 				MaxConnections:     &wrappers.UInt32Value{Value: 1},
@@ -1450,7 +1455,6 @@ var _ = Describe("Translator", func() {
 		})
 
 		It("should override circuit breakers on upstream", func() {
-
 			settings.Gloo = &v1.GlooOptions{}
 			settings.Gloo.CircuitBreakers = &v1.CircuitBreakerConfig{
 				MaxConnections:     &wrappers.UInt32Value{Value: 11},
@@ -1483,7 +1487,6 @@ var _ = Describe("Translator", func() {
 	})
 
 	Context("eds", func() {
-
 		It("should translate eds differently with different clusters", func() {
 			translate()
 			version1 := endpoints.Version
@@ -1498,14 +1501,12 @@ var _ = Describe("Translator", func() {
 	})
 
 	Context("lds", func() {
-
 		var (
 			localUpstream1 *v1.Upstream
 			localUpstream2 *v1.Upstream
 		)
 
 		BeforeEach(func() {
-
 			Expect(params.Snapshot.Upstreams).To(HaveLen(1))
 
 			buildLocalUpstream := func(descriptors string) *v1.Upstream {
@@ -1540,7 +1541,6 @@ var _ = Describe("Translator", func() {
 
 			localUpstream1 = buildLocalUpstream("")
 			localUpstream2 = buildLocalUpstream("")
-
 		})
 
 		It("should have same version and http filters when http filters with the same name are added in a different order", func() {
@@ -1601,7 +1601,6 @@ var _ = Describe("Translator", func() {
 			flipOrderHttpFilters := typedConfig.(*envoyhttp.HttpConnectionManager).HttpFilters
 			Expect(flipOrderHttpFilters).To(Equal(upstreamsHttpFilters))
 		})
-
 	})
 
 	Context("when handling cluster_header HTTP header name", func() {
@@ -1652,11 +1651,9 @@ var _ = Describe("Translator", func() {
 				Expect(reason).To(Equal("invalid:-cluster is an invalid HTTP header name"))
 			})
 		})
-
 	})
 
 	Context("when handling upstream groups", func() {
-
 		var (
 			upstream2     *v1.Upstream
 			upstreamGroup *v1.UpstreamGroup
@@ -1848,9 +1845,7 @@ var _ = Describe("Translator", func() {
 	})
 
 	Context("when handling subsets", func() {
-		var (
-			claConfiguration *envoy_config_endpoint_v3.ClusterLoadAssignment
-		)
+		var claConfiguration *envoy_config_endpoint_v3.ClusterLoadAssignment
 		BeforeEach(func() {
 			claConfiguration = nil
 
@@ -1900,7 +1895,6 @@ var _ = Describe("Translator", func() {
 					},
 				},
 			}}
-
 		})
 
 		translateWithEndpoints := func() {
@@ -1918,7 +1912,6 @@ var _ = Describe("Translator", func() {
 		}
 
 		Context("when happy path", func() {
-
 			It("should transfer labels to envoy", func() {
 				translateWithEndpoints()
 
@@ -1940,19 +1933,18 @@ var _ = Describe("Translator", func() {
 			})
 
 			It("should add subset configuration with default subset to cluster", func() {
-				upstream.UpstreamType.(*v1.Upstream_Kube).Kube.SubsetSpec =
-					&v1plugins.SubsetSpec{
-						Selectors: []*v1plugins.Selector{{
-							SingleHostPerSubset: true,
-							Keys: []string{
-								"testkey",
-							},
-						}},
-						FallbackPolicy: v1plugins.FallbackPolicy_DEFAULT_SUBSET,
-						DefaultSubset: &v1plugins.Subset{Values: map[string]string{
-							"testkey": "testvalue",
-						}},
-					}
+				upstream.UpstreamType.(*v1.Upstream_Kube).Kube.SubsetSpec = &v1plugins.SubsetSpec{
+					Selectors: []*v1plugins.Selector{{
+						SingleHostPerSubset: true,
+						Keys: []string{
+							"testkey",
+						},
+					}},
+					FallbackPolicy: v1plugins.FallbackPolicy_DEFAULT_SUBSET,
+					DefaultSubset: &v1plugins.Subset{Values: map[string]string{
+						"testkey": "testvalue",
+					}},
+				}
 				translateWithEndpoints()
 
 				Expect(cluster.LbSubsetConfig).ToNot(BeNil())
@@ -1987,7 +1979,6 @@ var _ = Describe("Translator", func() {
 		})
 
 		Context("subset in route doesnt match subset in upstream", func() {
-
 			BeforeEach(func() {
 				routes = []*v1.Route{{
 					Matchers: []*matchers.Matcher{matcher},
@@ -2027,7 +2018,6 @@ var _ = Describe("Translator", func() {
 		})
 
 		Context("when a route table is missing", func() {
-
 			BeforeEach(func() {
 				routes = []*v1.Route{{
 					Matchers: []*matchers.Matcher{matcher},
@@ -2064,15 +2054,13 @@ var _ = Describe("Translator", func() {
 	})
 
 	Context("when translating a route that points directly to a service", func() {
-
 		var fakeUsList v1.UpstreamList
 
 		BeforeEach(func() {
-
 			// The kube service that we want to route to
 			svc := skkube.NewService("ns-1", "svc-1")
-			svc.Spec = k8scorev1.ServiceSpec{
-				Ports: []k8scorev1.ServicePort{
+			svc.Spec = corev1.ServiceSpec{
+				Ports: []corev1.ServicePort{
 					{
 						Name:       "port-1",
 						Port:       8080,
@@ -2167,7 +2155,6 @@ var _ = Describe("Translator", func() {
 	})
 
 	Context("when translating a route that points to a Consul service", func() {
-
 		var (
 			fakeUsList v1.UpstreamList
 			dc         = func(dataCenterName string) string {
@@ -2205,7 +2192,6 @@ var _ = Describe("Translator", func() {
 		)
 
 		BeforeEach(func() {
-
 			// Metadata for the Consul service that we want to route to
 			svc := &consul.ServiceMeta{
 				Name:        svcName,
@@ -2348,7 +2334,6 @@ var _ = Describe("Translator", func() {
 	})
 
 	Context("when translating a route that points to an AWS lambda", func() {
-
 		createLambdaUpstream := func(namespace, name, region string, lambdaFuncs []*aws.LambdaFunctionSpec) *v1.Upstream {
 			return &v1.Upstream{
 				Metadata: &core.Metadata{
@@ -2426,7 +2411,8 @@ var _ = Describe("Translator", func() {
 							},
 						},
 					},
-				}}}
+				},
+			}}
 
 			routes := proxy.GetListeners()[0].GetHttpListener().GetVirtualHosts()[0].GetRoutes()
 			proxy.GetListeners()[0].GetHttpListener().GetVirtualHosts()[0].Routes = append(routes, validLambdaRoute)
@@ -2454,7 +2440,8 @@ var _ = Describe("Translator", func() {
 							},
 						},
 					},
-				}}}
+				},
+			}}
 
 			routes := proxy.GetListeners()[0].GetHttpListener().GetVirtualHosts()[0].GetRoutes()
 			proxy.GetListeners()[0].GetHttpListener().GetVirtualHosts()[0].Routes = append(routes, invalidLambdaRoute)
@@ -2489,7 +2476,8 @@ var _ = Describe("Translator", func() {
 							},
 						},
 					},
-				}}}
+				},
+			}}
 
 			routes := proxy.GetListeners()[0].GetHttpListener().GetVirtualHosts()[0].GetRoutes()
 			proxy.GetListeners()[0].GetHttpListener().GetVirtualHosts()[0].Routes = append(routes, invalidLambdaRoute)
@@ -2497,11 +2485,9 @@ var _ = Describe("Translator", func() {
 			Expect(resourceReport.Validate()).To(HaveOccurred())
 			Expect(resourceReport.Validate().Error()).To(ContainSubstring("a route references nonexistentLambdaFunc AWS lambda which does not exist on the route's upstream"))
 		})
-
 	})
 
 	Context("when translating a multi-route action with differing passed weights", func() {
-
 		var (
 			multiActionRouteWithNoWeightPassedDest *v1.Route
 			multiActionRouteOneDest                *v1.Route
@@ -2526,7 +2512,7 @@ var _ = Describe("Translator", func() {
 			expectedErrorString = fmt.Sprintf("Incorrect configuration for Weighted Destination for route - Weighted Destinations require a total weight that is greater than or equal to 1")
 		})
 
-		//Positive Tests
+		// Positive Tests
 		It("Should translate single routes when multiRoute is passed and only one destination is specified", func() {
 			proxy.Listeners[0].GetHttpListener().GetVirtualHosts()[0].Routes = []*v1.Route{multiActionRouteOneDest}
 			snap, resourceReport, _ := translator.Translate(params, proxy)
@@ -2547,11 +2533,11 @@ var _ = Describe("Translator", func() {
 			clusterAction, ok := routeAction.Route.ClusterSpecifier.(*envoy_config_route_v3.RouteAction_WeightedClusters)
 			Expect(ok).To(BeTrue())
 
-			//DataFromWeightedCluster
+			// DataFromWeightedCluster
 			totalWeight := weightedDestFiveWeight.Weight
 			expectedClusterName := weightedDestFiveWeight.Destination.GetUpstream().Name + "_" + weightedDestFiveWeight.Destination.GetUpstream().Namespace
 
-			//There is only one route with a weight of 5 so total weight for the cluster should be 5
+			// There is only one route with a weight of 5 so total weight for the cluster should be 5
 			Expect(clusterAction.WeightedClusters.TotalWeight.GetValue()).To(Equal(totalWeight.GetValue()))
 			clusters := clusterAction.WeightedClusters.Clusters
 			Expect(clusters).To(HaveLen(1))
@@ -2583,7 +2569,7 @@ var _ = Describe("Translator", func() {
 			clusterNameFiveWeight := weightedDestFiveWeight.Destination.GetUpstream().Name + "_" + weightedDestFiveWeight.Destination.GetUpstream().Namespace
 			clusterNameZeroWeight := weightedDestZeroWeight.Destination.GetUpstream().Name + "_" + weightedDestZeroWeight.Destination.GetUpstream().Namespace
 
-			//There is only one route with a weight of 5 so total weight for the cluster should be 5
+			// There is only one route with a weight of 5 so total weight for the cluster should be 5
 			Expect(clusterAction.WeightedClusters.TotalWeight.GetValue()).To(Equal(totalWeight))
 			clusters := clusterAction.WeightedClusters.Clusters
 			Expect(clusters).To(HaveLen(2))
@@ -2598,20 +2584,17 @@ var _ = Describe("Translator", func() {
 			}
 		})
 
-		//Negative Tests
+		// Negative Tests
 		It("Should report an error when total weight is 0 - nil and 0 weights passed", func() {
 			proxy.Listeners[0].GetHttpListener().GetVirtualHosts()[0].Routes = []*v1.Route{multiActionRouteWithNoWeightPassedDest}
 			_, errs, _ := translator.Translate(params, proxy)
 			Expect(errs.Validate()).To(HaveOccurred())
 			Expect(errs.Validate().Error()).To(ContainSubstring(expectedErrorString))
 		})
-
 	})
 
 	Context("Route plugin", func() {
-		var (
-			routePlugin *routePluginMock
-		)
+		var routePlugin *routePluginMock
 		BeforeEach(func() {
 			routePlugin = &routePluginMock{}
 			registeredPlugins = append(registeredPlugins, routePlugin)
@@ -2631,7 +2614,6 @@ var _ = Describe("Translator", func() {
 			translate()
 			Expect(hasVHost).To(BeTrue())
 		})
-
 	})
 
 	Context("EndpointPlugin", func() {
@@ -2701,11 +2683,9 @@ var _ = Describe("Translator", func() {
 			translate()
 			Expect(foundEmptyUpstream).To(BeTrue())
 		})
-
 	})
 
 	Context("Route option on direct response actions", func() {
-
 		BeforeEach(func() {
 			routes = []*v1.Route{{
 				Matchers: []*matchers.Matcher{matcher},
@@ -2756,7 +2736,6 @@ var _ = Describe("Translator", func() {
 				},
 			))
 		})
-
 	})
 
 	Context("TCP", func() {
@@ -2784,9 +2763,8 @@ var _ = Describe("Translator", func() {
 	})
 
 	Context("Hybrid", func() {
-
 		// The number of HttpFilters that we expect to be generated on the HttpConnectionManager by default
-		var defaultHttpFilters = 7
+		defaultHttpFilters := 7
 
 		It("can properly create a hybrid listener", func() {
 			translate()
@@ -2880,16 +2858,11 @@ var _ = Describe("Translator", func() {
 			Expect(errs.Validate()).To(HaveOccurred())
 			Expect(errs.Validate().Error()).To(ContainSubstring("Listener Error: SSLConfigError. Reason: SSL secret not found: list did not find secret"))
 		})
-
 	})
 
 	Context("Ssl - cluster", func() {
-
-		var (
-			tlsConf *v1.TlsSecret
-		)
+		var tlsConf *v1.TlsSecret
 		BeforeEach(func() {
-
 			tlsConf = &v1.TlsSecret{}
 			secret := &v1.Secret{
 				Metadata: &core.Metadata{
@@ -2913,7 +2886,6 @@ var _ = Describe("Translator", func() {
 					Upstreams: v1.UpstreamList{upstream},
 				},
 			}
-
 		})
 
 		tlsContext := func() *envoyauth.UpstreamTlsContext {
@@ -2925,7 +2897,6 @@ var _ = Describe("Translator", func() {
 		}
 
 		It("should process an upstream with tls config", func() {
-
 			pk := gloohelpers.PrivateKey()
 			cc := gloohelpers.Certificate()
 
@@ -2939,7 +2910,6 @@ var _ = Describe("Translator", func() {
 		})
 
 		It("should process an upstream with rootca", func() {
-
 			pk := gloohelpers.PrivateKey()
 			cc := gloohelpers.Certificate()
 			rca := gloohelpers.Certificate()
@@ -2954,7 +2924,6 @@ var _ = Describe("Translator", func() {
 		})
 
 		Context("SslParameters", func() {
-
 			It("should set upstream SslParameters if defined on upstream", func() {
 				upstreamSslParameters := &ssl.SslParameters{
 					CipherSuites: []string{"AES256-SHA", "AES256-GCM-SHA384"},
@@ -3001,6 +2970,150 @@ var _ = Describe("Translator", func() {
 				Expect(tlsContext().CommonTlsContext.TlsParams.CipherSuites).To(Equal(settingsSslParameters.CipherSuites))
 			})
 
+			Context("Automtls", func() {
+				BeforeEach(func() {
+					settings = &v1.Settings{
+						Gloo: &v1.GlooOptions{
+							IstioOptions: &v1.GlooOptions_IstioOptions{
+								EnableAutoMtls:    &wrappers.BoolValue{Value: true},
+								EnableIntegration: &wrappers.BoolValue{Value: true},
+							},
+						},
+					}
+				})
+
+				AfterEach(func() {
+					settings = &v1.Settings{
+						Gloo: &v1.GlooOptions{
+							IstioOptions: &v1.GlooOptions_IstioOptions{
+								EnableAutoMtls:    &wrappers.BoolValue{Value: false},
+								EnableIntegration: &wrappers.BoolValue{Value: false},
+							},
+						},
+					}
+				})
+
+				It("should set transport socket match is automtls is enabled", func() {
+					// Create a translator where istio is enabled
+					opts := bootstrap.Opts{
+						Settings:  settings,
+						Secrets:   memoryClientFactory,
+						Upstreams: memoryClientFactory,
+						Consul: bootstrap.Consul{
+							ConsulWatcher: mock_consul.NewMockConsulWatcher(ctrl), // just needed to activate the consul plugin
+						},
+						GlooGateway: bootstrap.GlooGateway{
+							IstioValues: bootstrap.IstioValues{
+								IntegrationEnabled: true,
+							},
+						},
+					}
+					registeredPlugins = registry.Plugins(opts)
+
+					pluginRegistry := registry.NewPluginRegistry(registeredPlugins)
+					translator = NewTranslatorWithHasher(
+						glooutils.NewSslConfigTranslator(),
+						settings,
+						pluginRegistry,
+						EnvoyCacheResourcesListToFnvHash)
+
+					// clear out upstream config
+					upstream.SslConfig = nil
+					translate()
+
+					clusters := snapshot.GetResources(types.ClusterTypeV3)
+					clusterResource := clusters.Items[UpstreamToClusterName(upstream.Metadata.Ref())]
+					cluster := clusterResource.ResourceProto().(*envoy_config_cluster_v3.Cluster)
+					transportSocketMatches := cluster.GetTransportSocketMatches()
+					Expect(transportSocketMatches).To(HaveLen(2), "Expect 2 transport socket matches when istio auto mtls is enabled")
+				})
+
+				It("should not translate automtls is istio integration is disabled", func() {
+					settings.Gloo.IstioOptions.EnableIntegration.Value = false
+
+					// Create a translator where istio is disabled
+					opts := bootstrap.Opts{
+						Settings:  settings,
+						Secrets:   memoryClientFactory,
+						Upstreams: memoryClientFactory,
+						Consul: bootstrap.Consul{
+							ConsulWatcher: mock_consul.NewMockConsulWatcher(ctrl), // just needed to activate the consul plugin
+						},
+						GlooGateway: bootstrap.GlooGateway{
+							IstioValues: bootstrap.IstioValues{
+								IntegrationEnabled: false,
+							},
+						},
+					}
+					registeredPlugins = registry.Plugins(opts)
+					pluginRegistry := registry.NewPluginRegistry(registeredPlugins)
+					translator = NewTranslatorWithHasher(
+						glooutils.NewSslConfigTranslator(),
+						settings,
+						pluginRegistry,
+						EnvoyCacheResourcesListToFnvHash)
+
+					// clear out upstream config
+					upstream.SslConfig = nil
+					translate()
+
+					clusters := snapshot.GetResources(types.ClusterTypeV3)
+					clusterResource := clusters.Items[UpstreamToClusterName(upstream.Metadata.Ref())]
+					cluster := clusterResource.ResourceProto().(*envoy_config_cluster_v3.Cluster)
+					transportSocketMatches := cluster.GetTransportSocketMatches()
+					Expect(transportSocketMatches).To(BeEmpty(), "Expect no transport socket matches when istio auto mtls is enabled")
+				})
+
+				It("should set transport socket based on Upstream if automtls is enabled", func() {
+					// Create a translator where istio is enabled
+					opts := bootstrap.Opts{
+						Settings:  settings,
+						Secrets:   memoryClientFactory,
+						Upstreams: memoryClientFactory,
+						Consul: bootstrap.Consul{
+							ConsulWatcher: mock_consul.NewMockConsulWatcher(ctrl), // just needed to activate the consul plugin
+						},
+						GlooGateway: bootstrap.GlooGateway{
+							IstioValues: bootstrap.IstioValues{
+								IntegrationEnabled: true,
+							},
+						},
+					}
+					registeredPlugins = registry.Plugins(opts)
+					pluginRegistry := registry.NewPluginRegistry(registeredPlugins)
+					translator = NewTranslatorWithHasher(
+						glooutils.NewSslConfigTranslator(),
+						settings,
+						pluginRegistry,
+						EnvoyCacheResourcesListToFnvHash)
+
+					// Example upstream sslConfig that should overwrite auto mtls
+					upstream.SslConfig.Parameters = nil
+					upstream.SslConfig.SslSecrets = &ssl.UpstreamSslConfig_SslFiles{
+						SslFiles: &ssl.SSLFiles{
+							TlsCert: gloohelpers.Certificate(),
+							TlsKey:  gloohelpers.PrivateKey(),
+						},
+					}
+					settingsSslParameters := &ssl.SslParameters{
+						CipherSuites: []string{"ECDHE-RSA-AES128-SHA"},
+					}
+					settings.UpstreamOptions = &v1.UpstreamOptions{
+						SslParameters: settingsSslParameters,
+					}
+					translate()
+
+					clusters := snapshot.GetResources(types.ClusterTypeV3)
+					clusterResource := clusters.Items[UpstreamToClusterName(upstream.Metadata.Ref())]
+					cluster := clusterResource.ResourceProto().(*envoy_config_cluster_v3.Cluster)
+					transportSocketMatches := cluster.GetTransportSocketMatches()
+					Expect(transportSocketMatches).To(HaveLen(1), "Only upstream defined transport socket match should be present")
+
+					// expect upstream config to be respected
+					Expect(tlsContext()).ToNot(BeNil())
+					Expect(tlsContext().CommonTlsContext.TlsParams.CipherSuites).To(Equal(settingsSslParameters.CipherSuites))
+				})
+			})
 		})
 
 		Context("failure", func() {
@@ -3024,10 +3137,7 @@ var _ = Describe("Translator", func() {
 	})
 
 	Context("Ssl", func() {
-
-		var (
-			listener *envoy_config_listener_v3.Listener
-		)
+		var listener *envoy_config_listener_v3.Listener
 
 		prepSsl := func(s []*ssl.SslConfig) {
 			httpListener := &v1.Listener{
@@ -3067,7 +3177,6 @@ var _ = Describe("Translator", func() {
 			return glooutils.MustAnyToMessage(fc.TransportSocket.GetTypedConfig()).(*envoyauth.DownstreamTlsContext)
 		}
 		Context("files", func() {
-
 			It("should translate ssl correctly", func() {
 				prep([]*ssl.SslConfig{
 					{
@@ -3202,7 +3311,6 @@ var _ = Describe("Translator", func() {
 				Expect(listener.GetListenerFilters()[0].GetName()).To(Equal(wellknown.TlsInspector))
 			})
 			It("should combine 1 that has and 1 that doesn't have sni", func() {
-
 				prep([]*ssl.SslConfig{
 					{
 						SslSecrets: &ssl.SslConfig_SslFiles{
@@ -3232,7 +3340,6 @@ var _ = Describe("Translator", func() {
 		})
 		Context("secret refs", func() {
 			It("should combine sni matches ", func() {
-
 				params.Snapshot.Secrets = append(params.Snapshot.Secrets, &v1.Secret{
 					Metadata: &core.Metadata{
 						Name:      "solo",
@@ -3277,7 +3384,6 @@ var _ = Describe("Translator", func() {
 				Expect(listener.GetListenerFilters()[0].GetName()).To(Equal(wellknown.TlsInspector))
 			})
 			It("should not combine when not matching", func() {
-
 				cert1, privateKey1 := gloohelpers.GetCerts(gloohelpers.Params{
 					Hosts: "gateway-proxy,knative-proxy,ingress-proxy",
 					IsCA:  true,
@@ -3420,7 +3526,6 @@ var _ = Describe("Translator", func() {
 				Expect(listener.GetListenerFilters()[0].GetName()).To(Equal(wellknown.TlsInspector))
 			})
 			It("should error when different parameters have the same sni domains", func() {
-
 				params.Snapshot.Secrets = append(params.Snapshot.Secrets, &v1.Secret{
 					Metadata: &core.Metadata{
 						Name:      "solo",
@@ -3464,7 +3569,6 @@ var _ = Describe("Translator", func() {
 					" same FilterChainMatch {server_names:\"a.com\"}. This is usually caused by overlapping sniDomains or multiple empty sniDomains in virtual services"))
 			})
 			It("should error when different parameters have no sni domains", func() {
-
 				params.Snapshot.Secrets = append(params.Snapshot.Secrets, &v1.Secret{
 					Metadata: &core.Metadata{
 						Name:      "solo",
@@ -3506,7 +3610,6 @@ var _ = Describe("Translator", func() {
 					" same FilterChainMatch {}. This is usually caused by overlapping sniDomains or multiple empty sniDomains in virtual services"))
 			})
 			It("should work when different parameters have different sni domains", func() {
-
 				params.Snapshot.Secrets = append(params.Snapshot.Secrets, &v1.Secret{
 					Metadata: &core.Metadata{
 						Name:      "solo",
@@ -3694,7 +3797,7 @@ var _ = Describe("Translator", func() {
 
 	Context("DnsRefreshRate", func() {
 		DescribeTable("Sets DnsRefreshRate on Cluster",
-			func(staticUpstream bool, refreshRate *duration.Duration, refreshRateMatcher types2.GomegaMatcher, reportMatcher types2.GomegaMatcher) {
+			func(staticUpstream bool, refreshRate *duration.Duration, refreshRateMatcher gomega_types.GomegaMatcher, reportMatcher gomega_types.GomegaMatcher) {
 				// By default, the Upstream is configured as a Static Upstream
 				if !staticUpstream {
 					upstream.UpstreamType = &v1.Upstream_Kube{
@@ -3722,7 +3825,7 @@ var _ = Describe("Translator", func() {
 		)
 	})
 
-	//TODO: We could split this into a test file for clusters.go
+	// TODO: We could split this into a test file for clusters.go
 	Context("Protocol Options", func() {
 		It("when no value passed in upstream - cluster has default", func() {
 			name := "ProtocolOptionsTest2"
@@ -3815,6 +3918,94 @@ var _ = Describe("Translator", func() {
 		})
 	})
 
+	Context("Custom filters", func() {
+		It("http", func() {
+			hybridListener := proxy.Listeners[2]
+			httpListener := hybridListener.GetHybridListener().MatchedListeners[1].GetHttpListener()
+			httpListener.CustomNetworkFilters = []*v1.CustomEnvoyFilter{{
+				FilterStage: &filters.FilterStage{
+					Stage:     filters.FilterStage_AuthZStage,
+					Predicate: filters.FilterStage_After,
+				},
+				Name: "my-custom-filter",
+				Config: &anypb.Any{
+					TypeUrl: "type.googleapis.com/testing.config.TestNetworkFilter",
+					Value:   []byte("foobar-tcp"),
+				},
+			}}
+			httpListener.CustomHttpFilters = []*v1.CustomEnvoyFilter{{
+				FilterStage: &filters.FilterStage{
+					Stage:     filters.FilterStage_AuthZStage,
+					Predicate: filters.FilterStage_After,
+				},
+				Name: "my-custom-http-filter",
+				Config: &anypb.Any{
+					TypeUrl: "type.googleapis.com/testing.config.TestHTTPFilter",
+					Value:   []byte("foobar-http"),
+				},
+			}}
+
+			translate()
+			lis := snapshot.GetResources(types.ListenerTypeV3).Items["hybrid-listener"].ResourceProto().(*listenerv3.Listener)
+			fc := lis.FilterChains[1]
+
+			Expect(fc.Filters).To(ContainElements(MatchPublicFields(&listenerv3.Filter{
+				Name: "my-custom-filter",
+				ConfigType: &listenerv3.Filter_TypedConfig{
+					TypedConfig: &anypb.Any{
+						TypeUrl: "type.googleapis.com/testing.config.TestNetworkFilter",
+						Value:   []byte("foobar-tcp"),
+					},
+				},
+			})))
+
+			var hcm envoyhttp.HttpConnectionManager
+			var found bool
+			for _, filter := range fc.Filters {
+				if filter.GetName() == wellknown.HTTPConnectionManager {
+					filter.GetTypedConfig().UnmarshalTo(&hcm)
+					found = true
+					break
+				}
+			}
+			Expect(found).To(BeTrue(), "HttpConnectionManager to be found")
+			Expect(hcm.GetHttpFilters()).To(ContainElements(MatchPublicFields(&envoyhttp.HttpFilter{
+				Name: "my-custom-http-filter",
+				ConfigType: &envoyhttp.HttpFilter_TypedConfig{
+					TypedConfig: &anypb.Any{
+						TypeUrl: "type.googleapis.com/testing.config.TestHTTPFilter",
+						Value:   []byte("foobar-http"),
+					},
+				},
+			})))
+		})
+		It("tcp", func() {
+			hybridListener := proxy.Listeners[2]
+			tcpListener := hybridListener.GetHybridListener().MatchedListeners[0].GetTcpListener()
+			tcpListener.CustomNetworkFilters = []*v1.CustomEnvoyFilter{{
+				FilterStage: &filters.FilterStage{
+					Stage:     filters.FilterStage_AuthZStage,
+					Predicate: filters.FilterStage_After,
+				},
+				Name: "my-custom-filter",
+				Config: &anypb.Any{
+					TypeUrl: "type.googleapis.com/testing.config.TestNetworkFilter",
+					Value:   []byte("foobar-tcp"),
+				},
+			}}
+			translate()
+			lis := snapshot.GetResources(types.ListenerTypeV3).Items["hybrid-listener"].ResourceProto().(*listenerv3.Listener)
+			Expect(lis.FilterChains[0].Filters).To(ContainElements(MatchPublicFields(&listenerv3.Filter{
+				Name: "my-custom-filter",
+				ConfigType: &listenerv3.Filter_TypedConfig{
+					TypedConfig: &anypb.Any{
+						TypeUrl: "type.googleapis.com/testing.config.TestNetworkFilter",
+						Value:   []byte("foobar-tcp"),
+					},
+				},
+			})))
+		})
+	})
 })
 
 // The endpoint Cluster is now the UpstreamToClusterName-<hash of upstream> to facilitate

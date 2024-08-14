@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/solo-io/gloo/pkg/bootstrap/leaderelector/singlereplica"
+	"github.com/solo-io/gloo/pkg/utils/statsutils/metrics"
 
 	"github.com/solo-io/gloo/pkg/utils/statusutils"
-	"github.com/solo-io/gloo/projects/gateway/pkg/utils/metrics"
 
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources"
 
@@ -78,7 +78,7 @@ var _ = Describe("TranslatorSyncer integration test", func() {
 		proxyClient, err = gloov1.NewProxyClient(ctx, memFactory)
 		Expect(err).NotTo(HaveOccurred())
 		proxyReconciler := reconciler.NewProxyReconciler(nil, proxyClient, statusClient)
-		rpt := reporter.NewReporter("gateway", statusClient, gatewayClient.BaseClient(), virtualServiceClient.BaseClient(), routeTableClient.BaseClient())
+		rpt := reporter.NewReporter(defaults.EdgeGatewayReporter, statusClient, gatewayClient.BaseClient(), virtualServiceClient.BaseClient(), routeTableClient.BaseClient())
 		xlator := translator.NewDefaultTranslator(translator.Opts{
 			WriteNamespace: defaults.GlooSystem,
 		})

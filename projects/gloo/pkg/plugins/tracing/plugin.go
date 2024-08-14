@@ -16,6 +16,7 @@ import (
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/tracing"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/internal/common"
+	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/pluginutils"
 	translatorutil "github.com/solo-io/gloo/projects/gloo/pkg/translator"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
 )
@@ -47,7 +48,7 @@ func (p *plugin) Init(_ plugins.InitParams) {
 }
 
 // Manage the tracing portion of the HCM settings
-func (p *plugin) ProcessHcmNetworkFilter(params plugins.Params, _ *v1.Listener, listener *v1.HttpListener, out *envoyhttp.HttpConnectionManager) error {
+func (p *plugin) ProcessHcmNetworkFilter(params plugins.Params, parent *v1.Listener, listener *v1.HttpListener, out *envoyhttp.HttpConnectionManager) error {
 
 	// only apply tracing config to the listener is using the HCM plugin
 	in := listener.GetOptions().GetHttpConnectionManagerSettings()
@@ -67,7 +68,7 @@ func (p *plugin) ProcessHcmNetworkFilter(params plugins.Params, _ *v1.Listener, 
 	trCfg.CustomTags = customTags
 	trCfg.Verbose = tracingSettings.GetVerbose().GetValue()
 
-	tracingProvider, err := processEnvoyTracingProvider(params.Snapshot, tracingSettings)
+	tracingProvider, err := processEnvoyTracingProvider(params, tracingSettings, parent)
 	if err != nil {
 		return err
 	}
@@ -131,12 +132,15 @@ func customTags(tracingSettings *tracing.ListenerTracingSettings) []*envoytracin
 }
 
 func processEnvoyTracingProvider(
-	snapshot *v1snap.ApiSnapshot,
+	params plugins.Params,
 	tracingSettings *tracing.ListenerTracingSettings,
+	parent *v1.Listener,
 ) (*envoy_config_trace_v3.Tracing_Http, error) {
 	if tracingSettings.GetProviderConfig() == nil {
 		return nil, nil
 	}
+
+	snapshot := params.Snapshot
 
 	switch typed := tracingSettings.GetProviderConfig().(type) {
 	case *tracing.ListenerTracingSettings_ZipkinConfig:
@@ -146,10 +150,10 @@ func processEnvoyTracingProvider(
 		return processEnvoyDatadogTracing(snapshot, typed)
 
 	case *tracing.ListenerTracingSettings_OpenTelemetryConfig:
-		return processEnvoyOpenTelemetryTracing(snapshot, typed)
+		return processEnvoyOpenTelemetryTracing(params, typed, parent)
 
 	case *tracing.ListenerTracingSettings_OpenCensusConfig:
-		return processEnvoyOpenCensusTracing(snapshot, typed)
+		return processEnvoyOpenCensusTracing(typed)
 
 	default:
 		return nil, errors.Errorf("Unsupported Tracing.ProviderConfiguration: %v", typed)
@@ -233,11 +237,13 @@ func processEnvoyDatadogTracing(
 }
 
 func processEnvoyOpenTelemetryTracing(
-	snapshot *v1snap.ApiSnapshot,
+	params plugins.Params,
 	openTelemetryTracingSettings *tracing.ListenerTracingSettings_OpenTelemetryConfig,
+	parent *v1.Listener,
 ) (*envoy_config_trace_v3.Tracing_Http, error) {
 	var collectorClusterName string
 
+	snapshot := params.Snapshot
 	switch collectorCluster := openTelemetryTracingSettings.OpenTelemetryConfig.GetCollectorCluster().(type) {
 	case *v3.OpenTelemetryConfig_CollectorUpstreamRef:
 		// Support upstreams as the collector cluster
@@ -253,10 +259,8 @@ func processEnvoyOpenTelemetryTracing(
 		return nil, errors.Errorf("Unsupported Tracing.ProviderConfiguration: %v", collectorCluster)
 	}
 
-	envoyConfig, err := api_conversion.ToEnvoyOpenTelemetryonfiguration(openTelemetryTracingSettings.OpenTelemetryConfig, collectorClusterName)
-	if err != nil {
-		return nil, err
-	}
+	serviceName := api_conversion.GetGatewayNameFromParent(params.Ctx, parent)
+	envoyConfig := api_conversion.ToEnvoyOpenTelemetryConfiguration(collectorClusterName, serviceName)
 
 	marshalledEnvoyConfig, err := ptypes.MarshalAny(envoyConfig)
 	if err != nil {
@@ -272,7 +276,6 @@ func processEnvoyOpenTelemetryTracing(
 }
 
 func processEnvoyOpenCensusTracing(
-	snapshot *v1snap.ApiSnapshot,
 	openCensusTracingSettings *tracing.ListenerTracingSettings_OpenCensusConfig,
 ) (*envoy_config_trace_v3.Tracing_Http, error) {
 	envoyConfig, err := api_conversion.ToEnvoyOpenCensusConfiguration(openCensusTracingSettings.OpenCensusConfig)
@@ -305,7 +308,7 @@ func getEnvoyTracingCollectorClusterName(snapshot *v1snap.ApiSnapshot, collector
 	// Make sure the upstream exists
 	_, err := snapshot.Upstreams.Find(collectorUpstreamRef.GetNamespace(), collectorUpstreamRef.GetName())
 	if err != nil {
-		return "", errors.Errorf("Invalid CollectorUpstreamRef (no upstream found for ref %v)", collectorUpstreamRef)
+		return "", pluginutils.NewUpstreamNotFoundErr(collectorUpstreamRef)
 	}
 
 	return translatorutil.UpstreamToClusterName(collectorUpstreamRef), nil

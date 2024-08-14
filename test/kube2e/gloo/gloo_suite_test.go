@@ -7,7 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/solo-io/gloo/pkg/utils/kubeutils/kubectl"
+
 	"github.com/avast/retry-go"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	"github.com/solo-io/gloo/test/services/envoy"
@@ -17,9 +20,9 @@ import (
 	"github.com/solo-io/gloo/projects/gloo/pkg/defaults"
 	"github.com/solo-io/gloo/test/helpers"
 	"github.com/solo-io/gloo/test/kube2e"
+	"github.com/solo-io/gloo/test/kube2e/helper"
 	glootestutils "github.com/solo-io/gloo/test/testutils"
 	"github.com/solo-io/go-utils/testutils"
-	"github.com/solo-io/k8s-utils/testutils/helper"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -35,7 +38,8 @@ func TestGloo(t *testing.T) {
 }
 
 const (
-	namespace = defaults.GlooSystem
+	namespace   = defaults.GlooSystem
+	gatewayPort = int(80)
 )
 
 var (
@@ -58,7 +62,8 @@ var _ = BeforeSuite(func() {
 	ctx, cancel = context.WithCancel(context.Background())
 	testHelper, err = kube2e.GetTestHelper(ctx, namespace)
 	Expect(err).NotTo(HaveOccurred())
-	skhelpers.RegisterPreFailHandler(helpers.StandardGlooDumpOnFail(GinkgoWriter, testHelper.InstallNamespace))
+	testHelper.SetKubeCli(kubectl.NewCli().WithReceiver(GinkgoWriter))
+	skhelpers.RegisterPreFailHandler(helpers.StandardGlooDumpOnFail(GinkgoWriter, metav1.ObjectMeta{Namespace: testHelper.InstallNamespace}))
 
 	// Allow skipping of install step for running multiple times
 	if !glootestutils.ShouldSkipInstall() {
@@ -95,7 +100,7 @@ func installGloo() {
 	err = testHelper.InstallGloo(ctx, helper.GATEWAY, 5*time.Minute, helper.ExtraArgs("--values", helmValuesFile))
 	Expect(err).NotTo(HaveOccurred())
 
-	kube2e.GlooctlCheckEventuallyHealthy(1, testHelper, "90s")
+	kube2e.GlooctlCheckEventuallyHealthy(1, testHelper.InstallNamespace, "90s")
 	kube2e.EventuallyReachesConsistentState(testHelper.InstallNamespace)
 }
 

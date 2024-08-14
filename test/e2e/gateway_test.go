@@ -14,9 +14,9 @@ import (
 	"github.com/golang/protobuf/ptypes/wrappers"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/solo-io/gloo/pkg/utils/statsutils/metrics"
 	gatewayv1 "github.com/solo-io/gloo/projects/gateway/pkg/api/v1"
 	gatewaydefaults "github.com/solo-io/gloo/projects/gateway/pkg/defaults"
-	"github.com/solo-io/gloo/projects/gateway/pkg/utils/metrics"
 	v3 "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/config/core/v3"
 	gloov1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/core/matchers"
@@ -409,7 +409,7 @@ var _ = Describe("Gateway", func() {
 					}, "10s", "0.1s").Should(BeTrue())
 
 					// Create a regular request
-					request, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d", envoyInstance.HttpPort), nil)
+					request, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://localhost:%d", envoyInstance.HttpPort), nil)
 					Expect(err).NotTo(HaveOccurred())
 					request = request.WithContext(ctx)
 
@@ -431,7 +431,7 @@ var _ = Describe("Gateway", func() {
 					Expect(err).NotTo(HaveOccurred())
 
 					// Create a regular request
-					request, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/", envoyInstance.HttpPort), nil)
+					request, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://localhost:%d/", envoyInstance.HttpPort), nil)
 					Expect(err).NotTo(HaveOccurred())
 					request = request.WithContext(ctx)
 
@@ -476,7 +476,7 @@ var _ = Describe("Gateway", func() {
 					Expect(err).NotTo(HaveOccurred())
 
 					// Create a regular request
-					request, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/", envoyInstance.HttpPort), nil)
+					request, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://localhost:%d/", envoyInstance.HttpPort), nil)
 					Expect(err).NotTo(HaveOccurred())
 					request = request.WithContext(context.TODO())
 					request.Header.Add("cluster-header-name", upstreamName)
@@ -994,7 +994,7 @@ var _ = Describe("Gateway", func() {
 					}, "10s", "0.1s").Should(BeTrue())
 
 					// Create a regular request
-					request, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d", envoyInstance.HybridPort), nil)
+					request, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://localhost:%d", envoyInstance.HybridPort), nil)
 					Expect(err).NotTo(HaveOccurred())
 					request = request.WithContext(ctx)
 
@@ -1011,7 +1011,7 @@ var _ = Describe("Gateway", func() {
 
 				It("should not match requests that contain a header that is excluded from match", func() {
 					// Create a regular request
-					request, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/", envoyInstance.HybridPort), nil)
+					request, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://localhost:%d/", envoyInstance.HybridPort), nil)
 					Expect(err).NotTo(HaveOccurred())
 					request = request.WithContext(ctx)
 
@@ -1062,7 +1062,7 @@ var _ = Describe("Gateway", func() {
 					}, "5s", "0.3s").ShouldNot(HaveOccurred())
 
 					// Create a regular request
-					request, err := http.NewRequest("GET", fmt.Sprintf("http://localhost:%d/", envoyInstance.HybridPort), nil)
+					request, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://localhost:%d/", envoyInstance.HybridPort), nil)
 					Expect(err).NotTo(HaveOccurred())
 					request = request.WithContext(context.TODO())
 					request.Header.Add("cluster-header-name", upstreamName)

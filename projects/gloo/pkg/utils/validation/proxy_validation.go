@@ -266,36 +266,48 @@ func GetTcpHostWarning(tcpHost *validation.TcpHostReport) []string {
 	return warnings
 }
 
+func GetListenerError(listener *validation.ListenerReport) []error {
+	var errs []error
+
+	if err := GetListenerErr(listener); err != nil {
+		errs = append(errs, err...)
+	}
+	switch listenerType := listener.GetListenerTypeReport().(type) {
+	case *validation.ListenerReport_HttpListenerReport:
+		errs = append(errs, getHttpListenerReportErrs(listenerType.HttpListenerReport)...)
+
+	case *validation.ListenerReport_TcpListenerReport:
+		errs = append(errs, getTcpListenerReportErrs(listenerType.TcpListenerReport)...)
+
+	case *validation.ListenerReport_HybridListenerReport:
+		for _, mr := range listenerType.HybridListenerReport.GetMatchedListenerReports() {
+			switch lrt := mr.GetListenerReportType().(type) {
+			case *validation.MatchedListenerReport_HttpListenerReport:
+				errs = append(errs, getHttpListenerReportErrs(lrt.HttpListenerReport)...)
+			case *validation.MatchedListenerReport_TcpListenerReport:
+				errs = append(errs, getTcpListenerReportErrs(lrt.TcpListenerReport)...)
+			}
+		}
+
+	case *validation.ListenerReport_AggregateListenerReport:
+		for _, httpListenerReport := range listenerType.AggregateListenerReport.GetHttpListenerReports() {
+			errs = append(errs, getHttpListenerReportErrs(httpListenerReport)...)
+		}
+		for _, tcpListenerReport := range listenerType.AggregateListenerReport.GetTcpListenerReports() {
+			errs = append(errs, getTcpListenerReportErrs(tcpListenerReport)...)
+		}
+	}
+
+	return errs
+}
+
 func GetProxyError(proxyRpt *validation.ProxyReport) error {
 	var errs []error
 	for _, listener := range proxyRpt.GetListenerReports() {
-		if err := GetListenerErr(listener); err != nil {
-			errs = append(errs, err...)
-		}
-		switch listenerType := listener.GetListenerTypeReport().(type) {
-		case *validation.ListenerReport_HttpListenerReport:
-			errs = append(errs, getHttpListenerReportErrs(listenerType.HttpListenerReport)...)
+		listenerErrs := GetListenerError(listener)
 
-		case *validation.ListenerReport_TcpListenerReport:
-			errs = append(errs, getTcpListenerReportErrs(listenerType.TcpListenerReport)...)
-
-		case *validation.ListenerReport_HybridListenerReport:
-			for _, mr := range listenerType.HybridListenerReport.GetMatchedListenerReports() {
-				switch lrt := mr.GetListenerReportType().(type) {
-				case *validation.MatchedListenerReport_HttpListenerReport:
-					errs = append(errs, getHttpListenerReportErrs(lrt.HttpListenerReport)...)
-				case *validation.MatchedListenerReport_TcpListenerReport:
-					errs = append(errs, getTcpListenerReportErrs(lrt.TcpListenerReport)...)
-				}
-			}
-
-		case *validation.ListenerReport_AggregateListenerReport:
-			for _, httpListenerReport := range listenerType.AggregateListenerReport.GetHttpListenerReports() {
-				errs = append(errs, getHttpListenerReportErrs(httpListenerReport)...)
-			}
-			for _, tcpListenerReport := range listenerType.AggregateListenerReport.GetTcpListenerReports() {
-				errs = append(errs, getTcpListenerReportErrs(tcpListenerReport)...)
-			}
+		if listenerErrs != nil {
+			errs = append(errs, listenerErrs...)
 		}
 	}
 
@@ -377,6 +389,14 @@ func AppendVirtualHostError(virtualHostReport *validation.VirtualHostReport, err
 	})
 }
 
+func AppendVirtualHostErrorWithMetadata(virtualHostReport *validation.VirtualHostReport, errType validation.VirtualHostReport_Error_Type, reason string, metadata *v1.SourceMetadata) {
+	virtualHostReport.Errors = append(virtualHostReport.GetErrors(), &validation.VirtualHostReport_Error{
+		Type:     errType,
+		Reason:   reason,
+		Metadata: metadata,
+	})
+}
+
 func AppendHTTPListenerError(httpListenerReport *validation.HttpListenerReport, errType validation.HttpListenerReport_Error_Type, reason string) {
 	httpListenerReport.Errors = append(httpListenerReport.GetErrors(), &validation.HttpListenerReport_Error{
 		Type:   errType,
@@ -395,6 +415,14 @@ func AppendRouteError(routeReport *validation.RouteReport, errType validation.Ro
 	routeReport.Errors = append(routeReport.GetErrors(), &validation.RouteReport_Error{
 		Type:   errType,
 		Reason: fmt.Sprintf("%s. %s: %s", reason, RouteIdentifierTxt, routeName),
+	})
+}
+
+func AppendRouteErrorWithMetadata(routeReport *validation.RouteReport, errType validation.RouteReport_Error_Type, reason string, routeName string, metadata *v1.SourceMetadata) {
+	routeReport.Errors = append(routeReport.GetErrors(), &validation.RouteReport_Error{
+		Type:     errType,
+		Reason:   fmt.Sprintf("%s. %s: %s", reason, RouteIdentifierTxt, routeName),
+		Metadata: metadata,
 	})
 }
 

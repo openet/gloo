@@ -6,25 +6,25 @@ import (
 	"strings"
 
 	"github.com/golang/protobuf/proto"
-	"github.com/rotisserie/eris"
-	"github.com/solo-io/go-utils/contextutils"
+	"github.com/solo-io/gloo/pkg/utils/statsutils"
+	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/utils/validator"
 	"google.golang.org/protobuf/types/known/wrapperspb"
-	"k8s.io/utils/lru"
 
 	envoy_config_route_v3 "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	envoyhttp "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	envoy_type_matcher_v3 "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	"github.com/golang/protobuf/ptypes/any"
-	"github.com/solo-io/gloo/pkg/utils"
 	"github.com/solo-io/gloo/pkg/utils/regexutils"
 	envoyroutev3 "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/config/route/v3"
 	envoytransformation "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/extensions/transformation"
+	upstream_wait "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/extensions/upstream_wait"
 	v3 "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/type/matcher/v3"
 	v1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/core/matchers"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/transformation"
-	"github.com/solo-io/gloo/projects/gloo/pkg/bootstrap"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/pluginutils"
+	proto_utils "github.com/solo-io/gloo/projects/gloo/pkg/utils"
 )
 
 var (
@@ -33,13 +33,17 @@ var (
 	_ plugins.WeightedDestinationPlugin = new(Plugin)
 	_ plugins.RoutePlugin               = new(Plugin)
 	_ plugins.HttpFilterPlugin          = new(Plugin)
+	_ plugins.UpstreamHttpFilterPlugin  = new(Plugin)
 )
 
 const (
-	ExtensionName    = "transformation"
-	FilterName       = "io.solo.transformation"
-	EarlyStageNumber = 1
-	AwsStageNumber   = 2
+	ExtensionName      = "transformation"
+	FilterName         = "io.solo.transformation"
+	WaitFilterName     = "io.solo.wait"
+	RegularStageNumber = 0
+	EarlyStageNumber   = 1
+	AwsStageNumber     = 2
+	PostRoutingNumber  = 3
 )
 
 var (
@@ -49,8 +53,6 @@ var (
 	UnknownTransformationType = func(transformation interface{}) error {
 		return fmt.Errorf("unknown transformation type %T", transformation)
 	}
-	mCacheHits   = utils.MakeSumCounter("gloo.solo.io/transformation_validation_cache_hits", "The number of cache hits while validating transformation config")
-	mCacheMisses = utils.MakeSumCounter("gloo.solo.io/transformation_validation_cache_misses", "The number of cache misses while validating transformation config")
 )
 
 type TranslateTransformationFn func(*transformation.Transformation, *wrapperspb.BoolValue, *wrapperspb.BoolValue) (*envoytransformation.Transformation, error)
@@ -59,22 +61,25 @@ type TranslateTransformationFn func(*transformation.Transformation, *wrapperspb.
 // We would prefer if the plugin were not exported and instead the required translation
 // methods were exported.
 type Plugin struct {
-	removeUnused              bool
-	filterRequiredForListener map[*v1.HttpListener]struct{}
+	removeUnused                      bool
+	filterRequiredForListener         map[*v1.HttpListener]struct{}
+	upstreamFilterRequiredForListener map[*v1.HttpListener]struct{}
 
 	RequireEarlyTransformation bool
 	TranslateTransformation    TranslateTransformationFn
 	settings                   *v1.Settings
 	logRequestResponseInfo     bool
-	// validationLruCache is a map of: (transformation hash) -> error state
-	// this is usually a typed error but may be an untyped nil interface
-	validationLruCache *lru.Cache
-	escapeCharacters   *wrapperspb.BoolValue
+	escapeCharacters           *wrapperspb.BoolValue
+	validator                  validator.Validator
 }
 
 func NewPlugin() *Plugin {
+	mCacheHits := statsutils.MakeSumCounter("gloo.solo.io/transformation_validation_cache_hits", "The number of cache hits while validating transformation config")
+	mCacheMisses := statsutils.MakeSumCounter("gloo.solo.io/transformation_validation_cache_misses", "The number of cache misses while validating transformation config")
+
 	return &Plugin{
-		validationLruCache: lru.New(1024),
+		validator: validator.New(ExtensionName, FilterName,
+			validator.WithCounters(mCacheHits, mCacheMisses)),
 	}
 }
 
@@ -87,6 +92,7 @@ func (p *Plugin) Init(params plugins.InitParams) {
 	p.RequireEarlyTransformation = false
 	p.removeUnused = params.Settings.GetGloo().GetRemoveUnusedFilters().GetValue()
 	p.filterRequiredForListener = make(map[*v1.HttpListener]struct{})
+	p.upstreamFilterRequiredForListener = make(map[*v1.HttpListener]struct{})
 	p.settings = params.Settings
 	p.TranslateTransformation = TranslateTransformation
 	p.escapeCharacters = params.Settings.GetGloo().GetTransformationEscapeCharacters()
@@ -131,6 +137,7 @@ func (p *Plugin) ProcessVirtualHost(
 	}
 
 	p.filterRequiredForListener[params.HttpListener] = struct{}{}
+	p.requiresUpstreamFilter(params.HttpListener, in.GetOptions().GetStagedTransformations())
 
 	return pluginutils.ModifyVhostPerFilterConfig(out, FilterName, mergeFunc(envoyTransformation))
 }
@@ -153,6 +160,8 @@ func (p *Plugin) ProcessRoute(params plugins.RouteParams, in *v1.Route, out *env
 	}
 
 	p.filterRequiredForListener[params.HttpListener] = struct{}{}
+	p.requiresUpstreamFilter(params.HttpListener, in.GetOptions().GetStagedTransformations())
+
 	return pluginutils.ModifyRoutePerFilterConfig(out, FilterName, mergeFunc(envoyTransformation))
 }
 
@@ -177,7 +186,10 @@ func (p *Plugin) ProcessWeightedDestination(
 	if err != nil {
 		return err
 	}
+
 	p.filterRequiredForListener[params.HttpListener] = struct{}{}
+	p.requiresUpstreamFilter(params.HttpListener, in.GetOptions().GetStagedTransformations())
+
 	return pluginutils.ModifyWeightedClusterPerFilterConfig(out, FilterName, mergeFunc(envoyTransformation))
 }
 
@@ -214,6 +226,65 @@ func (p *Plugin) HttpFilters(params plugins.Params, listener *v1.HttpListener) (
 	)
 
 	return filters, nil
+}
+
+func (p *Plugin) requiresUpstreamFilter(listener *v1.HttpListener, stagedTransformations *transformation.TransformationStages) {
+	if stagedTransformations.GetPostRouting() != nil {
+		p.upstreamFilterRequiredForListener[listener] = struct{}{}
+	}
+}
+
+func (p *Plugin) UpstreamHttpFilters(params plugins.Params, listener *v1.HttpListener) ([]plugins.StagedUpstreamHttpFilter, error) {
+	if _, ok := p.upstreamFilterRequiredForListener[listener]; !ok {
+		return nil, nil
+	}
+
+	transformationMsg, err := proto_utils.MessageToAny(&envoytransformation.FilterTransformations{
+		LogRequestResponseInfo: p.logRequestResponseInfo,
+		Stage:                  PostRoutingNumber,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	upstreamWaitMsg, err := proto_utils.MessageToAny(&upstream_wait.UpstreamWaitFilterConfig{})
+	if err != nil {
+		return nil, err
+	}
+
+	filters := []plugins.StagedUpstreamHttpFilter{
+		// The wait filter essentially blocks filter iteration until a host has been selected.
+		// This is important because running as an upstream filter allows access to host
+		// metadata iff the host has already been selected, and that's a
+		// major benefit of running the filter at this stage.
+		{
+			Filter: &envoyhttp.HttpFilter{
+				Name: WaitFilterName,
+				ConfigType: &envoyhttp.HttpFilter_TypedConfig{
+					TypedConfig: upstreamWaitMsg,
+				},
+			},
+			Stage: plugins.UpstreamHTTPFilterStage{
+				RelativeTo: plugins.TransformationStage,
+				Weight:     -1,
+			},
+		},
+		{
+			Filter: &envoyhttp.HttpFilter{
+				Name: FilterName,
+				ConfigType: &envoyhttp.HttpFilter_TypedConfig{
+					TypedConfig: transformationMsg,
+				},
+			},
+			Stage: plugins.UpstreamHTTPFilterStage{
+				RelativeTo: plugins.TransformationStage,
+				Weight:     0,
+			},
+		},
+	}
+
+	return filters, nil
+
 }
 
 func (p *Plugin) ConvertTransformation(
@@ -265,7 +336,14 @@ func (p *Plugin) ConvertTransformation(
 		ret.Transformations = append(ret.GetTransformations(), transformations...)
 	}
 	if regular := stagedTransformations.GetRegular(); regular != nil {
-		transformations, err := p.getTransformations(ctx, 0, regular, stagedEscapeCharacters)
+		transformations, err := p.getTransformations(ctx, RegularStageNumber, regular, stagedEscapeCharacters)
+		if err != nil {
+			return nil, err
+		}
+		ret.Transformations = append(ret.GetTransformations(), transformations...)
+	}
+	if postRouting := stagedTransformations.GetPostRouting(); postRouting != nil {
+		transformations, err := p.getTransformations(ctx, PostRoutingNumber, postRouting, stagedEscapeCharacters)
 		if err != nil {
 			return nil, err
 		}
@@ -296,16 +374,6 @@ func (p *Plugin) ConvertTransformation(
 	return ret, nil
 }
 
-func (p *Plugin) translateOSSTransformations(
-	glooTransform *transformation.Transformation,
-) (*envoytransformation.Transformation, error) {
-	transform, err := p.TranslateTransformation(glooTransform, p.escapeCharacters, nil)
-	if err != nil {
-		return nil, eris.Wrap(err, "this transformation type is not supported in open source Gloo Edge")
-	}
-	return transform, nil
-}
-
 func TranslateTransformation(glooTransform *transformation.Transformation,
 	settingsEscapeCharacters *wrapperspb.BoolValue,
 	stagedEscapeCharacters *wrapperspb.BoolValue) (*envoytransformation.Transformation, error) {
@@ -331,7 +399,11 @@ func TranslateTransformation(glooTransform *transformation.Transformation,
 			}
 			typedTransformation.TransformationTemplate.EscapeCharacters = escapeCharacters
 
-			out.TransformationType = translateTransformationTemplate(typedTransformation)
+			transformationType, err := translateTransformationTemplate(typedTransformation)
+			if err != nil {
+				return nil, err
+			}
+			out.TransformationType = transformationType
 		}
 	default:
 		return nil, UnknownTransformationType(typedTransformation)
@@ -353,7 +425,7 @@ func translateHeaderBodyTransform(in *transformation.Transformation_HeaderBodyTr
 	return out
 }
 
-func translateTransformationTemplate(in *transformation.Transformation_TransformationTemplate) *envoytransformation.Transformation_TransformationTemplate {
+func translateTransformationTemplate(in *transformation.Transformation_TransformationTemplate) (*envoytransformation.Transformation_TransformationTemplate, error) {
 	out := &envoytransformation.Transformation_TransformationTemplate{}
 	inTemplate := in.TransformationTemplate
 	outTemplate := &envoytransformation.TransformationTemplate{
@@ -367,21 +439,11 @@ func translateTransformationTemplate(in *transformation.Transformation_Transform
 	if len(inTemplate.GetExtractors()) > 0 {
 		outTemplate.Extractors = make(map[string]*envoytransformation.Extraction)
 		for k, v := range inTemplate.GetExtractors() {
-			outExtraction := &envoytransformation.Extraction{
-				Regex:    v.GetRegex(),
-				Subgroup: v.GetSubgroup(),
+			extractor, err := translateExtractor(v, k)
+			if err != nil {
+				return nil, err
 			}
-			switch src := v.GetSource().(type) {
-			case *transformation.Extraction_Body:
-				outExtraction.Source = &envoytransformation.Extraction_Body{
-					Body: src.Body, // this is *empty.Empty but better to translate it now to avoid future confusion
-				}
-			case *transformation.Extraction_Header:
-				outExtraction.Source = &envoytransformation.Extraction_Header{
-					Header: src.Header,
-				}
-			}
-			outTemplate.GetExtractors()[k] = outExtraction
+			outTemplate.GetExtractors()[k] = extractor
 		}
 	}
 
@@ -421,6 +483,28 @@ func translateTransformationTemplate(in *transformation.Transformation_Transform
 		outTemplate.BodyTransformation = &envoytransformation.TransformationTemplate_MergeExtractorsToBody{
 			MergeExtractorsToBody: &envoytransformation.MergeExtractorsToBody{},
 		}
+	case *transformation.TransformationTemplate_MergeJsonKeys:
+		if inTemplate.GetAdvancedTemplates() {
+			return nil, fmt.Errorf("merge_json_keys is not supported with advanced templates")
+		}
+		if inTemplate.GetParseBodyBehavior() != transformation.TransformationTemplate_ParseAsJson {
+			return nil, fmt.Errorf("merge_json_keys is only supported with parse_body_behavior set to PARSE_AS_JSON")
+		}
+		jsonKeys := make(map[string]*envoytransformation.MergeJsonKeys_OverridableTemplate, len(bodyTransformation.MergeJsonKeys.GetJsonKeys()))
+		for key, val := range bodyTransformation.MergeJsonKeys.GetJsonKeys() {
+			if strings.Contains(key, ".") {
+				return nil, fmt.Errorf("merge_json_keys key %s contains a period, which is not currently supported", key)
+			}
+			jsonKeys[key] = &envoytransformation.MergeJsonKeys_OverridableTemplate{
+				Tmpl:          &envoytransformation.InjaTemplate{Text: val.GetTmpl().GetText()},
+				OverrideEmpty: val.GetOverrideEmpty(),
+			}
+		}
+		outTemplate.BodyTransformation = &envoytransformation.TransformationTemplate_MergeJsonKeys{
+			MergeJsonKeys: &envoytransformation.MergeJsonKeys{
+				JsonKeys: jsonKeys,
+			},
+		}
 	}
 
 	if len(inTemplate.GetDynamicMetadataValues()) > 0 {
@@ -430,6 +514,7 @@ func translateTransformationTemplate(in *transformation.Transformation_Transform
 			outTemplate.GetDynamicMetadataValues()[i] = &envoytransformation.TransformationTemplate_DynamicMetadataValue{
 				MetadataNamespace: values[i].GetMetadataNamespace(),
 				Key:               values[i].GetKey(),
+				JsonToProto:       values[i].GetJsonToProto(),
 				Value: &envoytransformation.InjaTemplate{
 					Text: values[i].GetValue().GetText(),
 				},
@@ -438,43 +523,116 @@ func translateTransformationTemplate(in *transformation.Transformation_Transform
 	}
 
 	out.TransformationTemplate = outTemplate
-	return out
+	return out, nil
+}
+
+// ExtractorError represents an error related to extractor configuration.
+type ExtractorError struct {
+	Message string // The error message
+	Name    string // The name of the extractor causing the error
+	Mode    string // (optional) The (stringified) mode of the extractor causing the error
+}
+
+// implements the error interface for ExtractorError.
+func (e *ExtractorError) Error() string {
+	if e.Mode == "" {
+		return fmt.Sprintf("%s for extractor %s", e.Message, e.Name)
+	} else {
+		return fmt.Sprintf("%s for extractor %s in mode %s", e.Message, e.Name, e.Mode)
+	}
+}
+
+// Helper functions to create specific ExtractorError instances.
+func NewExtractorError(message, name string, mode transformation.Extraction_Mode) *ExtractorError {
+	extractorError := &ExtractorError{
+		Message: message,
+		Name:    name,
+	}
+
+	// check if there's a readable mode name
+	if modeName, ok := transformation.Extraction_Mode_name[int32(mode)]; ok {
+		extractorError.Mode = modeName
+	}
+	return extractorError
+}
+
+const (
+	ErrMsgReplacementTextSetWhenNotNeeded = "replacement text should not be set"
+	ErrMsgReplacementTextNotSetWhenNeeded = "replacement text must be set"
+	ErrMsgSubgroupSetWhenNotNeeded        = "subgroup should not be set"
+)
+
+func translateExtractor(extractor *transformation.Extraction, name string) (*envoytransformation.Extraction, error) {
+	out := &envoytransformation.Extraction{
+		Regex: extractor.GetRegex(),
+	}
+
+	switch src := extractor.GetSource().(type) {
+	case *transformation.Extraction_Body:
+		out.Source = &envoytransformation.Extraction_Body{
+			Body: src.Body, // this is *empty.Empty but better to translate it now to avoid future confusion
+		}
+	case *transformation.Extraction_Header:
+		out.Source = &envoytransformation.Extraction_Header{
+			Header: src.Header,
+		}
+	}
+
+	mode := extractor.GetMode()
+
+	// if mode isn't in the list of extraction modes, set it to EXTRACT
+	if _, ok := transformation.Extraction_Mode_name[int32(mode)]; !ok {
+		mode = transformation.Extraction_EXTRACT
+	}
+
+	switch mode {
+	case transformation.Extraction_EXTRACT:
+		out.Mode = envoytransformation.Extraction_EXTRACT
+		out.Subgroup = extractor.GetSubgroup()
+
+		// error if replacement_text is set
+		if extractor.GetReplacementText().GetValue() != "" {
+			return nil, NewExtractorError(ErrMsgReplacementTextSetWhenNotNeeded, name, mode)
+		}
+	case transformation.Extraction_SINGLE_REPLACE:
+		out.Mode = envoytransformation.Extraction_SINGLE_REPLACE
+		out.Subgroup = extractor.GetSubgroup()
+		out.ReplacementText = extractor.GetReplacementText()
+
+		// error if replacement_text is not set
+		if extractor.GetReplacementText() == nil {
+			return nil, NewExtractorError(ErrMsgReplacementTextNotSetWhenNeeded, name, mode)
+		}
+	case transformation.Extraction_REPLACE_ALL:
+		out.Mode = envoytransformation.Extraction_REPLACE_ALL
+		out.ReplacementText = extractor.GetReplacementText()
+
+		// error if subgroup is set
+		if extractor.GetSubgroup() != 0 {
+			return nil, NewExtractorError(ErrMsgSubgroupSetWhenNotNeeded, name, mode)
+		}
+
+		// error if replacement_text is not set
+		if extractor.GetReplacementText() == nil {
+			return nil, NewExtractorError(ErrMsgReplacementTextNotSetWhenNeeded, name, mode)
+		}
+	default:
+		return nil, NewExtractorError("unknown extraction mode", name, mode)
+	}
+
+	return out, nil
 }
 
 func (p *Plugin) validateTransformation(
 	ctx context.Context,
 	transformations *envoytransformation.RouteTransformations,
 ) error {
-
-	transformHash, err := transformations.Hash(nil)
-	if err != nil {
-		contextutils.LoggerFrom(ctx).DPanicf("error hashing transformation, should never happen: %v", err)
-		return err
+	// If the user has disabled transformation validation, then always return nil
+	if p.settings.GetGateway().GetValidation().GetDisableTransformationValidation().GetValue() {
+		return nil
 	}
 
-	// This transformation has already been validated, return the result
-	if err, ok := p.validationLruCache.Get(transformHash); ok {
-		utils.MeasureOne(
-			ctx,
-			mCacheHits,
-		)
-		// Error may be nil here since it's just the cached result
-		// so return it as a nil err after cast worst case.
-		errCasted, _ := err.(error)
-		return errCasted
-	} else {
-		utils.MeasureOne(
-			ctx,
-			mCacheMisses,
-		)
-	}
-
-	err = bootstrap.ValidateBootstrap(ctx, p.settings, FilterName, transformations)
-	p.validationLruCache.Add(transformHash, err)
-	if err != nil {
-		return err
-	}
-	return nil
+	return p.validator.ValidateConfig(ctx, transformations)
 }
 
 func (p *Plugin) getTransformations(

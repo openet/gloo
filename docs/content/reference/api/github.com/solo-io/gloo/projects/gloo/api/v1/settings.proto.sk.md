@@ -39,6 +39,7 @@ weight: 5
 - [GlooOptions](#gloooptions)
 - [AWSOptions](#awsoptions)
 - [InvalidConfigPolicy](#invalidconfigpolicy)
+- [IstioOptions](#istiooptions)
 - [VirtualServiceOptions](#virtualserviceoptions)
 - [GatewayOptions](#gatewayoptions)
 - [ValidationOptions](#validationoptions)
@@ -112,12 +113,12 @@ Represents global settings for all the Gloo components.
 | `kubernetesSecretSource` | [.gloo.solo.io.Settings.KubernetesSecrets](../settings.proto.sk/#kubernetessecrets) |  Only one of `kubernetesSecretSource`, `vaultSecretSource`, or `directorySecretSource` can be set. |
 | `vaultSecretSource` | [.gloo.solo.io.Settings.VaultSecrets](../settings.proto.sk/#vaultsecrets) |  Only one of `vaultSecretSource`, `kubernetesSecretSource`, or `directorySecretSource` can be set. |
 | `directorySecretSource` | [.gloo.solo.io.Settings.Directory](../settings.proto.sk/#directory) |  Only one of `directorySecretSource`, `kubernetesSecretSource`, or `vaultSecretSource` can be set. |
-| `secretOptions` | [.gloo.solo.io.Settings.SecretOptions](../settings.proto.sk/#secretoptions) | Settings for secrets storage. This API is experimental and not suitable for production use. |
+| `secretOptions` | [.gloo.solo.io.Settings.SecretOptions](../settings.proto.sk/#secretoptions) | Settings for secrets storage. This API is beta and should be tested thoroughly before production use. |
 | `kubernetesArtifactSource` | [.gloo.solo.io.Settings.KubernetesConfigmaps](../settings.proto.sk/#kubernetesconfigmaps) |  Only one of `kubernetesArtifactSource`, `directoryArtifactSource`, or `consulKvArtifactSource` can be set. |
 | `directoryArtifactSource` | [.gloo.solo.io.Settings.Directory](../settings.proto.sk/#directory) |  Only one of `directoryArtifactSource`, `kubernetesArtifactSource`, or `consulKvArtifactSource` can be set. |
 | `consulKvArtifactSource` | [.gloo.solo.io.Settings.ConsulKv](../settings.proto.sk/#consulkv) |  Only one of `consulKvArtifactSource`, `kubernetesArtifactSource`, or `directoryArtifactSource` can be set. |
 | `refreshRate` | [.google.protobuf.Duration](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/duration) | How frequently to resync watches, etc. |
-| `devMode` | `bool` | Enable serving debug data on port 9090. |
+| `devMode` | `bool` | DEPRECATED: In the past DevMode was used to expose endpoints that behave as an Admin API https://github.com/solo-io/gloo/issues/6494 We now support an Admin API on port 9091. See the following guide for more details https://docs.solo.io/gloo-edge/latest/operations/debugging_gloo/#debugging-the-control-plane. |
 | `linkerd` | `bool` | Enable automatic linkerd upstream header addition for easier routing to linkerd services. |
 | `knative` | [.gloo.solo.io.Settings.KnativeOptions](../settings.proto.sk/#knativeoptions) | Configuration options for the Clusteringress Controller (for Knative). Deprecated: Will not be available in Gloo Edge 1.11. |
 | `discovery` | [.gloo.solo.io.Settings.DiscoveryOptions](../settings.proto.sk/#discoveryoptions) | Options for configuring Gloo's Discovery service. |
@@ -632,12 +633,16 @@ Provides settings related to the observability pod's interactions with grafana
 
 ```yaml
 "defaultDashboardFolderId": .google.protobuf.UInt32Value
+"dashboardPrefix": string
+"extraMetricQueryParameters": string
 
 ```
 
 | Field | Type | Description |
 | ----- | ---- | ----------- | 
 | `defaultDashboardFolderId` | [.google.protobuf.UInt32Value](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/u-int-32-value) | (UInt32Value) Grafana allows dashboards to be added to specific folders by specifying that folder's ID If unset, automatic upstream dashboards are generated in the general folder (folderId: 0). If set, the observability deployment will try to create/move all upstreams without their own folderId to the folder specified here, after verifying that a folder with such an ID exists. Be aware that grafana requires a folders ID, which should not be confused with the similarly-named and more easily accessible folder UID value. If individual upstream dashboards need to be placed specific granafa folders, they can be given their own folder IDs by annotating the upstreams. The annotation key must be 'observability.solo.io/dashboard_folder_id' and the value must be the folder ID. Folder IDs can be retrieved from grafana with a pair of terminal commands: 1. Port forward the grafana deployment to surface its API: kubectl -n gloo-system port-forward deployment/glooe-grafana 3000 2. Request all folder data (after admin:admin is replaced with the correct credentials): curl http://admin:admin@localhost:3000/api/folders. |
+| `dashboardPrefix` | `string` | The prefix of the UIDs and Titles for all dashboards created on grafana. This is restricted to 20 characters. |
+| `extraMetricQueryParameters` | `string` | Extra parameters when querying metrics from Grafana dashboards. This string will be appended to every query for metrics in the definition of all gloo managed dashboards. It can consist of multiple query parameters separated by a comma. For example `cluster="some-cluster",gateway_proxy_id="proxy-2"`. |
 
 
 
@@ -704,6 +709,7 @@ Settings specific to the gloo (Envoy xDS server) controller
 "proxyDebugBindAddr": string
 "logTransformationRequestResponseInfo": .google.protobuf.BoolValue
 "transformationEscapeCharacters": .google.protobuf.BoolValue
+"istioOptions": .gloo.solo.io.GlooOptions.IstioOptions
 
 ```
 
@@ -715,17 +721,18 @@ Settings specific to the gloo (Envoy xDS server) controller
 | `endpointsWarmingTimeout` | [.google.protobuf.Duration](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/duration) | Timeout to get initial snapshot of resources. If set to zero, Gloo will not wait for initial snapshot - if nonzero and gloo could not fetch it's initial snapshot before the timeout reached, gloo will panic. If unset, Gloo defaults to 5 minutes. |
 | `awsOptions` | [.gloo.solo.io.GlooOptions.AWSOptions](../settings.proto.sk/#awsoptions) |  |
 | `invalidConfigPolicy` | [.gloo.solo.io.GlooOptions.InvalidConfigPolicy](../settings.proto.sk/#invalidconfigpolicy) | set these options to fine-tune the way Gloo handles invalid user configuration. |
-| `disableKubernetesDestinations` | `bool` | Gloo allows you to directly reference a Kubernetes service as a routing destination. To enable this feature, Gloo scans the cluster for Kubernetes services and creates a special type of in-memory Upstream to represent them. If the cluster contains a lot of services and you do not restrict the namespaces Gloo is watching, this can result in significant overhead. If you do not plan on using this feature, you can use this flag to turn it off. |
+| `disableKubernetesDestinations` | `bool` | Enable or disable Gloo Edge to scan Kubernetes services in the cluster and create in-memory Upstream resources to represent them. These resources enable Gloo Edge to route requests to a Kubernetes service. Note that if you have a large number of services in your cluster and you do not restrict the namespaces that Gloo Edge watches, the API snapshot increases which can have a negative impact on the Gloo Edge translation time. In addition, load balancing is done in `kube-proxy` which can have further performance impacts. Using Gloo Upstreams as a routing destination bypasses `kube-proxy` as the request is routed to the pod directly. Alternatively, you can use [`Kubernetes`](https://docs.solo.io/gloo-edge/latest/reference/api/github.com/solo-io/gloo/projects/gloo/api/v1/options/kubernetes/kubernetes.proto.sk/) Upstream resources as a routing destination to forward requests to the pod directly. For more information, see the [docs](https://docs.solo.io/gloo-edge/latest/guides/traffic_management/destination_types/kubernetes_services/). |
 | `disableGrpcWeb` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Default policy for grpc-web. set to true if you do not wish grpc-web to be automatically enabled. set to false if you wish grpc-web enabled unless disabled on the listener level. If not specified, defaults to `false`. |
 | `disableProxyGarbageCollection` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Set this option to determine the state of the envoy configuration when a virtual service is deleted, resulting in a proxy with no configured routes. set to true if you wish to keep envoy serving the routes from the latest valid configuration. set to false if you wish to reset the envoy configuration to a clean slate with no routes. If not specified, defaults to `false`. |
 | `regexMaxProgramSize` | [.google.protobuf.UInt32Value](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/u-int-32-value) | Set this option to specify the default max program size for regexes. If not specified, defaults to 100. |
 | `restXdsBindAddr` | `string` | Where the `gloo` REST xDS server should bind. Defaults to `0.0.0.0:9976`. |
-| `enableRestEds` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Whether or not to use rest xds for all EDS by default. Rest XDS, as opposed to grpc, uses http polling rather than streaming. |
+| `enableRestEds` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Whether or not to use rest xds for all EDS by default. Rest XDS, as opposed to grpc, uses http polling rather than streaming It is strongly recommended that this field be set to false, due to the superior performance of GRPC XDS. |
 | `failoverUpstreamDnsPollingInterval` | [.google.protobuf.Duration](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/duration) | The polling interval for the DNS server if upstream failover is configured. If there is a failover upstream address with a hostname instead of an IP, Gloo will resolve the hostname with the configured frequency to update endpoints with any changes to DNS resolution. Defaults to 10s. |
 | `removeUnusedFilters` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | By default gloo adds a series of filters to envoy to ensure that new routes are picked up Even if the listener previously did not have a filter on the chain previously. When set to true unused filters are not added to the chain by default. Defaults to false. |
 | `proxyDebugBindAddr` | `string` | Where the `gloo` proxy debug server should bind. Defaults to `gloo:9966`. |
 | `logTransformationRequestResponseInfo` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | When enabled, log the request/response body and headers before and after any transformations are applied. May be useful in the case where many transformations are applied and it is difficult to determine which are causing issues. Defaults to false. |
 | `transformationEscapeCharacters` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Set escapeCharacters for all TransformationTemplates on all vhosts and routes. This setting can be overridden in individual TransformationTemplates. |
+| `istioOptions` | [.gloo.solo.io.GlooOptions.IstioOptions](../settings.proto.sk/#istiooptions) |  |
 
 
 
@@ -773,7 +780,28 @@ Policy for how Gloo should handle invalid config
 | ----- | ---- | ----------- | 
 | `replaceInvalidRoutes` | `bool` | if set to `true`, Gloo removes any routes from the provided configuration which point to a missing destination. Routes that are removed in this way will instead return a configurable direct response to clients. When routes are replaced, Gloo will configure Envoy with a special listener which serves direct responses. Note: enabling this option allows Gloo to accept partially valid proxy configurations. |
 | `invalidRouteResponseCode` | `int` | replaced routes reply to clients with this response code. default is 404. |
-| `invalidRouteResponseBody` | `string` | replaced routes reply to clients with this response body. default is 'Gloo Gateway has invalid configuration. Administrators should run `glooctl check` to find and fix config errors.'. |
+| `invalidRouteResponseBody` | `string` | replaced routes reply to clients with this response body. default is 'Gloo Edge has invalid configuration. Administrators should run `glooctl check` to find and fix config errors.'. |
+
+
+
+
+---
+### IstioOptions
+
+
+
+```yaml
+"appendXForwardedHost": .google.protobuf.BoolValue
+"enableAutoMtls": .google.protobuf.BoolValue
+"enableIntegration": .google.protobuf.BoolValue
+
+```
+
+| Field | Type | Description |
+| ----- | ---- | ----------- | 
+| `appendXForwardedHost` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Set to false to disable adding X-Forwarded-Host header in Istio integration Defaults to true Warning: This value is deprecated and will be removed in a future release. Also, you cannot use this value with a Kubernetes Gateway API proxy. |
+| `enableAutoMtls` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Set to true to enable automatic mTLS for all upstreams. Istio integration must be enabled for this to take effect. Defaults to false. |
+| `enableIntegration` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Istio integration is enabled via global.istioIntegration.enabled on the helm chart. If enabled, an istio-proxy container and sds container are assumed to exist alongside the gateway proxy. These containers are created by enabling the istioIntegration.enabled option in the helm chart. Defaults to false. |
 
 
 
@@ -860,9 +888,9 @@ options for configuring admission control / validation
 | `validationWebhookTlsKey` | `string` | Path to TLS Private Key for Kubernetes Validating webhook. Defaults to `/etc/gateway/validation-certs/tls.key`. |
 | `ignoreGlooValidationFailure` | `bool` | Deprecated: the Gateway and the Gloo pods are now merged together, there are no longer requests made to a Gloo Validation server. When Gateway cannot communicate with Gloo (e.g. Gloo is offline) resources will be rejected by default. Enable the `ignoreGlooValidationFailure` to prevent the Validation server from rejecting resources due to network errors. |
 | `alwaysAccept` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Always accept resources even if validation produced an error. Validation will still log the error and increment the validation.gateway.solo.io/resources_rejected stat. Currently defaults to true - must be set to `false` to prevent writing invalid resources to storage. |
-| `allowWarnings` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Accept resources if validation produced a warning (defaults to true). By setting to false, this means that validation will start rejecting resources that would result in warnings, rather than just those that would result in errors. |
+| `allowWarnings` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Accept resources if validation produced a warning (defaults to true). By setting to false, this means that validation will start rejecting resources that would result in warnings, rather than just those that would result in errors. Note that this setting has no impact on Kubernetes Gateway API validation, as warnings will always be allowed in that context. |
 | `warnRouteShortCircuiting` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Deprecated: See `server_enabled` and consider configuring it to `false` instead. Write a warning to route resources if validation produced a route ordering warning (defaults to false). By setting to true, this means that Gloo will start assigning warnings to resources that would result in route short-circuiting within a virtual host, for example: - prefix routes that make later routes unreachable - regex routes that make later routes unreachable - duplicate matchers. |
-| `disableTransformationValidation` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Deprecated: See `server_enabled` and consider configuring it to `false` instead. By default gloo will attempt to validate transformations by calling out to a local envoy binary in `validate` mode. Calling this local envoy binary can become slow when done many times during a single validation. Setting this to true will stop gloo from calling out to envoy to validate the transformations, which may speed up the validation time considerably, but may also cause the transformation config to fail after being sent to envoy. When disabling this, ensure that your transformations are valid prior to applying them. |
+| `disableTransformationValidation` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | By default gloo will attempt to validate transformations by calling out to a local envoy binary in `validate` mode. Calling this local envoy binary can become slow when done many times during a single validation. Setting this to true will stop gloo from calling out to envoy to validate the transformations, which may speed up the validation time considerably, but may also cause the transformation config to fail after being sent to envoy. When disabling this, ensure that your transformations are valid prior to applying them. |
 | `validationServerGrpcMaxSizeBytes` | [.google.protobuf.Int32Value](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/int-32-value) | By default, gRPC validation messages between gateway and gloo pods have a max message size of 100 MB. Setting this value sets the gRPC max message size in bytes for the gloo validation server. This should only be changed if necessary. If not included, the gRPC max message size will be the default of 100 MB. |
 | `serverEnabled` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | By providing the validation field (parent of this object) the user is implicitly opting into validation. This field allows the user to opt out of the validation server, while still configuring pre-existing fields such as `warn_route_short_circuiting` and `disable_transformation_validation`. If not included, the validation server will be enabled. |
 

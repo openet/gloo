@@ -24,6 +24,7 @@ func InstallCmd(opts *options.Options, optionsFunc ...cliutils.OptionsFunc) *cob
 		knativeCmd(opts),
 	)
 	cliutils.ApplyOptions(cmd, optionsFunc)
+	flagutils.AddGlooInstallFlags(cmd.Flags(), &opts.Install)
 
 	pFlags := cmd.PersistentFlags()
 	flagutils.AddVerboseFlag(pFlags, opts)
@@ -37,7 +38,7 @@ func UninstallCmd(opts *options.Options, optionsFunc ...cliutils.OptionsFunc) *c
 		Long:   constants.UNINSTALL_COMMAND.Long,
 		PreRun: setVerboseMode(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Printf("Uninstalling Gloo Edge...\n")
+			fmt.Printf("Uninstalling Gloo Gateway...\n")
 			if err := Uninstall(opts, &install.CmdKubectl{}, Gloo); err != nil {
 				return err
 			}

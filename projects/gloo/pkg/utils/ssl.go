@@ -19,8 +19,7 @@ import (
 //go:generate mockgen -destination mocks/mock_ssl.go github.com/solo-io/gloo/projects/gloo/pkg/utils SslConfigTranslator
 
 const (
-	MetadataPluginName    = "envoy.grpc_credentials.file_based_metadata"
-	defaultSdsClusterName = "gateway_proxy_sds"
+	MetadataPluginName = "envoy.grpc_credentials.file_based_metadata"
 )
 
 var (
@@ -70,10 +69,20 @@ func NewSslConfigTranslator() *sslConfigTranslator {
 	return &sslConfigTranslator{}
 }
 
-func (s *sslConfigTranslator) ResolveUpstreamSslConfig(secrets v1.SecretList, uc *ssl.UpstreamSslConfig) (*envoyauth.UpstreamTlsContext, error) {
+func (s *sslConfigTranslator) ResolveUpstreamSslConfig(
+	secrets v1.SecretList,
+	uc *ssl.UpstreamSslConfig,
+) (*envoyauth.UpstreamTlsContext, error) {
 	common, err := s.ResolveCommonSslConfig(uc, secrets, false)
 	if err != nil {
 		return nil, err
+	}
+
+	// If the user needs one-way TLS to the upstream, disable mTLS by removing
+	// the validation context added in ResolveCommonSslConfig. This flag cannot
+	// be used with SDS config.
+	if uc.GetSds() == nil && uc.GetOneWayTls().GetValue() {
+		common.ValidationContextType = nil
 	}
 	return &envoyauth.UpstreamTlsContext{
 		CommonTlsContext:   common,
@@ -177,7 +186,7 @@ func buildSds(name string, sslSecrets *ssl.SDSConfig) *envoyauth.SdsSecretConfig
 		}
 		// Otherwise create a GrpcService with an EnvoyGrpc TargetSpecifier
 	} else {
-		clusterName := defaultSdsClusterName
+		clusterName := constants.SdsClusterName
 		if sslSecrets.GetClusterName() != "" {
 			clusterName = sslSecrets.GetClusterName()
 		}
@@ -217,7 +226,7 @@ func buildDeprecatedSDS(name string, sslSecrets *ssl.SDSConfig) *envoyauth.SdsSe
 		},
 		HeaderKey: sslSecrets.GetCallCredentials().GetFileCredentialSource().GetHeader(),
 	}
-	any, _ := MessageToAny(config)
+	anyPb, _ := MessageToAny(config)
 
 	gRPCConfig := &envoycore.GrpcService_GoogleGrpc{
 		TargetUri:  sslSecrets.GetTargetUri(),
@@ -234,7 +243,7 @@ func buildDeprecatedSDS(name string, sslSecrets *ssl.SDSConfig) *envoyauth.SdsSe
 					FromPlugin: &envoycore.GrpcService_GoogleGrpc_CallCredentials_MetadataCredentialsFromPlugin{
 						Name: MetadataPluginName,
 						ConfigType: &envoycore.GrpcService_GoogleGrpc_CallCredentials_MetadataCredentialsFromPlugin_TypedConfig{
-							TypedConfig: any},
+							TypedConfig: anyPb},
 					},
 				},
 			},

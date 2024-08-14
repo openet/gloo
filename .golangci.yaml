@@ -15,10 +15,47 @@ linters:
     # We are aiming to progressively enable linters.
     # If you see a linter that can be added, please do so.
     # See: https://github.com/solo-io/gloo-mesh-enterprise/blob/main/.golangci.yaml for a reference
+    - bodyclose
     - ginkgolinter
+    - goimports
+    - nakedret
+    - predeclared
+    - usestdlibvars
+    - importas
 
 # Settings dedicated to specific linters.
-linters-settings: {}
+linters-settings:
+  importas:
+    alias:
+      - pkg: k8s.io/api/apps/v1
+        alias: appsv1
+      - pkg: k8s.io/api/core/v1
+        alias: corev1
+      - pkg: k8s.io/apimachinery/pkg/apis/meta/v1
+        alias: metav1
+      - pkg: k8s.io/api/batch/v1
+        alias: batchv1
+      - pkg: github.com/solo-io/gloo/test/kubernetes/testutils/clients
+        alias: kubetestclients
+  nakedret:
+    # The team consensus is that naked returns hinder the readability of the code.
+    # However, named return values can still be useful as documentation for certain scenarios.
+    # By setting this to 0 in lieu of the default 30, we will effectively allow named return
+    # values as long as they are included in the return statement(s) e.g.
+    # func foo() (a, b int) {
+    #     a = 1
+    #     b = 2
+    #     c := 3
+    #     d := 4
+    #     // These are allowed
+    #     return a, b
+    #     return c, d
+    #     return d, c
+    #     // This is NOT allowed
+    #     return
+    #     // This is allowed but really, really bad. DO NOT do this.
+    #     return b, a
+    max-func-lines: 0
 
 issues:
   # Maximum count of issues with the same text.
@@ -37,10 +74,10 @@ run:
   tests: true
 
   # Timeout for analysis, e.g. 30s, 5m.
-  # We select 5 minutes somewhat arbitrarily.
+  # We select 10 minutes somewhat arbitrarily.
   # The idea is that we want a timeout that is long enough to allow the job to run.
   # If we find that the job is timing out, we can explore ways to make this job run faster, or increase the timeout.
-  timeout: 5m
+  timeout: 10m
 
   skip-dirs:
     # don't lint ruleguard files

@@ -33,7 +33,7 @@ kind: DaemonSet
 {{- end}}
 metadata:
   labels:
-    app: gloo
+{{ include "gloo.labels" . | indent 4}}
     gloo: gateway-proxy
     gateway-proxy-id: {{ $name | kebabcase }}
   name: {{ $name | kebabcase }}
@@ -77,7 +77,7 @@ spec:
       {{- range $key, $value := $spec.podTemplate.extraAnnotations }}
         {{ $key }}: {{ $value | quote }}
       {{- end }}
-      {{- if .Values.global.glooStats.setDatadogAnnotations }}
+      {{- if $global.glooStats.setDatadogAnnotations }}
         ad.datadoghq.com/gateway-proxy.check_names: '["envoy"]'
         ad.datadoghq.com/gateway-proxy.init_configs: '[{}]'
         ad.datadoghq.com/gateway-proxy.instances: '[{"stats_url": "http://%%host%%:8081/stats"}]'
@@ -101,12 +101,12 @@ spec:
         {{- end }}
 {{- end}}
     spec:
-{{ $securityDefaults := dict "fsGroup" $spec.podTemplate.fsGroup }}
+{{- $securityDefaults := dict "fsGroup" $spec.podTemplate.fsGroup -}}
 {{- if not $spec.podTemplate.floatingUserId -}}
   {{- $_ := set $securityDefaults "runAsUser" $spec.podTemplate.runAsUser }}
 {{ end -}}
-{{- if $spec.podTemplate.enablePodSecurityContext -}}
-{{ include "gloo.securityContext" (dict "values" $spec.podTemplate.podSecurityContext "defaults" $securityDefaults) | indent 6 -}}
+{{- if (and $spec.podTemplate.enablePodSecurityContext (not $global.securitySettings.floatingUserId)) -}}
+{{ include "gloo.securityContext" (dict "values" $spec.podTemplate.podSecurityContext "defaults" $securityDefaults "indent" 6 "globalSec" $global.securitySettings) -}}
 {{- end -}}
 
 {{- if $spec.kind.deployment }}
@@ -217,8 +217,7 @@ spec:
         {{- if not $spec.podTemplate.floatingUserId -}}
           {{- $_ := set $securityDefaults "runAsUser" $spec.podTemplate.runAsUser }}
         {{- end -}}
-        {{- include "gloo.securityContext" (dict "values" $spec.podTemplate.glooContainerSecurityContext "defaults" $securityDefaults) | nindent 8 }}
-
+        {{- include "gloo.containerSecurityContext" (dict "values" $spec.podTemplate.glooContainerSecurityContext "defaults" $securityDefaults "podSecurityStandards" .Values.global.podSecurityStandards "indent" 8 "globalSec" $global.securitySettings) }}
         ports:
         - containerPort: {{ $spec.podTemplate.httpPort }}
           name: http
@@ -297,14 +296,11 @@ spec:
           name: shared-data
 {{- include $spec.extraContainersHelper . | nindent 6 }}
 {{- end }} {{- /* $spec.extraContainersHelper */}}
-{{- if or $global.glooMtls.enabled $global.istioSDS.enabled }}
+{{- if or $global.glooMtls.enabled (or $global.istioSDS.enabled $global.istioIntegration.enabled) }}
       {{- $sdsImage := merge $global.glooMtls.sds.image $global.image }}
       - name: sds
         image: {{ template "gloo.image" $sdsImage }}
-        {{- with $global.glooMtls.sds.securityContext }}}
-        securityContext:
-        {{- toYaml . | nindent 10  }}
-        {{- end }}
+        {{- include "gloo.containerSecurityContext" (dict "values" $global.glooMtls.sds.securityContext "podSecurityStandards" .Values.global.podSecurityStandards "indent" 8 "globalSec" $global.securitySettings) }}
         imagePullPolicy: {{ $sdsImage.pullPolicy }}
 {{- if $global.glooMtls.sdsResources }}
         resources:
@@ -323,17 +319,25 @@ spec:
           - name: GLOO_MTLS_SDS_ENABLED
             value: "true"
 {{- end }}
-{{- if $global.istioSDS.enabled }}
+{{- if or $global.istioSDS.enabled $global.istioIntegration.enabled }}
           - name: ISTIO_MTLS_SDS_ENABLED
             value: "true"
 {{- end }}
+{{- if $global.glooMtls.sds.logLevel }}
+          - name: LOG_LEVEL
+            value: {{ $global.glooMtls.sds.logLevel }}
+{{- end}}
+{{- if $statsConfig.enabled }}
+          - name: START_STATS_SERVER
+            value: "true"
+{{- end}}
         volumeMounts:
 {{- if $global.glooMtls.enabled }}
         - mountPath: /etc/envoy/ssl
           name: gloo-mtls-certs
           readOnly: true
 {{- end }}
-{{- if $global.istioSDS.enabled }}
+{{- if or $global.istioSDS.enabled $global.istioIntegration.enabled }}
         - mountPath: /etc/istio-certs/
           name: istio-certs
         - mountPath: /etc/envoy
@@ -343,23 +347,24 @@ spec:
         - containerPort: 8234
           name: sds
           protocol: TCP
+        {{- if and $statsConfig.enabled $statsConfig.podMonitorEnabled }}
+        - name: http-monitoring
+          containerPort: 9091
+        {{- end }}
         readinessProbe:
           tcpSocket:
             port: 8234
           initialDelaySeconds: 3
           periodSeconds: 10
           failureThreshold: 3
-{{- end }} {{- /* $global.glooMtls.enabled or $.Values.istioSDS.enabled */}}
-{{- if $global.istioSDS.enabled }}
+{{- end }} {{- /* or $global.glooMtls.enabled (or $.Values.istioSDS.enabled $global.istioIntegration.enabled) */}}
+{{- if or $global.istioSDS.enabled $global.istioIntegration.enabled }}
 {{- if $global.istioSDS.customSidecars }}
 {{ toYaml $global.istioSDS.customSidecars | indent 6}}
 {{- end }}
 {{- if not $global.istioSDS.customSidecars }}
       - name: istio-proxy
-        {{- with $global.glooMtls.istioProxy.securityContext }}
-        securityContext:
-        {{- toYaml . | nindent 10  }}
-        {{- end }}
+        {{- include "gloo.containerSecurityContext" (dict "values" $global.glooMtls.istioProxy.securityContext "podSecurityStandards" .Values.global.podSecurityStandards "indent" 8 "globalSec" $global.securitySettings) }}
         {{- $istioProxyImage := merge $global.glooMtls.istioProxy.image $global.image }}
         image: {{ template "gloo.image" $istioProxyImage }}
         imagePullPolicy: {{ $istioProxyImage.pullPolicy }}
@@ -374,27 +379,20 @@ spec:
         - $(POD_NAMESPACE).svc.cluster.local
         - --configPath
         - /etc/istio/proxy
-        - --binaryPath
-        - /usr/local/bin/envoy
         - --serviceCluster
         - istio-proxy-prometheus
         - --drainDuration
         - 45s
         - --parentShutdownDuration
         - 1m0s
-        - --proxyLogLevel=warning
+        - --proxyLogLevel={{ $global.glooMtls.istioProxy.logLevel }}
         - --proxyComponentLogLevel=misc:error
         - --connectTimeout
         - 10s
-        - --proxyAdminPort
-        - "15000"
         - --controlPlaneAuthPolicy
         - NONE
         - --dnsRefreshRate
         - 300s
-        - --statusPort
-        - "15021"
-        - --trust-domain=cluster.local
         - --controlPlaneBootstrap=false
         env:
           - name: OUTPUT_CERTS
@@ -442,16 +440,8 @@ spec:
               fieldRef:
                 apiVersion: v1
                 fieldPath: metadata.namespace
-        readinessProbe:
-          failureThreshold: 3
-          httpGet:
-            path: /healthz/ready
-            port: 15021
-            scheme: HTTP
-          initialDelaySeconds: 3
-          periodSeconds: 10
-          successThreshold: 1
-          timeoutSeconds: 1
+          - name: DISABLE_ENVOY
+            value: "true"
         volumeMounts:
         - mountPath: /var/run/secrets/istio
           name: istiod-ca-cert
@@ -468,12 +458,12 @@ spec:
         - mountPath: /var/run/secrets/workload-spiffe-credentials
           name: workload-certs
 {{- end }} {{/* if not $global.istioSDS.customSidecars */}}
-{{- end }}{{/* if $global.istioSDS.enabled */}}
+{{- end }}{{/* if or $global.istioSDS.enabled $global.istioIntegration.enabled */}}
       volumes:
       - configMap:
           name: {{ $name | kebabcase }}-envoy-config
         name: envoy-config
-{{- if $global.istioSDS.enabled }}
+{{- if or $global.istioSDS.enabled $global.istioIntegration.enabled }}
       - name: istio-certs
         emptyDir:
           medium: Memory

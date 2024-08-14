@@ -7,10 +7,10 @@ metadata:
   name: gloo-resource-cleanup
   namespace: {{ .Release.Namespace }}
   labels:
-    app: gloo
+{{ include "gloo.labels" . | indent 4}}
     gloo: rbac
   annotations:
-    "helm.sh/hook": post-delete
+    "helm.sh/hook": pre-delete
     "helm.sh/hook-weight": "0" # must be created before cleanup job
     "helm.sh/hook-delete-policy": hook-succeeded,before-hook-creation
 rules:

@@ -51,6 +51,8 @@ Each upstream type is handled by a corresponding Gloo plugin. (plugins currently
 "azure": .azure.options.gloo.solo.io.UpstreamSpec
 "consul": .consul.options.gloo.solo.io.UpstreamSpec
 "awsEc2": .aws_ec2.options.gloo.solo.io.UpstreamSpec
+"gcp": .gcp.options.gloo.solo.io.UpstreamSpec
+"ai": .ai.options.gloo.solo.io.UpstreamSpec
 "failover": .gloo.solo.io.Failover
 "connectionConfig": .gloo.solo.io.ConnectionConfig
 "protocolSelection": .gloo.solo.io.Upstream.ClusterProtocolSelection
@@ -67,6 +69,7 @@ Each upstream type is handled by a corresponding Gloo plugin. (plugins currently
 "dnsRefreshRate": .google.protobuf.Duration
 "proxyProtocolVersion": .google.protobuf.StringValue
 "preconnectPolicy": .gloo.solo.io.PreconnectPolicy
+"disableIstioAutoMtls": .google.protobuf.BoolValue
 
 ```
 
@@ -80,13 +83,15 @@ Each upstream type is handled by a corresponding Gloo plugin. (plugins currently
 | `loadBalancerConfig` | [.gloo.solo.io.LoadBalancerConfig](../load_balancer.proto.sk/#loadbalancerconfig) | Settings for the load balancer that sends requests to the Upstream. The load balancing method is set to round robin by default. |
 | `healthChecks` | [[]solo.io.envoy.api.v2.core.HealthCheck](../../external/envoy/api/v2/core/health_check.proto.sk/#healthcheck) |  |
 | `outlierDetection` | [.solo.io.envoy.api.v2.cluster.OutlierDetection](../../external/envoy/api/v2/cluster/outlier_detection.proto.sk/#outlierdetection) |  |
-| `kube` | [.kubernetes.options.gloo.solo.io.UpstreamSpec](../options/kubernetes/kubernetes.proto.sk/#upstreamspec) |  Only one of `kube`, `static`, `pipe`, `aws`, `azure`, `consul`, or `awsEc2` can be set. |
-| `static` | [.static.options.gloo.solo.io.UpstreamSpec](../options/static/static.proto.sk/#upstreamspec) |  Only one of `static`, `kube`, `pipe`, `aws`, `azure`, `consul`, or `awsEc2` can be set. |
-| `pipe` | [.pipe.options.gloo.solo.io.UpstreamSpec](../options/pipe/pipe.proto.sk/#upstreamspec) |  Only one of `pipe`, `kube`, `static`, `aws`, `azure`, `consul`, or `awsEc2` can be set. |
-| `aws` | [.aws.options.gloo.solo.io.UpstreamSpec](../options/aws/aws.proto.sk/#upstreamspec) |  Only one of `aws`, `kube`, `static`, `pipe`, `azure`, `consul`, or `awsEc2` can be set. |
-| `azure` | [.azure.options.gloo.solo.io.UpstreamSpec](../options/azure/azure.proto.sk/#upstreamspec) |  Only one of `azure`, `kube`, `static`, `pipe`, `aws`, `consul`, or `awsEc2` can be set. |
-| `consul` | [.consul.options.gloo.solo.io.UpstreamSpec](../options/consul/consul.proto.sk/#upstreamspec) |  Only one of `consul`, `kube`, `static`, `pipe`, `aws`, `azure`, or `awsEc2` can be set. |
-| `awsEc2` | [.aws_ec2.options.gloo.solo.io.UpstreamSpec](../options/aws/ec2/aws_ec2.proto.sk/#upstreamspec) |  Only one of `awsEc2`, `kube`, `static`, `pipe`, `aws`, `azure`, or `consul` can be set. |
+| `kube` | [.kubernetes.options.gloo.solo.io.UpstreamSpec](../options/kubernetes/kubernetes.proto.sk/#upstreamspec) |  Only one of `kube`, `static`, `pipe`, `aws`, `azure`, `consul`, `awsEc2`, `gcp`, or `ai` can be set. |
+| `static` | [.static.options.gloo.solo.io.UpstreamSpec](../options/static/static.proto.sk/#upstreamspec) |  Only one of `static`, `kube`, `pipe`, `aws`, `azure`, `consul`, `awsEc2`, `gcp`, or `ai` can be set. |
+| `pipe` | [.pipe.options.gloo.solo.io.UpstreamSpec](../options/pipe/pipe.proto.sk/#upstreamspec) |  Only one of `pipe`, `kube`, `static`, `aws`, `azure`, `consul`, `awsEc2`, `gcp`, or `ai` can be set. |
+| `aws` | [.aws.options.gloo.solo.io.UpstreamSpec](../options/aws/aws.proto.sk/#upstreamspec) |  Only one of `aws`, `kube`, `static`, `pipe`, `azure`, `consul`, `awsEc2`, `gcp`, or `ai` can be set. |
+| `azure` | [.azure.options.gloo.solo.io.UpstreamSpec](../options/azure/azure.proto.sk/#upstreamspec) |  Only one of `azure`, `kube`, `static`, `pipe`, `aws`, `consul`, `awsEc2`, `gcp`, or `ai` can be set. |
+| `consul` | [.consul.options.gloo.solo.io.UpstreamSpec](../options/consul/consul.proto.sk/#upstreamspec) |  Only one of `consul`, `kube`, `static`, `pipe`, `aws`, `azure`, `awsEc2`, `gcp`, or `ai` can be set. |
+| `awsEc2` | [.aws_ec2.options.gloo.solo.io.UpstreamSpec](../options/aws/ec2/aws_ec2.proto.sk/#upstreamspec) |  Only one of `awsEc2`, `kube`, `static`, `pipe`, `aws`, `azure`, `consul`, `gcp`, or `ai` can be set. |
+| `gcp` | [.gcp.options.gloo.solo.io.UpstreamSpec](../enterprise/options/gcp/gcp.proto.sk/#upstreamspec) |  Only one of `gcp`, `kube`, `static`, `pipe`, `aws`, `azure`, `consul`, `awsEc2`, or `ai` can be set. |
+| `ai` | [.ai.options.gloo.solo.io.UpstreamSpec](../enterprise/options/ai/ai.proto.sk/#upstreamspec) |  Only one of `ai`, `kube`, `static`, `pipe`, `aws`, `azure`, `consul`, `awsEc2`, or `gcp` can be set. |
 | `failover` | [.gloo.solo.io.Failover](../failover.proto.sk/#failover) | Failover endpoints for this upstream. If omitted (the default) no failovers will be applied. |
 | `connectionConfig` | [.gloo.solo.io.ConnectionConfig](../connection.proto.sk/#connectionconfig) | HTTP/1 connection configurations. |
 | `protocolSelection` | [.gloo.solo.io.Upstream.ClusterProtocolSelection](../upstream.proto.sk/#clusterprotocolselection) | Determines how Envoy selects the protocol used to speak to upstream hosts. |
@@ -103,6 +108,7 @@ Each upstream type is handled by a corresponding Gloo plugin. (plugins currently
 | `dnsRefreshRate` | [.google.protobuf.Duration](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/duration) | Service Discovery DNS Refresh Rate. Minimum value is 1 ms. Values below the minimum are considered invalid. Only valid for STRICT_DNS and LOGICAL_DNS cluster types. All other cluster types are considered invalid. |
 | `proxyProtocolVersion` | [.google.protobuf.StringValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/string-value) | Proxy Protocol Version to add when communicating with the upstream. If unset will not wrap the transport socket. These are of the format "V1" or "V2". |
 | `preconnectPolicy` | [.gloo.solo.io.PreconnectPolicy](../upstream.proto.sk/#preconnectpolicy) | Preconnect policy for the cluster Aligns as closely as possible with https://www.envoyproxy.io/docs/envoy/latest/api-v3/config/cluster/v3/cluster.proto#envoy-v3-api-msg-config-cluster-v3-cluster-preconnectpolicy This is not recommended for use unless you are sure you need it. In most cases preconnect hurts more than it helps. |
+| `disableIstioAutoMtls` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | If set to true, the proxy will not allow automatic mTLS detection for Istio upstreams. Defaults to false. |
 
 
 

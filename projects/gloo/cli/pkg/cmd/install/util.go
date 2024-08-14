@@ -47,9 +47,13 @@ func init() {
 		"routetables.gateway.solo.io",
 		"authconfigs.enterprise.gloo.solo.io",
 		"ratelimitconfigs.ratelimit.solo.io",
+		"listeneroptions.gateway.solo.io",
+		"httplisteneroptions.gateway.solo.io",
 		"virtualhostoptions.gateway.solo.io",
 		"routeoptions.gateway.solo.io",
 		"graphqlapis.graphql.gloo.solo.io",
+		// CRDs used for k8s gateway API integration:
+		"gatewayparameters.gateway.gloo.solo.io",
 		// gloo-fed CRDs:
 		"glooinstances.fed.solo.io",
 		"failoverschemes.fed.solo.io",
@@ -65,10 +69,11 @@ func init() {
 	}
 }
 
-func LabelsToFlagString(labelMap map[string]string) (labelString string) {
+func LabelsToFlagString(labelMap map[string]string) string {
+	labelString := ""
 	for k, v := range labelMap {
 		labelString += fmt.Sprintf("%s in %s,", k, v)
 	}
 	labelString = strings.TrimSuffix(labelString, ",")
-	return
+	return labelString
 }

@@ -1,4 +1,4 @@
-package transformation_test
+package transformation
 
 import (
 	"context"
@@ -13,11 +13,11 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	envoytransformation "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/extensions/transformation"
+	upstream_wait "github.com/solo-io/gloo/projects/gloo/pkg/api/external/envoy/extensions/upstream_wait"
 	v1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/core/matchers"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/transformation"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
-	. "github.com/solo-io/gloo/projects/gloo/pkg/plugins/transformation"
 	"github.com/solo-io/gloo/projects/gloo/pkg/utils"
 	skMatchers "github.com/solo-io/solo-kit/test/matchers"
 )
@@ -254,9 +254,9 @@ var _ = Describe("Plugin", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				Expect(stagedHttpFilters).To(HaveLen(1))
-				Expect(stagedHttpFilters[0].HttpFilter.Name).To(Equal("io.solo.transformation"))
+				Expect(stagedHttpFilters[0].Filter.Name).To(Equal("io.solo.transformation"))
 				// pretty print the typed config of the filter
-				typedConfig := stagedHttpFilters[0].HttpFilter.GetTypedConfig()
+				typedConfig := stagedHttpFilters[0].Filter.GetTypedConfig()
 				expectedFilter := plugins.MustNewStagedFilter(
 					FilterName,
 					&envoytransformation.FilterTransformations{
@@ -265,7 +265,7 @@ var _ = Describe("Plugin", func() {
 					plugins.AfterStage(plugins.AuthZStage),
 				)
 
-				Expect(typedConfig).To(skMatchers.MatchProto(expectedFilter.HttpFilter.GetTypedConfig()))
+				Expect(typedConfig).To(skMatchers.MatchProto(expectedFilter.Filter.GetTypedConfig()))
 
 				expectedOutput.Transformations[0].Match.(*envoytransformation.RouteTransformations_RouteTransformation_RequestMatch_).RequestMatch.RequestTransformation.LogRequestResponseInfo = &wrapperspb.BoolValue{Value: true}
 				output, err := p.(transformationPlugin).ConvertTransformation(
@@ -293,6 +293,55 @@ var _ = Describe("Plugin", func() {
 				})
 
 				inputTransformationStages.LogRequestResponseInfo = &wrapperspb.BoolValue{Value: false}
+
+				output, err := p.(transformationPlugin).ConvertTransformation(
+					ctx,
+					&transformation.Transformations{},
+					inputTransformationStages,
+				)
+
+				Expect(err).NotTo(HaveOccurred())
+				Expect(output).To(Equal(expectedOutput))
+			})
+
+			It("can propely translate MergeJsonKeys body transformation", func() {
+				inputTransformationStages.Regular.RequestTransforms[0].
+					RequestTransformation.TransformationType = &transformation.Transformation_TransformationTemplate{
+					TransformationTemplate: &transformation.TransformationTemplate{
+						BodyTransformation: &transformation.TransformationTemplate_MergeJsonKeys{
+							MergeJsonKeys: &transformation.MergeJsonKeys{
+								JsonKeys: map[string]*transformation.MergeJsonKeys_OverridableTemplate{
+									"key1": {
+										Tmpl:          &transformation.InjaTemplate{Text: "value1"},
+										OverrideEmpty: true,
+									},
+									"key2": {
+										Tmpl: &transformation.InjaTemplate{Text: "value2"},
+									},
+								},
+							},
+						},
+					},
+				}
+
+				expectedOutput.Transformations[0].Match.(*envoytransformation.RouteTransformations_RouteTransformation_RequestMatch_).
+					RequestMatch.RequestTransformation.TransformationType = &envoytransformation.Transformation_TransformationTemplate{
+					TransformationTemplate: &envoytransformation.TransformationTemplate{
+						BodyTransformation: &envoytransformation.TransformationTemplate_MergeJsonKeys{
+							MergeJsonKeys: &envoytransformation.MergeJsonKeys{
+								JsonKeys: map[string]*envoytransformation.MergeJsonKeys_OverridableTemplate{
+									"key1": {
+										Tmpl:          &envoytransformation.InjaTemplate{Text: "value1"},
+										OverrideEmpty: true,
+									},
+									"key2": {
+										Tmpl: &envoytransformation.InjaTemplate{Text: "value2"},
+									},
+								},
+							},
+						},
+					},
+				}
 
 				output, err := p.(transformationPlugin).ConvertTransformation(
 					ctx,
@@ -462,6 +511,242 @@ var _ = Describe("Plugin", func() {
 
 		})
 
+		Context("Extractors", func() {
+			type extractorTestCase struct {
+				Regex                string
+				Mode                 transformation.Extraction_Mode
+				Subgroup             uint32
+				ReplacementText      *wrapperspb.StringValue
+				ExpectError          bool
+				ExpectedErrorMessage string // Use this to specify part of the expected error message
+			}
+
+			type transformationPlugin interface {
+				plugins.Plugin
+				ConvertTransformation(
+					ctx context.Context,
+					t *transformation.Transformations,
+					stagedTransformations *transformation.TransformationStages,
+				) (*envoytransformation.RouteTransformations, error)
+			}
+
+			// Helper functions to create input and output transformations
+			createInputExtraction := func(tc extractorTestCase) *transformation.Extraction {
+				return &transformation.Extraction{
+					Regex:           tc.Regex,
+					Mode:            tc.Mode,
+					Subgroup:        tc.Subgroup,
+					ReplacementText: tc.ReplacementText,
+					Source:          &transformation.Extraction_Header{Header: "foo"},
+				}
+			}
+
+			createOutputExtraction := func(tc extractorTestCase) *envoytransformation.Extraction {
+				return &envoytransformation.Extraction{
+					Regex:           tc.Regex,
+					Mode:            envoytransformation.Extraction_Mode(tc.Mode),
+					Subgroup:        tc.Subgroup,
+					ReplacementText: tc.ReplacementText,
+					Source:          &envoytransformation.Extraction_Header{Header: "foo"},
+				}
+			}
+
+			// intermediary function to create a transformation with a single extraction
+			createInputTransformation := func(extraction *transformation.Extraction) *transformation.Transformation {
+				return &transformation.Transformation{
+					TransformationType: &transformation.Transformation_TransformationTemplate{
+						TransformationTemplate: &transformation.TransformationTemplate{
+							Extractors: map[string]*transformation.Extraction{"foo": extraction},
+						},
+					},
+				}
+			}
+
+			// intermediary function to create transformationStages with a single extraction
+			createInputTransformationStages := func(extraction *transformation.Extraction) *transformation.TransformationStages {
+				return &transformation.TransformationStages{
+					Regular: &transformation.RequestResponseTransformations{
+						RequestTransforms: []*transformation.RequestMatch{{
+							RequestTransformation: createInputTransformation(extraction),
+						}},
+					},
+				}
+			}
+
+			// intermediary function to create a transformation with a single extraction
+			createOutputTransformation := func(extraction *envoytransformation.Extraction) *envoytransformation.Transformation {
+				return &envoytransformation.Transformation{
+					TransformationType: &envoytransformation.Transformation_TransformationTemplate{
+						TransformationTemplate: &envoytransformation.TransformationTemplate{
+							Extractors: map[string]*envoytransformation.Extraction{"foo": extraction},
+						},
+					},
+				}
+			}
+
+			// the output of this function can be compared directly with the output of the plugin
+			createOutputRouteTransformations := func(transformation *envoytransformation.Transformation) *envoytransformation.RouteTransformations {
+				return &envoytransformation.RouteTransformations{
+					Transformations: []*envoytransformation.RouteTransformations_RouteTransformation{{
+						Match: &envoytransformation.RouteTransformations_RouteTransformation_RequestMatch_{
+							RequestMatch: &envoytransformation.RouteTransformations_RouteTransformation_RequestMatch{
+								RequestTransformation: transformation,
+							},
+						},
+					}},
+				}
+			}
+
+			// helper that creates a RouteTransformations with a single extraction, using the intermediary functions above
+			createOutputRouteTransformationsFromExtraction := func(extraction *envoytransformation.Extraction) *envoytransformation.RouteTransformations {
+				return createOutputRouteTransformations(createOutputTransformation(extraction))
+			}
+
+			// we use this custom comparison because generated protos can't be compared directly
+			validateExtractionMatch := func(expected, actual *envoytransformation.RouteTransformations) {
+				getTransformation := func(rt *envoytransformation.RouteTransformations) *envoytransformation.Transformation {
+					return rt.GetTransformations()[0].GetMatch().(*envoytransformation.RouteTransformations_RouteTransformation_RequestMatch_).RequestMatch.GetRequestTransformation()
+				}
+
+				getExtractor := func(t *envoytransformation.Transformation, key string) *envoytransformation.Extraction {
+					return t.GetTransformationTemplate().GetExtractors()[key]
+				}
+
+				expectedTransformation := getTransformation(expected)
+				actualTransformation := getTransformation(actual)
+				expectedExtraction := getExtractor(expectedTransformation, "foo")
+				actualExtraction := getExtractor(actualTransformation, "foo")
+
+				// Validate each field with proper nil checks
+				Expect(actualExtraction.GetSource()).To(Equal(expectedExtraction.GetSource()), "Source mismatch")
+				Expect(actualExtraction.GetRegex()).To(Equal(expectedExtraction.GetRegex()), "Regex mismatch")
+				Expect(actualExtraction.GetSubgroup()).To(Equal(expectedExtraction.GetSubgroup()), "Subgroup mismatch")
+				Expect(actualExtraction.GetMode()).To(Equal(expectedExtraction.GetMode()), "Mode mismatch")
+
+				// Handle nil replacement text gracefully
+				if expectedExtraction.GetReplacementText() != nil {
+					Expect(actualExtraction.GetReplacementText()).NotTo(BeNil(), "Expected replacement text not to be nil")
+					Expect(actualExtraction.GetReplacementText().GetValue()).To(Equal(expectedExtraction.GetReplacementText().GetValue()), "Replacement text value mismatch")
+				} else {
+					Expect(actualExtraction.GetReplacementText()).To(BeNil(), "Expected replacement text to be nil")
+				}
+			}
+
+			DescribeTable("Extractor transformations",
+				func(tc extractorTestCase) {
+					inputExtraction := createInputExtraction(tc)
+					inputTransformationStages := createInputTransformationStages(inputExtraction)
+					output, err := p.(transformationPlugin).ConvertTransformation(ctx, &transformation.Transformations{}, inputTransformationStages)
+
+					if tc.ExpectedErrorMessage != "" {
+						Expect(err).To(HaveOccurred(), "Expected an error but got none")
+						extractedErr, ok := err.(*ExtractorError)
+						Expect(ok).To(BeTrue(), "Expected error to be of type *ExtractorError")
+						Expect(extractedErr.Message).To(Equal(tc.ExpectedErrorMessage), "Error message does not match expected")
+					} else {
+						Expect(err).NotTo(HaveOccurred())
+						expectedOutputExtraction := createOutputExtraction(tc)
+						expectedOutput := createOutputRouteTransformationsFromExtraction(expectedOutputExtraction)
+						validateExtractionMatch(expectedOutput, output)
+					}
+				},
+				Entry("Errors if replacement_text is set - Extract mode",
+					extractorTestCase{
+						Mode:                 transformation.Extraction_EXTRACT,
+						Regex:                "abc",
+						Subgroup:             0,
+						ReplacementText:      &wrapperspb.StringValue{Value: "replacement"},
+						ExpectError:          true,
+						ExpectedErrorMessage: ErrMsgReplacementTextSetWhenNotNeeded,
+					},
+				),
+
+				// Single Replace Mode Test Cases
+				Entry("Can set mode to Single Replace with valid replacement text",
+					extractorTestCase{
+						Mode:                 transformation.Extraction_SINGLE_REPLACE,
+						Regex:                "abc",
+						Subgroup:             0,
+						ReplacementText:      &wrapperspb.StringValue{Value: "foo"},
+						ExpectError:          false,
+						ExpectedErrorMessage: "",
+					},
+				),
+				Entry("Errors if replacement_text is not set in Single Replace mode",
+					extractorTestCase{
+						Mode:                 transformation.Extraction_SINGLE_REPLACE,
+						Regex:                "abc",
+						Subgroup:             0,
+						ReplacementText:      nil,
+						ExpectError:          true,
+						ExpectedErrorMessage: ErrMsgReplacementTextNotSetWhenNeeded,
+					},
+				),
+
+				// Replace All Mode Test Cases
+				Entry("Can set mode to ReplaceAll with valid replacement text",
+					extractorTestCase{
+						Mode:                 transformation.Extraction_REPLACE_ALL,
+						Regex:                "abc",
+						Subgroup:             0,
+						ReplacementText:      &wrapperspb.StringValue{Value: "foo"},
+						ExpectError:          false,
+						ExpectedErrorMessage: "",
+					},
+				),
+				Entry("Errors if subgroup is set - Replace All mode",
+					extractorTestCase{
+						Mode:                 transformation.Extraction_REPLACE_ALL,
+						Regex:                "(abc)",
+						Subgroup:             1,
+						ReplacementText:      &wrapperspb.StringValue{Value: "foo"},
+						ExpectError:          true,
+						ExpectedErrorMessage: ErrMsgSubgroupSetWhenNotNeeded,
+					},
+				),
+				Entry("Errors if replacement_text is not set - Replace All mode",
+					extractorTestCase{
+						Mode:                 transformation.Extraction_REPLACE_ALL,
+						Regex:                "abc",
+						Subgroup:             0,
+						ReplacementText:      nil,
+						ExpectError:          true,
+						ExpectedErrorMessage: ErrMsgReplacementTextNotSetWhenNeeded,
+					},
+				),
+			)
+
+			It("defaults to Extract mode if mode is not set", func() {
+				inputExtraction := createInputExtraction(extractorTestCase{})
+				inputTransformationStages := createInputTransformationStages(inputExtraction)
+				output, err := p.(transformationPlugin).ConvertTransformation(ctx, &transformation.Transformations{}, inputTransformationStages)
+				Expect(err).NotTo(HaveOccurred())
+				expectedOutputExtraction := createOutputExtraction(extractorTestCase{
+					Mode: transformation.Extraction_EXTRACT,
+				})
+
+				expectedOutput := createOutputRouteTransformationsFromExtraction(expectedOutputExtraction)
+				validateExtractionMatch(expectedOutput, output)
+			})
+
+			It("defaults to Extract mode if mode is invalid", func() {
+				inputExtraction := createInputExtraction(extractorTestCase{})
+
+				// Mode is an int, which defaults to 0, i.e. EXTRACT
+				// Check to make sure we can handle the case where mode does not
+				// exist in the enum
+				inputExtraction.Mode = -1
+				inputTransformationStages := createInputTransformationStages(inputExtraction)
+				output, err := p.(transformationPlugin).ConvertTransformation(ctx, &transformation.Transformations{}, inputTransformationStages)
+				Expect(err).NotTo(HaveOccurred())
+				expectedOutputExtraction := createOutputExtraction(extractorTestCase{
+					Mode: transformation.Extraction_EXTRACT,
+				})
+
+				expectedOutput := createOutputRouteTransformationsFromExtraction(expectedOutputExtraction)
+				validateExtractionMatch(expectedOutput, output)
+			})
+		})
 	})
 
 	Context("deprecated transformations", func() {
@@ -555,7 +840,7 @@ var _ = Describe("Plugin", func() {
 			filters, err := p.(plugins.HttpFilterPlugin).HttpFilters(plugins.Params{Ctx: ctx}, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(filters).To(HaveLen(1))
-			value := filters[0].HttpFilter.GetTypedConfig().GetValue()
+			value := filters[0].Filter.GetTypedConfig().GetValue()
 			Expect(value).To(BeEmpty())
 		})
 	})
@@ -574,93 +859,81 @@ var _ = Describe("Plugin", func() {
 				Stage: EarlyStageNumber,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			earlyRequestTransformationTemplateIn := &transformation.TransformationTemplate{
-				AdvancedTemplates: true,
-				BodyTransformation: &transformation.TransformationTemplate_Body{
-					Body: &transformation.InjaTemplate{Text: "1"},
-				},
-			}
-			earlyRequestTransformationTemplate := &envoytransformation.TransformationTemplate{
-				AdvancedTemplates: true,
-				BodyTransformation: &envoytransformation.TransformationTemplate_Body{
-					Body: &envoytransformation.InjaTemplate{Text: "1"},
-				},
-			}
 			// construct transformation with all the options, to make sure translation is correct
-			earlyRequestTransform := &transformation.Transformation{
-				TransformationType: &transformation.Transformation_TransformationTemplate{
-					TransformationTemplate: earlyRequestTransformationTemplateIn,
-				},
-			}
-			envoyEarlyRequestTransform := &envoytransformation.Transformation{
-				TransformationType: &envoytransformation.Transformation_TransformationTemplate{
-					TransformationTemplate: earlyRequestTransformationTemplate,
-				},
-			}
-			earlyResponseTransformationTemplateIn := &transformation.TransformationTemplate{
-				AdvancedTemplates: true,
-				BodyTransformation: &transformation.TransformationTemplate_Body{
-					Body: &transformation.InjaTemplate{Text: "2"},
-				},
-			}
-			earlyResponseTransformationTemplate := &envoytransformation.TransformationTemplate{
-				AdvancedTemplates: true,
-				BodyTransformation: &envoytransformation.TransformationTemplate_Body{
-					Body: &envoytransformation.InjaTemplate{Text: "2"},
-				},
-			}
 			earlyResponseTransform := &transformation.Transformation{
 				TransformationType: &transformation.Transformation_TransformationTemplate{
-					TransformationTemplate: earlyResponseTransformationTemplateIn,
+					TransformationTemplate: &transformation.TransformationTemplate{
+						AdvancedTemplates: true,
+						BodyTransformation: &transformation.TransformationTemplate_Body{
+							Body: &transformation.InjaTemplate{Text: "2"},
+						},
+					},
 				},
 			}
 			envoyEarlyResponseTransform := &envoytransformation.Transformation{
 				TransformationType: &envoytransformation.Transformation_TransformationTemplate{
-					TransformationTemplate: earlyResponseTransformationTemplate,
-				},
-			}
-			requestTransformationIn := &transformation.TransformationTemplate{
-				AdvancedTemplates: true,
-				BodyTransformation: &transformation.TransformationTemplate_Body{
-					Body: &transformation.InjaTemplate{Text: "11"},
-				},
-			}
-			requestTransformation := &envoytransformation.TransformationTemplate{
-				AdvancedTemplates: true,
-				BodyTransformation: &envoytransformation.TransformationTemplate_Body{
-					Body: &envoytransformation.InjaTemplate{Text: "11"},
-				},
-			}
-			requestTransform := &transformation.Transformation{
-				TransformationType: &transformation.Transformation_TransformationTemplate{
-					TransformationTemplate: requestTransformationIn,
-				},
-			}
-			envoyRequestTransform := &envoytransformation.Transformation{
-				TransformationType: &envoytransformation.Transformation_TransformationTemplate{
-					TransformationTemplate: requestTransformation,
-				},
-			}
-			responseTransformationIn := &transformation.TransformationTemplate{
-				AdvancedTemplates: true,
-				BodyTransformation: &transformation.TransformationTemplate_Body{
-					Body: &transformation.InjaTemplate{Text: "12"},
-				},
-			}
-			responseTransformation := &envoytransformation.TransformationTemplate{
-				AdvancedTemplates: true,
-				BodyTransformation: &envoytransformation.TransformationTemplate_Body{
-					Body: &envoytransformation.InjaTemplate{Text: "12"},
+					TransformationTemplate: &envoytransformation.TransformationTemplate{
+						AdvancedTemplates: true,
+						BodyTransformation: &envoytransformation.TransformationTemplate_Body{
+							Body: &envoytransformation.InjaTemplate{Text: "2"},
+						},
+					},
 				},
 			}
 			responseTransform := &transformation.Transformation{
 				TransformationType: &transformation.Transformation_TransformationTemplate{
-					TransformationTemplate: responseTransformationIn,
+					TransformationTemplate: &transformation.TransformationTemplate{
+						AdvancedTemplates: true,
+						BodyTransformation: &transformation.TransformationTemplate_Body{
+							Body: &transformation.InjaTemplate{Text: "12"},
+						},
+					},
 				},
 			}
 			envoyResponseTransform := &envoytransformation.Transformation{
 				TransformationType: &envoytransformation.Transformation_TransformationTemplate{
-					TransformationTemplate: responseTransformation,
+					TransformationTemplate: &envoytransformation.TransformationTemplate{
+						AdvancedTemplates: true,
+						BodyTransformation: &envoytransformation.TransformationTemplate_Body{
+							Body: &envoytransformation.InjaTemplate{Text: "12"},
+						},
+					},
+				},
+			}
+			postRoutingResponseTransform := &transformation.Transformation{
+				TransformationType: &transformation.Transformation_TransformationTemplate{
+					TransformationTemplate: &transformation.TransformationTemplate{
+						AdvancedTemplates: true,
+						DynamicMetadataValues: []*transformation.TransformationTemplate_DynamicMetadataValue{
+							{
+								MetadataNamespace: "namespace",
+								Key:               "key",
+								Value:             &transformation.InjaTemplate{Text: "hello"},
+								JsonToProto:       true,
+							},
+						},
+						BodyTransformation: &transformation.TransformationTemplate_Body{
+							Body: &transformation.InjaTemplate{Text: "13"},
+						},
+					},
+				},
+			}
+			postRoutingEnvoyResponseTransform := &envoytransformation.Transformation{
+				TransformationType: &envoytransformation.Transformation_TransformationTemplate{
+					TransformationTemplate: &envoytransformation.TransformationTemplate{
+						AdvancedTemplates: true,
+						DynamicMetadataValues: []*envoytransformation.TransformationTemplate_DynamicMetadataValue{
+							{
+								MetadataNamespace: "namespace",
+								Key:               "key",
+								Value:             &envoytransformation.InjaTemplate{Text: "hello"},
+								JsonToProto:       true,
+							},
+						},
+						BodyTransformation: &envoytransformation.TransformationTemplate_Body{
+							Body: &envoytransformation.InjaTemplate{Text: "13"},
+						},
+					},
 				},
 			}
 			inputTransform = &transformation.TransformationStages{
@@ -679,9 +952,18 @@ var _ = Describe("Plugin", func() {
 					},
 					RequestTransforms: []*transformation.RequestMatch{
 						{
-							Matcher:                &matchers.Matcher{PathSpecifier: &matchers.Matcher_Prefix{Prefix: "/foo"}},
-							ClearRouteCache:        true,
-							RequestTransformation:  earlyRequestTransform,
+							Matcher:         &matchers.Matcher{PathSpecifier: &matchers.Matcher_Prefix{Prefix: "/foo"}},
+							ClearRouteCache: true,
+							RequestTransformation: &transformation.Transformation{
+								TransformationType: &transformation.Transformation_TransformationTemplate{
+									TransformationTemplate: &transformation.TransformationTemplate{
+										AdvancedTemplates: true,
+										BodyTransformation: &transformation.TransformationTemplate_Body{
+											Body: &transformation.InjaTemplate{Text: "1"},
+										},
+									},
+								},
+							},
 							ResponseTransformation: earlyResponseTransform,
 						},
 					},
@@ -696,15 +978,55 @@ var _ = Describe("Plugin", func() {
 								},
 							},
 							ResponseCodeDetails:    "abcd",
-							ResponseTransformation: earlyResponseTransform,
+							ResponseTransformation: responseTransform,
 						},
 					},
 					RequestTransforms: []*transformation.RequestMatch{
 						{
-							Matcher:                &matchers.Matcher{PathSpecifier: &matchers.Matcher_Prefix{Prefix: "/foo2"}},
-							ClearRouteCache:        true,
-							RequestTransformation:  requestTransform,
+							Matcher:         &matchers.Matcher{PathSpecifier: &matchers.Matcher_Prefix{Prefix: "/foo2"}},
+							ClearRouteCache: true,
+							RequestTransformation: &transformation.Transformation{
+								TransformationType: &transformation.Transformation_TransformationTemplate{
+									TransformationTemplate: &transformation.TransformationTemplate{
+										AdvancedTemplates: true,
+										BodyTransformation: &transformation.TransformationTemplate_Body{
+											Body: &transformation.InjaTemplate{Text: "11"},
+										},
+									},
+								},
+							},
 							ResponseTransformation: responseTransform,
+						},
+					},
+				},
+				PostRouting: &transformation.RequestResponseTransformations{
+					ResponseTransforms: []*transformation.ResponseMatch{
+						{
+							Matchers: []*matchers.HeaderMatcher{
+								{
+									Name:  "foo",
+									Value: "bar",
+								},
+							},
+							ResponseCodeDetails:    "abcd",
+							ResponseTransformation: postRoutingResponseTransform,
+						},
+					},
+					RequestTransforms: []*transformation.RequestMatch{
+						{
+							Matcher:         &matchers.Matcher{PathSpecifier: &matchers.Matcher_Prefix{Prefix: "/foo3"}},
+							ClearRouteCache: true,
+							RequestTransformation: &transformation.Transformation{
+								TransformationType: &transformation.Transformation_TransformationTemplate{
+									TransformationTemplate: &transformation.TransformationTemplate{
+										AdvancedTemplates: true,
+										BodyTransformation: &transformation.TransformationTemplate_Body{
+											Body: &transformation.InjaTemplate{Text: "111"},
+										},
+									},
+								},
+							},
+							ResponseTransformation: postRoutingResponseTransform,
 						},
 					},
 				},
@@ -735,14 +1057,24 @@ var _ = Describe("Plugin", func() {
 						Stage: EarlyStageNumber,
 						Match: &envoytransformation.RouteTransformations_RouteTransformation_RequestMatch_{
 							RequestMatch: &envoytransformation.RouteTransformations_RouteTransformation_RequestMatch{
-								Match:                  &v3.RouteMatch{PathSpecifier: &v3.RouteMatch_Prefix{Prefix: "/foo"}},
-								ClearRouteCache:        true,
-								RequestTransformation:  envoyEarlyRequestTransform,
+								Match:           &v3.RouteMatch{PathSpecifier: &v3.RouteMatch_Prefix{Prefix: "/foo"}},
+								ClearRouteCache: true,
+								RequestTransformation: &envoytransformation.Transformation{
+									TransformationType: &envoytransformation.Transformation_TransformationTemplate{
+										TransformationTemplate: &envoytransformation.TransformationTemplate{
+											AdvancedTemplates: true,
+											BodyTransformation: &envoytransformation.TransformationTemplate_Body{
+												Body: &envoytransformation.InjaTemplate{Text: "1"},
+											},
+										},
+									},
+								},
 								ResponseTransformation: envoyEarlyResponseTransform,
 							},
 						},
 					},
 					{
+						Stage: RegularStageNumber,
 						Match: &envoytransformation.RouteTransformations_RouteTransformation_ResponseMatch_{
 							ResponseMatch: &envoytransformation.RouteTransformations_RouteTransformation_ResponseMatch{
 								Match: &envoytransformation.ResponseMatcher{
@@ -756,17 +1088,66 @@ var _ = Describe("Plugin", func() {
 										MatchPattern: &matcherv3.StringMatcher_Exact{Exact: "abcd"},
 									},
 								},
-								ResponseTransformation: envoyEarlyResponseTransform,
+								ResponseTransformation: envoyResponseTransform,
 							},
 						},
 					},
 					{
+						Stage: RegularStageNumber,
 						Match: &envoytransformation.RouteTransformations_RouteTransformation_RequestMatch_{
 							RequestMatch: &envoytransformation.RouteTransformations_RouteTransformation_RequestMatch{
-								Match:                  &v3.RouteMatch{PathSpecifier: &v3.RouteMatch_Prefix{Prefix: "/foo2"}},
-								ClearRouteCache:        true,
-								RequestTransformation:  envoyRequestTransform,
+								Match:           &v3.RouteMatch{PathSpecifier: &v3.RouteMatch_Prefix{Prefix: "/foo2"}},
+								ClearRouteCache: true,
+								RequestTransformation: &envoytransformation.Transformation{
+									TransformationType: &envoytransformation.Transformation_TransformationTemplate{
+										TransformationTemplate: &envoytransformation.TransformationTemplate{
+											AdvancedTemplates: true,
+											BodyTransformation: &envoytransformation.TransformationTemplate_Body{
+												Body: &envoytransformation.InjaTemplate{Text: "11"},
+											},
+										},
+									},
+								},
 								ResponseTransformation: envoyResponseTransform,
+							},
+						},
+					},
+					{
+						Stage: PostRoutingNumber,
+						Match: &envoytransformation.RouteTransformations_RouteTransformation_ResponseMatch_{
+							ResponseMatch: &envoytransformation.RouteTransformations_RouteTransformation_ResponseMatch{
+								Match: &envoytransformation.ResponseMatcher{
+									Headers: []*v3.HeaderMatcher{
+										{
+											Name:                 "foo",
+											HeaderMatchSpecifier: &v3.HeaderMatcher_ExactMatch{ExactMatch: "bar"},
+										},
+									},
+									ResponseCodeDetails: &matcherv3.StringMatcher{
+										MatchPattern: &matcherv3.StringMatcher_Exact{Exact: "abcd"},
+									},
+								},
+								ResponseTransformation: postRoutingEnvoyResponseTransform,
+							},
+						},
+					},
+					{
+						Stage: PostRoutingNumber,
+						Match: &envoytransformation.RouteTransformations_RouteTransformation_RequestMatch_{
+							RequestMatch: &envoytransformation.RouteTransformations_RouteTransformation_RequestMatch{
+								Match:           &v3.RouteMatch{PathSpecifier: &v3.RouteMatch_Prefix{Prefix: "/foo3"}},
+								ClearRouteCache: true,
+								RequestTransformation: &envoytransformation.Transformation{
+									TransformationType: &envoytransformation.Transformation_TransformationTemplate{
+										TransformationTemplate: &envoytransformation.TransformationTemplate{
+											AdvancedTemplates: true,
+											BodyTransformation: &envoytransformation.TransformationTemplate_Body{
+												Body: &envoytransformation.InjaTemplate{Text: "111"},
+											},
+										},
+									},
+								},
+								ResponseTransformation: postRoutingEnvoyResponseTransform,
 							},
 						},
 					},
@@ -838,12 +1219,89 @@ var _ = Describe("Plugin", func() {
 			filters, err := p.(plugins.HttpFilterPlugin).HttpFilters(plugins.Params{Ctx: ctx}, nil)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(filters).To(HaveLen(2))
-			value := filters[0].HttpFilter.GetTypedConfig()
+			value := filters[0].Filter.GetTypedConfig()
 			Expect(value).To(Equal(earlyStageFilterConfig))
 			// second filter should have no stage, and thus empty config
-			value = filters[1].HttpFilter.GetTypedConfig()
+			value = filters[1].Filter.GetTypedConfig()
 			Expect(value.GetValue()).To(BeEmpty())
+		})
+		It("should add upstream_http_filters when the postRouting transformation exists", func() {
+			out := &envoy_config_route_v3.Route{}
+			err := p.(plugins.RoutePlugin).ProcessRoute(plugins.RouteParams{VirtualHostParams: plugins.VirtualHostParams{
+				Params: plugins.Params{
+					Ctx: ctx,
+				},
+			}}, &v1.Route{
+				Options: &v1.RouteOptions{
+					StagedTransformations: inputTransform,
+				},
+			}, out)
+			Expect(err).NotTo(HaveOccurred())
+			filters, err := p.(plugins.UpstreamHttpFilterPlugin).UpstreamHttpFilters(plugins.Params{Ctx: ctx}, nil)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(filters).To(HaveLen(2))
+			// First filter should be wait filter
+			value := filters[0].Filter.GetTypedConfig()
+			filterConfig, err := utils.MessageToAny(&upstream_wait.UpstreamWaitFilterConfig{})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(value).To(Equal(filterConfig))
+			// Second filter will be the tranformation filter
+			value = filters[1].Filter.GetTypedConfig()
+			filterConfig, err = utils.MessageToAny(&envoytransformation.FilterTransformations{
+				Stage: PostRoutingNumber,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(value).To(Equal(filterConfig))
 		})
 	})
 
+	Context("cache validation", func() {
+		var p *Plugin
+		var processRoute func()
+		var processAnotherRoute func()
+
+		BeforeEach(func() {
+			p = NewPlugin()
+			p.Init(plugins.InitParams{Ctx: ctx, Settings: &v1.Settings{Gloo: &v1.GlooOptions{RemoveUnusedFilters: &wrapperspb.BoolValue{Value: false}}}})
+
+			processRouteWithValue := func(value bool) {
+				err := p.ProcessRoute(plugins.RouteParams{
+					VirtualHostParams: plugins.VirtualHostParams{
+						Params: plugins.Params{
+							Ctx: ctx,
+						},
+					},
+				}, &v1.Route{
+					Options: &v1.RouteOptions{
+						Transformations: &transformation.Transformations{
+							ClearRouteCache: value,
+						},
+					},
+				}, &envoy_config_route_v3.Route{})
+				Expect(err).ToNot(HaveOccurred())
+			}
+
+			processRoute = func() {
+				processRouteWithValue(true)
+			}
+			processAnotherRoute = func() {
+				processRouteWithValue(false)
+			}
+		})
+
+		It("reuses the cache", func() {
+			processRoute()
+			Expect(p.validator.CacheLength()).To(Equal(1))
+
+			// When re-initializing the plugin, the cache is not cleared
+			p.Init(plugins.InitParams{Ctx: ctx, Settings: &v1.Settings{Gloo: &v1.GlooOptions{RemoveUnusedFilters: &wrapperspb.BoolValue{Value: false}}}})
+			Expect(p.validator.CacheLength()).To(Equal(1))
+
+			// The cache is still not cleared
+			p.Init(plugins.InitParams{Ctx: ctx, Settings: &v1.Settings{Gloo: &v1.GlooOptions{RemoveUnusedFilters: &wrapperspb.BoolValue{Value: false}}}})
+			processAnotherRoute()
+			Expect(p.validator.CacheLength()).To(Equal(2))
+		})
+
+	})
 })

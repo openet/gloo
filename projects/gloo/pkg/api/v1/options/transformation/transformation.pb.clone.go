@@ -178,6 +178,12 @@ func (m *TransformationStages) Clone() proto.Message {
 		target.Regular = proto.Clone(m.GetRegular()).(*RequestResponseTransformations)
 	}
 
+	if h, ok := interface{}(m.GetPostRouting()).(clone.Cloner); ok {
+		target.PostRouting = h.Clone().(*RequestResponseTransformations)
+	} else {
+		target.PostRouting = proto.Clone(m.GetPostRouting()).(*RequestResponseTransformations)
+	}
+
 	target.InheritTransformation = m.GetInheritTransformation()
 
 	if h, ok := interface{}(m.GetLogRequestResponseInfo()).(clone.Cloner); ok {
@@ -259,6 +265,14 @@ func (m *Extraction) Clone() proto.Message {
 	target.Regex = m.GetRegex()
 
 	target.Subgroup = m.GetSubgroup()
+
+	if h, ok := interface{}(m.GetReplacementText()).(clone.Cloner); ok {
+		target.ReplacementText = h.Clone().(*github_com_golang_protobuf_ptypes_wrappers.StringValue)
+	} else {
+		target.ReplacementText = proto.Clone(m.GetReplacementText()).(*github_com_golang_protobuf_ptypes_wrappers.StringValue)
+	}
+
+	target.Mode = m.GetMode()
 
 	switch m.Source.(type) {
 
@@ -404,6 +418,18 @@ func (m *TransformationTemplate) Clone() proto.Message {
 			}
 		}
 
+	case *TransformationTemplate_MergeJsonKeys:
+
+		if h, ok := interface{}(m.GetMergeJsonKeys()).(clone.Cloner); ok {
+			target.BodyTransformation = &TransformationTemplate_MergeJsonKeys{
+				MergeJsonKeys: h.Clone().(*MergeJsonKeys),
+			}
+		} else {
+			target.BodyTransformation = &TransformationTemplate_MergeJsonKeys{
+				MergeJsonKeys: proto.Clone(m.GetMergeJsonKeys()).(*MergeJsonKeys),
+			}
+		}
+
 	}
 
 	return target
@@ -440,6 +466,30 @@ func (m *MergeExtractorsToBody) Clone() proto.Message {
 		return target
 	}
 	target = &MergeExtractorsToBody{}
+
+	return target
+}
+
+// Clone function
+func (m *MergeJsonKeys) Clone() proto.Message {
+	var target *MergeJsonKeys
+	if m == nil {
+		return target
+	}
+	target = &MergeJsonKeys{}
+
+	if m.GetJsonKeys() != nil {
+		target.JsonKeys = make(map[string]*MergeJsonKeys_OverridableTemplate, len(m.GetJsonKeys()))
+		for k, v := range m.GetJsonKeys() {
+
+			if h, ok := interface{}(v).(clone.Cloner); ok {
+				target.JsonKeys[k] = h.Clone().(*MergeJsonKeys_OverridableTemplate)
+			} else {
+				target.JsonKeys[k] = proto.Clone(v).(*MergeJsonKeys_OverridableTemplate)
+			}
+
+		}
+	}
 
 	return target
 }
@@ -493,6 +543,27 @@ func (m *TransformationTemplate_DynamicMetadataValue) Clone() proto.Message {
 	} else {
 		target.Value = proto.Clone(m.GetValue()).(*InjaTemplate)
 	}
+
+	target.JsonToProto = m.GetJsonToProto()
+
+	return target
+}
+
+// Clone function
+func (m *MergeJsonKeys_OverridableTemplate) Clone() proto.Message {
+	var target *MergeJsonKeys_OverridableTemplate
+	if m == nil {
+		return target
+	}
+	target = &MergeJsonKeys_OverridableTemplate{}
+
+	if h, ok := interface{}(m.GetTmpl()).(clone.Cloner); ok {
+		target.Tmpl = h.Clone().(*InjaTemplate)
+	} else {
+		target.Tmpl = proto.Clone(m.GetTmpl()).(*InjaTemplate)
+	}
+
+	target.OverrideEmpty = m.GetOverrideEmpty()
 
 	return target
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/solo-io/gloo/projects/gloo/constants"
 	"github.com/solo-io/gloo/projects/gloo/pkg/bootstrap"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/als"
@@ -30,6 +31,7 @@ import (
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/hcm"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/headers"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/healthcheck"
+	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/istio_automtls"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/istio_integration"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/kubernetes"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins/linkerd"
@@ -56,9 +58,7 @@ import (
 	"github.com/solo-io/go-utils/contextutils"
 )
 
-var (
-	_ plugins.PluginRegistry = new(pluginRegistry)
-)
+var _ plugins.PluginRegistry = new(pluginRegistry)
 
 func Plugins(opts bootstrap.Opts) []plugins.Plugin {
 	var glooPlugins []plugins.Plugin
@@ -109,6 +109,7 @@ func Plugins(opts bootstrap.Opts) []plugins.Plugin {
 		dynamic_forward_proxy.NewPlugin(),
 		deprecated_cipher_passthrough.NewPlugin(),
 		local_ratelimit.NewPlugin(),
+		istio_automtls.NewPlugin(opts.GlooGateway.IstioValues.SidecarOnGatewayEnabled),
 	)
 
 	if opts.KubeClient != nil {
@@ -117,7 +118,7 @@ func Plugins(opts bootstrap.Opts) []plugins.Plugin {
 	if opts.Consul.ConsulWatcher != nil {
 		glooPlugins = append(glooPlugins, consul.NewPlugin(opts.Consul.ConsulWatcher, consul.NewConsulDnsResolver(opts.Consul.DnsServer), opts.Consul.DnsPollingInterval))
 	}
-	lookupResult, found := os.LookupEnv("ENABLE_ISTIO_INTEGRATION")
+	lookupResult, found := os.LookupEnv(constants.IstioInjectionEnabled)
 	istioEnabled := found && strings.ToLower(lookupResult) == "true"
 	if istioEnabled {
 		istioPlugin := istio_integration.NewPlugin(opts.WatchOpts.Ctx)
@@ -142,6 +143,7 @@ type pluginRegistry struct {
 	tcpFilterChainPlugins        []plugins.TcpFilterChainPlugin
 	networkFilterPlugins         []plugins.NetworkFilterPlugin
 	httpFilterPlugins            []plugins.HttpFilterPlugin
+	upstreamHttpFilterPlugins    []plugins.UpstreamHttpFilterPlugin
 	httpConnectionManagerPlugins []plugins.HttpConnectionManagerPlugin
 	virtualHostPlugins           []plugins.VirtualHostPlugin
 	resourceGeneratorPlugins     []plugins.ResourceGeneratorPlugin
@@ -160,6 +162,7 @@ func NewPluginRegistry(registeredPlugins []plugins.Plugin) *pluginRegistry {
 	var listenerPlugins []plugins.ListenerPlugin
 	var tcpFilterChainPlugins []plugins.TcpFilterChainPlugin
 	var httpFilterPlugins []plugins.HttpFilterPlugin
+	var upstreamHttpFilterPlugins []plugins.UpstreamHttpFilterPlugin
 	var networkFilterPlugins []plugins.NetworkFilterPlugin
 	var httpConnectionManagerPlugins []plugins.HttpConnectionManagerPlugin
 	var virtualHostPlugins []plugins.VirtualHostPlugin
@@ -190,6 +193,11 @@ func NewPluginRegistry(registeredPlugins []plugins.Plugin) *pluginRegistry {
 		httpFilterPlugin, ok := plugin.(plugins.HttpFilterPlugin)
 		if ok {
 			httpFilterPlugins = append(httpFilterPlugins, httpFilterPlugin)
+		}
+
+		upstreamHttpFilterPlugin, ok := plugin.(plugins.UpstreamHttpFilterPlugin)
+		if ok {
+			upstreamHttpFilterPlugins = append(upstreamHttpFilterPlugins, upstreamHttpFilterPlugin)
 		}
 
 		networkFilterPlugin, ok := plugin.(plugins.NetworkFilterPlugin)
@@ -244,6 +252,7 @@ func NewPluginRegistry(registeredPlugins []plugins.Plugin) *pluginRegistry {
 		tcpFilterChainPlugins:        tcpFilterChainPlugins,
 		networkFilterPlugins:         networkFilterPlugins,
 		httpFilterPlugins:            httpFilterPlugins,
+		upstreamHttpFilterPlugins:    upstreamHttpFilterPlugins,
 		httpConnectionManagerPlugins: httpConnectionManagerPlugins,
 		virtualHostPlugins:           virtualHostPlugins,
 		resourceGeneratorPlugins:     resourceGeneratorPlugins,
@@ -278,6 +287,11 @@ func (p *pluginRegistry) GetNetworkFilterPlugins() []plugins.NetworkFilterPlugin
 // GetHttpFilterPlugins returns the plugins that were registered which act on HttpFilter.
 func (p *pluginRegistry) GetHttpFilterPlugins() []plugins.HttpFilterPlugin {
 	return p.httpFilterPlugins
+}
+
+// GetUpstreamHttpFilterPlugins returns the plugins that were registered which act on HttpFilter.
+func (p *pluginRegistry) GetUpstreamHttpFilterPlugins() []plugins.UpstreamHttpFilterPlugin {
+	return p.upstreamHttpFilterPlugins
 }
 
 // GetHttpConnectionManagerPlugins returns the plugins that were registered which act on HttpConnectionManager.

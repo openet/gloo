@@ -3,7 +3,11 @@ package validation
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
+
+	"github.com/solo-io/gloo/projects/gloo/pkg/upstreams/kubernetes"
+	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/rotisserie/eris"
@@ -23,10 +27,12 @@ import (
 	"google.golang.org/grpc"
 )
 
+var SyncNotCalledError = eris.New("proxy validation called before the validation server received its first sync of resources")
+
 type Validator interface {
 	v1snap.ApiSyncer
 	validation.GlooValidationServiceServer
-	ValidateGloo(ctx context.Context, proxy *v1.Proxy, resource resources.Resource, delete bool) ([]*GlooValidationReport, error)
+	ValidateGloo(ctx context.Context, proxy *v1.Proxy, resource resources.Resource, shouldDelete bool) ([]*GlooValidationReport, error)
 }
 
 // ValidatorConfig is used to configure the validator
@@ -179,7 +185,7 @@ func (s *validator) Validate(ctx context.Context, req *validation.GlooValidation
 	// we may receive a Validate call before a Sync has occurred
 	if s.latestSnapshot == nil {
 		s.lock.Unlock()
-		return nil, eris.New("proxy validation called before the validation server received its first sync of resources")
+		return nil, SyncNotCalledError
 	}
 	snapCopy := s.latestSnapshot.Clone() // cloning can mutate so we need a write lock
 	s.lock.Unlock()
@@ -203,20 +209,37 @@ func (s *validator) Validate(ctx context.Context, req *validation.GlooValidation
 // ValidateGloo replaces the functionality of Validate.  Validate is still a method that needs to be
 // exported because it is used as a gRPC service. A synced version of the snapshot is needed for
 // gloo validation.
-func (s *validator) ValidateGloo(ctx context.Context, proxy *v1.Proxy, resource resources.Resource, delete bool) ([]*GlooValidationReport, error) {
+func (s *validator) ValidateGloo(ctx context.Context, proxy *v1.Proxy, resource resources.Resource, shouldDelete bool) ([]*GlooValidationReport, error) {
 	// the gateway validator will call this function to validate Gloo resources.
 	s.lock.Lock()
 	// we may receive a Validate call before a Sync has occurred
 	if s.latestSnapshot == nil {
 		s.lock.Unlock()
-		return nil, eris.New("proxy validation called before the validation server received its first sync of resources")
+		return nil, SyncNotCalledError
 	}
 	snapCopy := s.latestSnapshot.Clone() // cloning can mutate so we need a write lock
 	s.lock.Unlock()
+
 	if resource != nil {
-		if delete {
+		if shouldDelete {
 			if err := snapCopy.RemoveFromResourceList(resource); err != nil {
 				return nil, err
+			}
+
+			// If we are deleting an Upstream with a Kube destination, we also want to remove the associated "fake" Upstream from the snapshot
+			switch typedResource := resource.(type) {
+			case *v1.Upstream:
+				if typedResource.GetKube() != nil {
+					kubeSvcUs := &v1.Upstream{
+						Metadata: &core.Metadata{
+							Namespace: resource.GetMetadata().GetNamespace(),
+							Name:      fmt.Sprintf("%s%s", kubernetes.UpstreamNamePrefix, resource.GetMetadata().GetName()),
+						},
+					}
+					if err := snapCopy.RemoveFromResourceList(kubeSvcUs); err != nil {
+						return nil, err
+					}
+				}
 			}
 		} else {
 			if err := snapCopy.UpsertToResourceList(resource); err != nil {
@@ -225,7 +248,7 @@ func (s *validator) ValidateGloo(ctx context.Context, proxy *v1.Proxy, resource 
 		}
 	}
 
-	return s.validator.Validate(ctx, proxy, &snapCopy, delete), nil
+	return s.validator.Validate(ctx, proxy, &snapCopy, shouldDelete), nil
 }
 
 // updates the given snapshot with the resources from the request
@@ -241,6 +264,15 @@ func applyRequestToSnapshot(snap *v1snap.ApiSnapshot, req *validation.GlooValida
 		// Upstreams
 		existingUpstreams := snap.Upstreams.AsResources()
 		deletedUpstreamRefs := req.GetDeletedResources().GetUpstreamRefs()
+		// If we are deleting an Upstream with a Kube destination, we also want to remove the associated "fake" Upstream from the snapshot
+		// Since we only have refs here, attempt to delete the "fake" Upstream corresponding with all refs
+		// If none exists this will be a no-op
+		for _, ref := range req.GetDeletedResources().GetUpstreamRefs() {
+			deletedUpstreamRefs = append(deletedUpstreamRefs, &core.ResourceRef{
+				Namespace: ref.GetNamespace(),
+				Name:      fmt.Sprintf("%s%s", kubernetes.UpstreamNamePrefix, ref.GetName()),
+			})
+		}
 		finalUpstreams := utils.DeleteResources(existingUpstreams, deletedUpstreamRefs)
 		snap.Upstreams = utils.ResourceListToUpstreamList(finalUpstreams)
 		// Secrets

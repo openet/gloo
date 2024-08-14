@@ -113,6 +113,16 @@ func (m *ListenerOptions) Equal(that interface{}) bool {
 		}
 	}
 
+	if h, ok := interface{}(m.GetListenerAccessLoggingService()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetListenerAccessLoggingService()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetListenerAccessLoggingService(), target.GetListenerAccessLoggingService()) {
+			return false
+		}
+	}
+
 	return true
 }
 
@@ -441,6 +451,26 @@ func (m *HttpListenerOptions) Equal(that interface{}) bool {
 		}
 	} else {
 		if !proto.Equal(m.GetTap(), target.GetTap()) {
+			return false
+		}
+	}
+
+	if h, ok := interface{}(m.GetStatefulSession()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetStatefulSession()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetStatefulSession(), target.GetStatefulSession()) {
+			return false
+		}
+	}
+
+	if h, ok := interface{}(m.GetHeaderValidationSettings()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetHeaderValidationSettings()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetHeaderValidationSettings(), target.GetHeaderValidationSettings()) {
 			return false
 		}
 	}
@@ -1186,6 +1216,16 @@ func (m *RouteOptions) Equal(that interface{}) bool {
 		}
 	}
 
+	if h, ok := interface{}(m.GetAi()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetAi()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetAi(), target.GetAi()) {
+			return false
+		}
+	}
+
 	switch m.HostRewriteType.(type) {
 
 	case *RouteOptions_HostRewrite:
@@ -1223,6 +1263,21 @@ func (m *RouteOptions) Equal(that interface{}) bool {
 			}
 		} else {
 			if !proto.Equal(m.GetHostRewritePathRegex(), target.GetHostRewritePathRegex()) {
+				return false
+			}
+		}
+
+	case *RouteOptions_HostRewriteHeader:
+		if _, ok := target.HostRewriteType.(*RouteOptions_HostRewriteHeader); !ok {
+			return false
+		}
+
+		if h, ok := interface{}(m.GetHostRewriteHeader()).(equality.Equalizer); ok {
+			if !h.Equal(target.GetHostRewriteHeader()) {
+				return false
+			}
+		} else {
+			if !proto.Equal(m.GetHostRewriteHeader(), target.GetHostRewriteHeader()) {
 				return false
 			}
 		}

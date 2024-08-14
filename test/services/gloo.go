@@ -361,7 +361,7 @@ func constructTestOpts(ctx context.Context, runOptions *RunOptions, settings *gl
 		ControlPlane: setup.NewControlPlane(ctx, grpcServer, &net.TCPAddr{
 			IP:   net.IPv4zero,
 			Port: int(runOptions.ports.Gloo),
-		}, nil, true),
+		}, bootstrap.KubernetesControlPlaneConfig{}, nil, true),
 		ValidationServer: setup.NewValidationServer(ctx, grpcServerValidation, &net.TCPAddr{
 			IP:   net.IPv4zero,
 			Port: int(runOptions.ports.Validation),
@@ -377,6 +377,11 @@ func constructTestOpts(ctx context.Context, runOptions *RunOptions, settings *gl
 		GatewayControllerEnabled: settings.GetGateway().GetEnableGatewayController().GetValue(),
 		ValidationOpts:           validationOpts,
 		Identity:                 singlereplica.Identity(),
+		GlooGateway: bootstrap.GlooGateway{
+			// The K8s Gateway Integration depends on a functioning k8s cluster
+			// These tests are designed to be run in-memory, without a true cluster, so we disable the relevant controller
+			EnableK8sGatewayController: false,
+		},
 	}
 }
 

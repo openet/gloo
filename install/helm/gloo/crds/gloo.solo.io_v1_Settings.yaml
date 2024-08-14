@@ -471,7 +471,8 @@ spec:
                       allowPartialMessage:
                         type: boolean
                       maxRequestBytes:
-                        format: int32
+                        maximum: 4294967295
+                        minimum: 0
                         type: integer
                       packAsBytes:
                         type: boolean
@@ -481,7 +482,8 @@ spec:
                   statPrefix:
                     type: string
                   statusOnError:
-                    format: int32
+                    maximum: 4294967295
+                    minimum: 0
                     type: integer
                   transportApiVersion:
                     type: string
@@ -626,9 +628,22 @@ spec:
                       invalidRouteResponseBody:
                         type: string
                       invalidRouteResponseCode:
-                        format: int32
+                        maximum: 4294967295
+                        minimum: 0
                         type: integer
                       replaceInvalidRoutes:
+                        type: boolean
+                    type: object
+                  istioOptions:
+                    properties:
+                      appendXForwardedHost:
+                        nullable: true
+                        type: boolean
+                      enableAutoMtls:
+                        nullable: true
+                        type: boolean
+                      enableIntegration:
+                        nullable: true
                         type: boolean
                     type: object
                   logTransformationRequestResponseInfo:
@@ -684,7 +699,8 @@ spec:
                       QPS:
                         type: number
                       burst:
-                        format: int32
+                        maximum: 4294967295
+                        minimum: 0
                         type: integer
                     type: object
                 type: object
@@ -755,7 +771,8 @@ spec:
                         allowPartialMessage:
                           type: boolean
                         maxRequestBytes:
-                          format: int32
+                          maximum: 4294967295
+                          minimum: 0
                           type: integer
                         packAsBytes:
                           type: boolean
@@ -765,7 +782,8 @@ spec:
                     statPrefix:
                       type: string
                     statusOnError:
-                      format: int32
+                      maximum: 4294967295
+                      minimum: 0
                       type: integer
                     transportApiVersion:
                       type: string
@@ -795,11 +813,15 @@ spec:
                     type: object
                   grafanaIntegration:
                     properties:
+                      dashboardPrefix:
+                        type: string
                       defaultDashboardFolderId:
                         maximum: 4294967295
                         minimum: 0
                         nullable: true
                         type: integer
+                      extraMetricQueryParameters:
+                        type: string
                     type: object
                 type: object
               ratelimit:
@@ -817,7 +839,8 @@ spec:
                         rateLimit:
                           properties:
                             requestsPerUnit:
-                              format: int32
+                              maximum: 4294967295
+                              minimum: 0
                               type: integer
                             unit:
                               type: string
@@ -841,6 +864,11 @@ spec:
                     type: boolean
                   enableXRatelimitHeaders:
                     type: boolean
+                  grpcService:
+                    properties:
+                      authority:
+                        type: string
+                    type: object
                   rateLimitBeforeAuth:
                     type: boolean
                   ratelimitServerRef:

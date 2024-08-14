@@ -294,6 +294,16 @@ func (m *Upstream) Equal(that interface{}) bool {
 		}
 	}
 
+	if h, ok := interface{}(m.GetDisableIstioAutoMtls()).(equality.Equalizer); ok {
+		if !h.Equal(target.GetDisableIstioAutoMtls()) {
+			return false
+		}
+	} else {
+		if !proto.Equal(m.GetDisableIstioAutoMtls(), target.GetDisableIstioAutoMtls()) {
+			return false
+		}
+	}
+
 	switch m.UpstreamType.(type) {
 
 	case *Upstream_Kube:
@@ -397,6 +407,36 @@ func (m *Upstream) Equal(that interface{}) bool {
 			}
 		} else {
 			if !proto.Equal(m.GetAwsEc2(), target.GetAwsEc2()) {
+				return false
+			}
+		}
+
+	case *Upstream_Gcp:
+		if _, ok := target.UpstreamType.(*Upstream_Gcp); !ok {
+			return false
+		}
+
+		if h, ok := interface{}(m.GetGcp()).(equality.Equalizer); ok {
+			if !h.Equal(target.GetGcp()) {
+				return false
+			}
+		} else {
+			if !proto.Equal(m.GetGcp(), target.GetGcp()) {
+				return false
+			}
+		}
+
+	case *Upstream_Ai:
+		if _, ok := target.UpstreamType.(*Upstream_Ai); !ok {
+			return false
+		}
+
+		if h, ok := interface{}(m.GetAi()).(equality.Equalizer); ok {
+			if !h.Equal(target.GetAi()) {
+				return false
+			}
+		} else {
+			if !proto.Equal(m.GetAi(), target.GetAi()) {
 				return false
 			}
 		}

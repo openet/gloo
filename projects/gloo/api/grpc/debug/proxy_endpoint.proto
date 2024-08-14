@@ -16,14 +16,23 @@ service ProxyEndpointService {
 }
 
 message ProxyEndpointRequest {
-  // The namespace to look for proxies.
+  // Optional. The namespace to look for proxies. If this is omitted, all namespaces will be considered.
   string namespace = 1;
 
-  // Optional. The name of the proxy to look up
+  // Optional. The name of the proxy to look up. If this is provided, a namespace must be included as well.
   string name = 2;
 
-  // Optional. Selector to use to filter returned proxies. This will be ignored if a name is provided.
+  // Optional. Equality-based selector to use to filter returned proxies. This will be ignored if a name is provided.
+  // See https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#equality-based-requirement
+  // If both `selector` and `expressionSelector` are defined, then `expressionSelector` is used.
   map<string, string> selector = 3;
+
+  reserved 4;
+
+  // Optional. Set-based selector to use to filter returned proxies. This will be ignored if a name is provided.
+  // See https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#set-based-requirement
+  // If both `selector` and `expressionSelector` are defined, then `expressionSelector` is used.
+  string expression_selector = 5;
 }
 
 message ProxyEndpointResponse {

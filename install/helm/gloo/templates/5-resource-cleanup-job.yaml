@@ -7,12 +7,12 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   labels:
-    app: gloo
+{{ include "gloo.labels" . | indent 4}}
     gloo: resource-cleanup
   name: gloo-resource-cleanup
   namespace: {{ .Release.Namespace }}
   annotations:
-    "helm.sh/hook": post-delete
+    "helm.sh/hook": pre-delete
     "helm.sh/hook-weight": "5" # run this job after the role/rolebinding is created
     {{- include "gloo.jobHelmDeletePolicySucceededAndBeforeCreation" .Values.gateway.cleanupJob | nindent 4 }}
 spec:
@@ -44,11 +44,11 @@ spec:
         - name: kubectl
           image: {{template "gloo.image" $image}}
           imagePullPolicy: {{ $image.pullPolicy }}
-          securityContext:
-            runAsNonRoot: true
-            {{- if not .Values.gateway.cleanupJob.floatingUserId }}
-            runAsUser: {{ printf "%.0f" (float64 .Values.gateway.cleanupJob.runAsUser) -}}
-            {{- end }}
+          {{- $securityDefaults := dict "runAsNonRoot" true }}
+          {{- if not .Values.gateway.rolloutJob.floatingUserId -}}
+            {{- $_ := set $securityDefaults "runAsUser" .Values.gateway.rolloutJob.runAsUser }}
+          {{- end -}}
+          {{- include "gloo.containerSecurityContext" (dict "values" .Values.gateway.rolloutJob.containerSecurityContext "defaults" $securityDefaults "podSecurityStandards" .Values.global.podSecurityStandards "indent" 10 "globalSec" .Values.global.securitySettings) }}
           {{- with .Values.gateway.cleanupJob.resources }}
           resources: {{ toYaml . | nindent 12}}
           {{- end }}

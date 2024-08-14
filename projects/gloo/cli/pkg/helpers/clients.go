@@ -3,9 +3,10 @@ package helpers
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 	"time"
+
+	"github.com/solo-io/gloo/pkg/utils/kubeutils"
 
 	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/options/contextoptions"
 
@@ -27,7 +28,6 @@ import (
 	extauth "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/enterprise/options/extauth/v1"
 	"github.com/solo-io/gloo/projects/gloo/pkg/defaults"
 	"github.com/solo-io/go-utils/log"
-	"github.com/solo-io/k8s-utils/kubeutils"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/factory"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/kube"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/memory"
@@ -45,6 +45,10 @@ var (
 	vaultClient       factory.ResourceClientFactory
 
 	lock sync.Mutex
+)
+
+const (
+	GlooDeploymentName = "gloo"
 )
 
 // iterates over all the factory overrides, returning the first non-nil
@@ -128,18 +132,13 @@ func MustKubeClientWithKubecontext(kubecontext string) kubernetes.Interface {
 	return client
 }
 
-// KubeClient retrieves a kubeclient plausibly with some direction from env details
-func KubeClient() (kubernetes.Interface, error) {
-	return KubeClientWithKubecontext("")
-}
-
 // KubeClientWithKubecontext attempts to get a kubeclient given some string that denotes a way to retrieve kubecontext
 func KubeClientWithKubecontext(kubecontext string) (kubernetes.Interface, error) {
 	if fakeKubeClientset != nil {
 		return fakeKubeClientset, nil
 	}
 	if clientset == nil {
-		cfg, err := kubeutils.GetConfigWithContext("", os.Getenv("KUBECONFIG"), kubecontext)
+		cfg, err := kubeutils.GetRestConfigWithKubeContext(kubecontext)
 		if err != nil {
 			return nil, errors.Wrapf(err, "getting kube config")
 		}
@@ -151,6 +150,44 @@ func KubeClientWithKubecontext(kubecontext string) (kubernetes.Interface, error)
 	}
 
 	return clientset, nil
+}
+
+func GetGlooDeploymentName(ctx context.Context, namespace string) (string, error) {
+	client, err := GetKubernetesClient(contextoptions.KubecontextFrom(ctx))
+	if err != nil {
+		errMessage := "error getting KubeClient"
+		fmt.Println(errMessage)
+		return "", fmt.Errorf(errMessage+": %v", err)
+	}
+	_, err = client.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
+	if err != nil {
+		errMessage := "Gloo namespace does not exist"
+		fmt.Println(errMessage)
+		return "", fmt.Errorf(errMessage+": %v", err)
+	}
+	deployments, err := client.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{
+		LabelSelector: "gloo=gloo",
+	})
+	if err != nil {
+		return "", err
+	}
+	if len(deployments.Items) == 1 {
+		return deployments.Items[0].Name, nil
+	}
+	errMessage := "Unable to find the gloo deployment"
+	// if there are multiple we can reasonably use the default variant
+	for _, d := range deployments.Items {
+		if d.Name != GlooDeploymentName {
+			// At least 1 deployment exists, in case we dont find default update our error message
+			errMessage = "too many app=gloo deployments, cannot decide which to target"
+			continue
+		}
+		// TODO: (nfuden) Remove this, while we should generally avoid println in our formatted output we already have alot of these
+		fmt.Println("multiple gloo labeled apps found, defaulting to", GlooDeploymentName)
+		return GlooDeploymentName, nil
+	}
+	fmt.Println(errMessage)
+	return "", fmt.Errorf(errMessage+": %v", err)
 }
 
 func MustGetNamespaces(ctx context.Context) []string {
@@ -234,7 +271,7 @@ func UpstreamClient(ctx context.Context, namespaces []string) (v1.UpstreamClient
 	}
 
 	kubecontext := contextoptions.KubecontextFrom(ctx)
-	cfg, err := kubeutils.GetConfigWithContext("", "", kubecontext)
+	cfg, err := kubeutils.GetRestConfigWithKubeContext(kubecontext)
 	if err != nil {
 		return nil, errors.Wrapf(err, "getting kube config")
 	}
@@ -278,7 +315,7 @@ func UpstreamGroupClient(ctx context.Context, namespaces []string) (v1.UpstreamG
 	}
 
 	kubecontext := contextoptions.KubecontextFrom(ctx)
-	cfg, err := kubeutils.GetConfigWithContext("", "", kubecontext)
+	cfg, err := kubeutils.GetRestConfigWithKubeContext(kubecontext)
 	if err != nil {
 		return nil, errors.Wrapf(err, "getting kube config")
 	}
@@ -321,7 +358,7 @@ func ProxyClient(ctx context.Context, namespaces []string) (v1.ProxyClient, erro
 		return v1.NewProxyClient(ctx, customFactory)
 	}
 	kubecontext := contextoptions.KubecontextFrom(ctx)
-	cfg, err := kubeutils.GetConfigWithContext("", "", kubecontext)
+	cfg, err := kubeutils.GetRestConfigWithKubeContext(kubecontext)
 	if err != nil {
 		return nil, errors.Wrapf(err, "getting kube config")
 	}
@@ -365,7 +402,7 @@ func GatewayClient(ctx context.Context, namespaces []string) (gatewayv1.GatewayC
 	}
 	kubecontext := contextoptions.KubecontextFrom(ctx)
 
-	cfg, err := kubeutils.GetConfigWithContext("", "", kubecontext)
+	cfg, err := kubeutils.GetRestConfigWithKubeContext(kubecontext)
 	if err != nil {
 		return nil, errors.Wrapf(err, "getting kube config")
 	}
@@ -409,7 +446,7 @@ func VirtualServiceClient(ctx context.Context, namespaces []string) (gatewayv1.V
 	}
 	kubecontext := contextoptions.KubecontextFrom(ctx)
 
-	cfg, err := kubeutils.GetConfigWithContext("", "", kubecontext)
+	cfg, err := kubeutils.GetRestConfigWithKubeContext(kubecontext)
 	if err != nil {
 		return nil, errors.Wrapf(err, "getting kube config")
 	}
@@ -453,7 +490,7 @@ func RouteTableClient(ctx context.Context, namespaces []string) (gatewayv1.Route
 	}
 	kubecontext := contextoptions.KubecontextFrom(ctx)
 
-	cfg, err := kubeutils.GetConfigWithContext("", "", kubecontext)
+	cfg, err := kubeutils.GetRestConfigWithKubeContext(kubecontext)
 	if err != nil {
 		return nil, errors.Wrapf(err, "getting kube config")
 	}
@@ -497,7 +534,7 @@ func SettingsClient(ctx context.Context, namespaces []string) (v1.SettingsClient
 	}
 	kubecontext := contextoptions.KubecontextFrom(ctx)
 
-	cfg, err := kubeutils.GetConfigWithContext("", "", kubecontext)
+	cfg, err := kubeutils.GetRestConfigWithKubeContext(kubecontext)
 	if err != nil {
 		return nil, errors.Wrapf(err, "getting kube config")
 	}
@@ -579,7 +616,7 @@ func GetKubernetesClientWithTimeout(timeout time.Duration, kubecontext string) (
 }
 
 func getKubernetesConfig(timeout time.Duration, kubecontext string) (*rest.Config, error) {
-	config, err := kubeutils.GetConfigWithContext("", "", kubecontext)
+	config, err := kubeutils.GetRestConfigWithKubeContext(kubecontext)
 	if err != nil {
 		return nil, fmt.Errorf("Error retrieving Kubernetes configuration: %v \n", err)
 	}
@@ -601,7 +638,7 @@ func MustApiExtsClient() apiexts.Interface {
 }
 
 func ApiExtsClient() (apiexts.Interface, error) {
-	cfg, err := kubeutils.GetConfig("", os.Getenv("KUBECONFIG"))
+	cfg, err := kubeutils.GetRestConfigWithKubeContext("")
 	if err != nil {
 		return nil, errors.Wrapf(err, "getting kube config")
 	}
@@ -632,7 +669,7 @@ func AuthConfigClient(ctx context.Context, namespaces []string) (extauth.AuthCon
 	}
 
 	kubecontext := contextoptions.KubecontextFrom(ctx)
-	cfg, err := kubeutils.GetConfigWithContext("", "", kubecontext)
+	cfg, err := kubeutils.GetRestConfigWithKubeContext(kubecontext)
 	if err != nil {
 		return nil, errors.Wrapf(err, "getting kube config")
 	}
@@ -671,7 +708,7 @@ func RateLimitConfigClient(ctx context.Context, namespaces []string) (v1alpha1.R
 		return v1alpha1.NewRateLimitConfigClient(ctx, customFactory)
 	}
 	kubecontext := contextoptions.KubecontextFrom(ctx)
-	cfg, err := kubeutils.GetConfigWithContext("", "", kubecontext)
+	cfg, err := kubeutils.GetRestConfigWithKubeContext(kubecontext)
 	if err != nil {
 		return nil, errors.Wrapf(err, "getting kube config")
 	}
@@ -714,7 +751,7 @@ func VirtualHostOptionClient(ctx context.Context, namespaces []string) (gatewayv
 	}
 
 	kubecontext := contextoptions.KubecontextFrom(ctx)
-	cfg, err := kubeutils.GetConfigWithContext("", "", kubecontext)
+	cfg, err := kubeutils.GetRestConfigWithKubeContext(kubecontext)
 	if err != nil {
 		return nil, errors.Wrapf(err, "getting kube config")
 	}
@@ -757,7 +794,7 @@ func RouteOptionClient(ctx context.Context, namespaces []string) (gatewayv1.Rout
 	}
 
 	kubecontext := contextoptions.KubecontextFrom(ctx)
-	cfg, err := kubeutils.GetConfigWithContext("", "", kubecontext)
+	cfg, err := kubeutils.GetRestConfigWithKubeContext(kubecontext)
 	if err != nil {
 		return nil, errors.Wrapf(err, "getting kube config")
 	}

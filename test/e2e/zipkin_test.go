@@ -59,7 +59,6 @@ var _ = Describe("Tracing config loading", Serial, func() {
 	})
 
 	AfterEach(func() {
-		envoyInstance.Clean()
 		cancel()
 	})
 
@@ -72,7 +71,7 @@ var _ = Describe("Tracing config loading", Serial, func() {
 		})
 
 		It("should send trace msgs to the zipkin server", func() {
-			err := envoyInstance.RunWithConfigFile(int(envoyInstance.HttpPort), "./envoyconfigs/zipkin-envoy-conf.yaml")
+			err := envoyInstance.RunWithConfigFile(ctx, int(envoyInstance.HttpPort), "./envoyconfigs/zipkin-envoy-conf.yaml")
 			Expect(err).NotTo(HaveOccurred())
 
 			// Start a dummy server listening on 9411 for Zipkin requests
@@ -487,7 +486,7 @@ func startCancellableTracingServer(serverContext context.Context, address string
 
 func createRequestWithTracingEnabled(address string, port uint32) func() (string, error) {
 	return func() (string, error) {
-		req, err := http.NewRequest("GET", fmt.Sprintf("http://%s:%d/", address, port), nil)
+		req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("http://%s:%d/", address, port), nil)
 		if err != nil {
 			return "", err
 		}

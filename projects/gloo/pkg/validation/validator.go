@@ -5,6 +5,7 @@ import (
 
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/grpc/validation"
 	gloov1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
+	v1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/gloosnapshot"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
 	"github.com/solo-io/gloo/projects/gloo/pkg/syncer/sanitizer"
@@ -18,12 +19,13 @@ const GlooGroup = "gloo.solo.io"
 
 // GlooValidator is used to validate solo.io.gloo resources
 type GlooValidator interface {
-	Validate(ctx context.Context, proxy *gloov1.Proxy, snapshot *gloosnapshot.ApiSnapshot, delete bool) []*GlooValidationReport
+	Validate(ctx context.Context, proxy *gloov1.Proxy, snapshot *gloosnapshot.ApiSnapshot, shouldDelete bool) []*GlooValidationReport
 }
 
 type GlooValidatorConfig struct {
 	Translator   gloo_translator.Translator
 	XdsSanitizer sanitizer.XdsSanitizer
+	Settings     *v1.Settings
 }
 
 // NewGlooValidator will create a new GlooValidator
@@ -31,12 +33,14 @@ func NewGlooValidator(config GlooValidatorConfig) GlooValidator {
 	return glooValidator{
 		translator:   config.Translator,
 		xdsSanitizer: config.XdsSanitizer,
+		settings:     config.Settings,
 	}
 }
 
 type glooValidator struct {
 	translator   gloo_translator.Translator
 	xdsSanitizer sanitizer.XdsSanitizer
+	settings     *v1.Settings
 }
 
 type GlooValidationReport struct {
@@ -45,7 +49,7 @@ type GlooValidationReport struct {
 	ResourceReports reporter.ResourceReports
 }
 
-func (gv glooValidator) Validate(ctx context.Context, proxy *gloov1.Proxy, snapshot *gloosnapshot.ApiSnapshot, delete bool) []*GlooValidationReport {
+func (gv glooValidator) Validate(ctx context.Context, proxy *gloov1.Proxy, snapshot *gloosnapshot.ApiSnapshot, shouldDelete bool) []*GlooValidationReport {
 	ctx = contextutils.WithLogger(ctx, "proxy-validator")
 
 	var validationReports []*GlooValidationReport
@@ -70,6 +74,7 @@ func (gv glooValidator) Validate(ctx context.Context, proxy *gloov1.Proxy, snaps
 	params := plugins.Params{
 		Ctx:      ctx,
 		Snapshot: snapshot,
+		Settings: gv.settings,
 	}
 	// Validation with gateway occurs in /projects/gateway/pkg/validation/validator.go, where validation for the Gloo
 	// resources occurs in the following for loop.

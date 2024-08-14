@@ -8,11 +8,13 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/solo-io/gloo/pkg/utils/helmutils"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/solo-io/gloo/projects/gloo/pkg/defaults"
 	"github.com/solo-io/gloo/test/kube2e"
-	"github.com/solo-io/k8s-utils/testutils/helper"
+	"github.com/solo-io/gloo/test/kube2e/helper"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 )
 
@@ -31,7 +33,7 @@ var _ = Describe("Kube2e: ArgoCD", func() {
 
 		testHelper, err = helper.NewSoloTestHelper(func(defaults helper.TestConfig) helper.TestConfig {
 			defaults.RootDir = filepath.Join(cwd, "../../..")
-			defaults.HelmChartName = "gloo"
+			defaults.HelmChartName = helmutils.ChartName
 			defaults.InstallNamespace = namespace
 			defaults.Verbose = true
 			return defaults
@@ -64,6 +66,11 @@ func installGloo() {
 		"--repo", repo, "--helm-chart", "gloo", "--revision", version,
 		"--dest-namespace", "gloo-system", "--dest-server", "https://kubernetes.default.svc",
 		"--sync-option", "CreateNamespace=true", "--upsert", "--values-literal-file", "helm-override.yaml"}
+	variant := os.Getenv("IMAGE_VARIANT")
+	if variant != "" {
+		command = append(command, "--helm-set", "global.image.variant="+variant)
+	}
+
 	fmt.Printf("Running argo command : %s\n", command)
 	runAndCleanCommand("argocd", command...)
 
@@ -145,5 +152,5 @@ func checkGlooHealthy(testHelper *helper.SoloTestHelper) {
 	for _, deploymentName := range deploymentNames {
 		runAndCleanCommand("kubectl", "rollout", "status", "deployment", "-n", testHelper.InstallNamespace, deploymentName)
 	}
-	kube2e.GlooctlCheckEventuallyHealthy(2, testHelper, "90s")
+	kube2e.GlooctlCheckEventuallyHealthy(2, testHelper.InstallNamespace, "90s")
 }

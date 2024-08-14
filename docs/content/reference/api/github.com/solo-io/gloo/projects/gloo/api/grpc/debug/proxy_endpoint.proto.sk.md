@@ -32,14 +32,16 @@ weight: 5
 "namespace": string
 "name": string
 "selector": map<string, string>
+"expressionSelector": string
 
 ```
 
 | Field | Type | Description |
 | ----- | ---- | ----------- | 
-| `namespace` | `string` | The namespace to look for proxies. |
-| `name` | `string` | Optional. The name of the proxy to look up. |
-| `selector` | `map<string, string>` | Optional. Selector to use to filter returned proxies. This will be ignored if a name is provided. |
+| `namespace` | `string` | Optional. The namespace to look for proxies. If this is omitted, all namespaces will be considered. |
+| `name` | `string` | Optional. The name of the proxy to look up. If this is provided, a namespace must be included as well. |
+| `selector` | `map<string, string>` | Optional. Equality-based selector to use to filter returned proxies. This will be ignored if a name is provided. See https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#equality-based-requirement If both `selector` and `expressionSelector` are defined, then `expressionSelector` is used. |
+| `expressionSelector` | `string` | Optional. Set-based selector to use to filter returned proxies. This will be ignored if a name is provided. See https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#set-based-requirement If both `selector` and `expressionSelector` are defined, then `expressionSelector` is used. |
 
 
 
