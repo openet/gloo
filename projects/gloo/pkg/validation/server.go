@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/solo-io/gloo/pkg/utils/syncutil"
 	"github.com/solo-io/gloo/projects/gloo/pkg/upstreams/kubernetes"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
 
 	"github.com/hashicorp/go-multierror"
 	"github.com/rotisserie/eris"
-	"github.com/solo-io/gloo/pkg/utils/syncutil"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/grpc/validation"
 	v1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
 	v1snap "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/gloosnapshot"
@@ -21,6 +21,7 @@ import (
 	"github.com/solo-io/go-utils/hashutils"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources"
 	sk_resources "github.com/solo-io/solo-kit/pkg/api/v1/resources"
+	sk_kubernetes "github.com/solo-io/solo-kit/pkg/api/v1/resources/common/kubernetes"
 	"github.com/solo-io/solo-kit/pkg/api/v2/reporter"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -206,6 +207,18 @@ func (s *validator) Validate(ctx context.Context, req *validation.GlooValidation
 	}, nil
 }
 
+func HandleResourceDeletion(snapshot *v1snap.ApiSnapshot, resource resources.Resource) error {
+	if _, ok := resource.(*sk_kubernetes.KubeNamespace); ok {
+		// Special case to handle namespace deletion
+		snapshot.RemoveMatches(func(metadata *core.Metadata) bool {
+			return resource.GetMetadata().GetNamespace() == metadata.GetNamespace()
+		})
+		return nil
+	} else {
+		return snapshot.RemoveFromResourceList(resource)
+	}
+}
+
 // ValidateGloo replaces the functionality of Validate.  Validate is still a method that needs to be
 // exported because it is used as a gRPC service. A synced version of the snapshot is needed for
 // gloo validation.
@@ -222,7 +235,7 @@ func (s *validator) ValidateGloo(ctx context.Context, proxy *v1.Proxy, resource 
 
 	if resource != nil {
 		if shouldDelete {
-			if err := snapCopy.RemoveFromResourceList(resource); err != nil {
+			if err := HandleResourceDeletion(&snapCopy, resource); err != nil {
 				return nil, err
 			}
 
@@ -233,7 +246,7 @@ func (s *validator) ValidateGloo(ctx context.Context, proxy *v1.Proxy, resource 
 					kubeSvcUs := &v1.Upstream{
 						Metadata: &core.Metadata{
 							Namespace: resource.GetMetadata().GetNamespace(),
-							Name:      fmt.Sprintf("%s%s", kubernetes.UpstreamNamePrefix, resource.GetMetadata().GetName()),
+							Name:      fmt.Sprintf("%s%s", kubernetes.FakeUpstreamNamePrefix, resource.GetMetadata().GetName()),
 						},
 					}
 					if err := snapCopy.RemoveFromResourceList(kubeSvcUs); err != nil {
@@ -270,7 +283,7 @@ func applyRequestToSnapshot(snap *v1snap.ApiSnapshot, req *validation.GlooValida
 		for _, ref := range req.GetDeletedResources().GetUpstreamRefs() {
 			deletedUpstreamRefs = append(deletedUpstreamRefs, &core.ResourceRef{
 				Namespace: ref.GetNamespace(),
-				Name:      fmt.Sprintf("%s%s", kubernetes.UpstreamNamePrefix, ref.GetName()),
+				Name:      fmt.Sprintf("%s%s", kubernetes.FakeUpstreamNamePrefix, ref.GetName()),
 			})
 		}
 		finalUpstreams := utils.DeleteResources(existingUpstreams, deletedUpstreamRefs)

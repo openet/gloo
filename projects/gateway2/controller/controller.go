@@ -4,25 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	sologatewayv1 "github.com/solo-io/gloo/projects/gateway/pkg/api/v1/kube/apis/gateway.solo.io/v1"
-	"github.com/solo-io/gloo/projects/gateway2/api/v1alpha1"
-	"github.com/solo-io/gloo/projects/gateway2/deployer"
-	"github.com/solo-io/gloo/projects/gateway2/extensions"
-	"github.com/solo-io/gloo/projects/gateway2/query"
-	httplisoptquery "github.com/solo-io/gloo/projects/gateway2/translator/plugins/httplisteneroptions/query"
-	lisoptquery "github.com/solo-io/gloo/projects/gateway2/translator/plugins/listeneroptions/query"
-	rtoptquery "github.com/solo-io/gloo/projects/gateway2/translator/plugins/routeoptions/query"
-	vhoptquery "github.com/solo-io/gloo/projects/gateway2/translator/plugins/virtualhostoptions/query"
-	"github.com/solo-io/gloo/projects/gateway2/wellknown"
-	gloov1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/kube/apis/gloo.solo.io/v1"
-	"github.com/solo-io/gloo/projects/gloo/pkg/bootstrap"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/util/sets"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -32,7 +18,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	apiv1 "sigs.k8s.io/gateway-api/apis/v1"
-	apiv1beta1 "sigs.k8s.io/gateway-api/apis/v1beta1"
+
+	"github.com/solo-io/gloo/projects/gateway2/api/v1alpha1"
+	"github.com/solo-io/gloo/projects/gateway2/deployer"
+	"github.com/solo-io/gloo/projects/gateway2/wellknown"
 )
 
 const (
@@ -41,49 +30,34 @@ const (
 )
 
 type GatewayConfig struct {
-	Mgr            manager.Manager
-	GWClasses      sets.Set[string]
+	Mgr manager.Manager
+
+	OurGateway func(gw *apiv1.Gateway) bool
+
 	Dev            bool
 	ControllerName string
 	AutoProvision  bool
-	Kick           func(ctx context.Context)
 
-	ControlPlane bootstrap.ControlPlane
-	IstioValues  bootstrap.IstioValues
-
-	Extensions extensions.K8sGatewayExtensions
+	ControlPlane            deployer.ControlPlaneInfo
+	IstioIntegrationEnabled bool
+	Aws                     *deployer.AwsInfo
 }
 
 func NewBaseGatewayController(ctx context.Context, cfg GatewayConfig) error {
 	log := log.FromContext(ctx)
-	log.V(5).Info("starting controller", "controllerName", cfg.ControllerName, "GatewayClasses", sets.List(cfg.GWClasses))
+	log.V(5).Info("starting controller", "controllerName", cfg.ControllerName)
 
 	controllerBuilder := &controllerBuilder{
 		cfg: cfg,
 		reconciler: &controllerReconciler{
 			cli:    cfg.Mgr.GetClient(),
 			scheme: cfg.Mgr.GetScheme(),
-			kick:   cfg.Kick,
 		},
 	}
 
 	return run(ctx,
 		controllerBuilder.watchGwClass,
 		controllerBuilder.watchGw,
-		controllerBuilder.watchHttpRoute,
-		controllerBuilder.watchReferenceGrant,
-		controllerBuilder.watchNamespaces,
-		controllerBuilder.watchHttpListenerOptions,
-		controllerBuilder.watchListenerOptions,
-		controllerBuilder.watchRouteOptions,
-		controllerBuilder.watchVirtualHostOptions,
-		controllerBuilder.watchUpstreams,
-		controllerBuilder.watchServices,
-		controllerBuilder.addIndexes,
-		controllerBuilder.addHttpLisOptIndexes,
-		controllerBuilder.addLisOptIndexes,
-		controllerBuilder.addRtOptIndexes,
-		controllerBuilder.addVhOptIndexes,
 		controllerBuilder.addGwParamsIndexes,
 	)
 }
@@ -103,12 +77,6 @@ type controllerBuilder struct {
 	reconciler *controllerReconciler
 }
 
-func (c *controllerBuilder) addIndexes(ctx context.Context) error {
-	return query.IterateIndices(func(obj client.Object, field string, indexer client.IndexerFunc) error {
-		return c.cfg.Mgr.GetFieldIndexer().IndexField(ctx, obj, field, indexer)
-	})
-}
-
 func (c *controllerBuilder) addGwParamsIndexes(ctx context.Context) error {
 	return c.cfg.Mgr.GetFieldIndexer().IndexField(ctx, &apiv1.Gateway{}, GatewayParamsField, gatewayToParams)
 }
@@ -126,44 +94,17 @@ func gatewayToParams(obj client.Object) []string {
 	return []string{}
 }
 
-// TODO: move to RtOpt plugin when breaking the logic to RouteOption-specific controller
-func (c *controllerBuilder) addRtOptIndexes(ctx context.Context) error {
-	return rtoptquery.IterateIndices(func(obj client.Object, field string, indexer client.IndexerFunc) error {
-		return c.cfg.Mgr.GetFieldIndexer().IndexField(ctx, obj, field, indexer)
-	})
-}
-
-// TODO: move to VhOpt plugin when breaking the logic to VirtualHostOption-specific controller
-func (c *controllerBuilder) addVhOptIndexes(ctx context.Context) error {
-	return vhoptquery.IterateIndices(func(obj client.Object, field string, indexer client.IndexerFunc) error {
-		return c.cfg.Mgr.GetFieldIndexer().IndexField(ctx, obj, field, indexer)
-	})
-}
-
-// TODO: move to LisOpt plugin when breaking the logic to ListenerOption-specific controller
-func (c *controllerBuilder) addLisOptIndexes(ctx context.Context) error {
-	return lisoptquery.IterateIndices(func(obj client.Object, field string, indexer client.IndexerFunc) error {
-		return c.cfg.Mgr.GetFieldIndexer().IndexField(ctx, obj, field, indexer)
-	})
-}
-
-// TODO: move to HttpLisOpt plugin when breaking the logic to HttpListenerOption-specific controller
-func (c *controllerBuilder) addHttpLisOptIndexes(ctx context.Context) error {
-	return httplisoptquery.IterateIndices(func(obj client.Object, field string, indexer client.IndexerFunc) error {
-		return c.cfg.Mgr.GetFieldIndexer().IndexField(ctx, obj, field, indexer)
-	})
-}
-
 func (c *controllerBuilder) watchGw(ctx context.Context) error {
 	// setup a deployer
 	log := log.FromContext(ctx)
 
-	log.Info("creating deployer", "ctrlname", c.cfg.ControllerName, "server", c.cfg.ControlPlane.GetBindAddress(), "port", c.cfg.ControlPlane.GetBindPort())
+	log.Info("creating deployer", "ctrlname", c.cfg.ControllerName, "server", c.cfg.ControlPlane.XdsHost, "port", c.cfg.ControlPlane.XdsPort)
 	d, err := deployer.NewDeployer(c.cfg.Mgr.GetClient(), &deployer.Inputs{
-		ControllerName: c.cfg.ControllerName,
-		Dev:            c.cfg.Dev,
-		IstioValues:    c.cfg.IstioValues,
-		ControlPlane:   c.cfg.ControlPlane,
+		ControllerName:          c.cfg.ControllerName,
+		Dev:                     c.cfg.Dev,
+		IstioIntegrationEnabled: c.cfg.IstioIntegrationEnabled,
+		ControlPlane:            c.cfg.ControlPlane,
+		Aws:                     c.cfg.Aws,
 	})
 	if err != nil {
 		return err
@@ -177,12 +118,17 @@ func (c *controllerBuilder) watchGw(ctx context.Context) error {
 	buildr := ctrl.NewControllerManagedBy(c.cfg.Mgr).
 		// Don't use WithEventFilter here as it also filters events for Owned objects.
 		For(&apiv1.Gateway{}, builder.WithPredicates(predicate.NewPredicateFuncs(func(object client.Object) bool {
-			// we only care about Gateways that use our GatewayClass
+			// We only care about Gateways that use our GatewayClass
 			if gw, ok := object.(*apiv1.Gateway); ok {
-				return c.cfg.GWClasses.Has(string(gw.Spec.GatewayClassName))
+				return c.cfg.OurGateway(gw)
 			}
 			return false
-		}), predicate.GenerationChangedPredicate{}))
+		}),
+			predicate.Or(
+				predicate.AnnotationChangedPredicate{},
+				predicate.GenerationChangedPredicate{},
+			),
+		))
 
 	// watch for changes in GatewayParameters
 	cli := c.cfg.Mgr.GetClient()
@@ -215,20 +161,18 @@ func (c *controllerBuilder) watchGw(ctx context.Context) error {
 			return fmt.Errorf("object %T is not a client.Object", obj)
 		}
 		log.Info("watching gvk as gateway child", "gvk", gvk)
-		// unless its a service, we don't care about the status
+		// unless it's a service, we don't care about the status
 		var opts []builder.OwnsOption
 		if shouldIgnoreStatusChild(gvk) {
 			opts = append(opts, builder.WithPredicates(predicate.GenerationChangedPredicate{}))
 		}
 		buildr.Owns(clientObj, opts...)
 	}
-
 	gwReconciler := &gatewayReconciler{
 		cli:           c.cfg.Mgr.GetClient(),
 		scheme:        c.cfg.Mgr.GetScheme(),
 		autoProvision: c.cfg.AutoProvision,
 		deployer:      d,
-		kick:          c.cfg.Kick,
 	}
 	err = buildr.Complete(gwReconciler)
 	if err != nil {
@@ -242,7 +186,7 @@ func shouldIgnoreStatusChild(gvk schema.GroupVersionKind) bool {
 	return gvk.Kind == "Deployment"
 }
 
-func (c *controllerBuilder) watchGwClass(ctx context.Context) error {
+func (c *controllerBuilder) watchGwClass(_ context.Context) error {
 	return ctrl.NewControllerManagedBy(c.cfg.Mgr).
 		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		WithEventFilter(predicate.NewPredicateFuncs(func(object client.Object) bool {
@@ -256,175 +200,17 @@ func (c *controllerBuilder) watchGwClass(ctx context.Context) error {
 		Complete(reconcile.Func(c.reconciler.ReconcileGatewayClasses))
 }
 
-func (c *controllerBuilder) watchHttpRoute(ctx context.Context) error {
-	err := ctrl.NewControllerManagedBy(c.cfg.Mgr).
-		WithEventFilter(predicate.GenerationChangedPredicate{}).
-		For(&apiv1.HTTPRoute{}).
-		Complete(reconcile.Func(c.reconciler.ReconcileHttpRoutes))
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *controllerBuilder) watchReferenceGrant(ctx context.Context) error {
-	err := ctrl.NewControllerManagedBy(c.cfg.Mgr).
-		WithEventFilter(predicate.GenerationChangedPredicate{}).
-		For(&apiv1beta1.ReferenceGrant{}).
-		Complete(reconcile.Func(c.reconciler.ReconcileReferenceGrants))
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *controllerBuilder) watchNamespaces(ctx context.Context) error {
-	err := ctrl.NewControllerManagedBy(c.cfg.Mgr).
-		For(&corev1.Namespace{}).
-		Complete(reconcile.Func(c.reconciler.ReconcileNamespaces))
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *controllerBuilder) watchHttpListenerOptions(ctx context.Context) error {
-	err := ctrl.NewControllerManagedBy(c.cfg.Mgr).
-		WithEventFilter(predicate.GenerationChangedPredicate{}).
-		For(&sologatewayv1.HttpListenerOption{}).
-		Complete(reconcile.Func(c.reconciler.ReconcileHttpListenerOptions))
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *controllerBuilder) watchListenerOptions(ctx context.Context) error {
-	err := ctrl.NewControllerManagedBy(c.cfg.Mgr).
-		WithEventFilter(predicate.GenerationChangedPredicate{}).
-		For(&sologatewayv1.ListenerOption{}).
-		Complete(reconcile.Func(c.reconciler.ReconcileListenerOptions))
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *controllerBuilder) watchRouteOptions(ctx context.Context) error {
-	err := ctrl.NewControllerManagedBy(c.cfg.Mgr).
-		WithEventFilter(predicate.GenerationChangedPredicate{}).
-		For(&sologatewayv1.RouteOption{}).
-		Complete(reconcile.Func(c.reconciler.ReconcileRouteOptions))
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *controllerBuilder) watchVirtualHostOptions(ctx context.Context) error {
-	err := ctrl.NewControllerManagedBy(c.cfg.Mgr).
-		WithEventFilter(predicate.GenerationChangedPredicate{}).
-		For(&sologatewayv1.VirtualHostOption{}).
-		Complete(reconcile.Func(c.reconciler.ReconcileVirtualHostOptions))
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *controllerBuilder) watchUpstreams(ctx context.Context) error {
-	err := ctrl.NewControllerManagedBy(c.cfg.Mgr).
-		WithEventFilter(predicate.GenerationChangedPredicate{}).
-		For(&gloov1.Upstream{}).
-		Complete(reconcile.Func(c.reconciler.ReconcileUpstreams))
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *controllerBuilder) watchServices(ctx context.Context) error {
-	err := ctrl.NewControllerManagedBy(c.cfg.Mgr).
-		WithEventFilter(predicate.GenerationChangedPredicate{}).
-		For(&corev1.Service{}).
-		Complete(reconcile.Func(c.reconciler.ReconcileServices))
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 type controllerReconciler struct {
 	cli    client.Client
 	scheme *runtime.Scheme
 	kick   func(ctx context.Context)
 }
 
-func (r *controllerReconciler) ReconcileHttpListenerOptions(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	// eventually reconcile only effected routes/listeners etc
-	r.kick(ctx)
-	return ctrl.Result{}, nil
-}
-
-func (r *controllerReconciler) ReconcileListenerOptions(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	// eventually reconcile only effected routes/listeners etc
-	r.kick(ctx)
-	return ctrl.Result{}, nil
-}
-
-func (r *controllerReconciler) ReconcileRouteOptions(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	// eventually reconcile only effected routes/listeners etc
-	r.kick(ctx)
-	return ctrl.Result{}, nil
-}
-
-func (r *controllerReconciler) ReconcileVirtualHostOptions(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	// eventually reconcile only effected listeners etc
-	r.kick(ctx)
-	return ctrl.Result{}, nil
-}
-
-func (r *controllerReconciler) ReconcileUpstreams(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	// eventually reconcile only effected listeners etc
-	r.kick(ctx)
-	return ctrl.Result{}, nil
-}
-
-func (r *controllerReconciler) ReconcileServices(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	// eventually reconcile only effected listeners etc
-	r.kick(ctx)
-	return ctrl.Result{}, nil
-}
-
-func (r *controllerReconciler) ReconcileNamespaces(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	// reconcile all gateways with namespace selector
-	r.kick(ctx)
-	return ctrl.Result{}, nil
-}
-
-func (r *controllerReconciler) ReconcileHttpRoutes(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	// TODO: consider finding impacted gateways and queue them
-	// TODO: consider enabling this
-	//	// reconcile this specific route:
-	//	queries := query.NewData(r.cli, r.scheme)
-	//	httproute.TranslateGatewayHTTPRouteRules(queries, hr, nil)
-
-	r.kick(ctx)
-	return ctrl.Result{}, nil
-}
-
-func (r *controllerReconciler) ReconcileReferenceGrants(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	// reconcile all things?!
-	r.kick(ctx)
-	return ctrl.Result{}, nil
-}
-
 func (r *controllerReconciler) ReconcileGatewayClasses(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx).WithValues("gwclass", req.NamespacedName)
 
 	gwclass := &apiv1.GatewayClass{}
-	err := r.cli.Get(ctx, req.NamespacedName, gwclass)
-	if err != nil {
+	if err := r.cli.Get(ctx, req.NamespacedName, gwclass); err != nil {
 		// NOTE: if this reconciliation is a result of a DELETE event, this err will be a NotFound,
 		// therefore we will return a nil error here and thus skip any additional reconciliation below.
 		// At the time of writing this comment, the retrieved GWClass object is only used to update the status,
@@ -453,8 +239,7 @@ func (r *controllerReconciler) ReconcileGatewayClasses(ctx context.Context, req 
 	}
 	meta.SetStatusCondition(&gwclass.Status.Conditions, supportedVersionCondition)
 
-	err = r.cli.Status().Update(ctx, gwclass)
-	if err != nil {
+	if err := r.cli.Status().Update(ctx, gwclass); err != nil {
 		return ctrl.Result{}, err
 	}
 	log.Info("updated gateway class status")

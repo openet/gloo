@@ -43,7 +43,7 @@ func (s *testingSuite) TestMissingUpstream() {
 		err = s.testInstallation.Actions.Kubectl().DeleteFileSafe(s.ctx, validation.ExampleVS, "-n", s.testInstallation.Metadata.InstallNamespace)
 		s.Assert().NoError(err, "can delete "+validation.ExampleVS)
 
-		err = s.testInstallation.Actions.Kubectl().ApplyFile(s.ctx, testdefaults.NginxPodManifest)
+		err = s.testInstallation.Actions.Kubectl().DeleteFileSafe(s.ctx, testdefaults.NginxPodManifest)
 		s.Assert().NoError(err)
 	})
 
@@ -115,12 +115,10 @@ func (s *testingSuite) TestInvalidUpstreamMissingPort() {
 	// Upstream is only rejected when the upstream plugin is run when a valid cluster is present
 	err = s.testInstallation.Actions.Kubectl().ApplyFile(s.ctx, validation.ExampleUpstream, "-n", s.testInstallation.Metadata.InstallNamespace)
 	s.Assert().NoError(err, "can apply valid upstream")
-	s.testInstallation.Assertions.EventuallyResourceStatusMatchesState(
-		func() (resources.InputResource, error) {
+	s.testInstallation.Assertions.EventuallyResourceExists(
+		func() (resources.Resource, error) {
 			return s.testInstallation.ResourceClients.UpstreamClient().Read(s.testInstallation.Metadata.InstallNamespace, validation.ExampleUpstreamName, clients.ReadOpts{Ctx: s.ctx})
 		},
-		core.Status_Accepted,
-		gloo_defaults.GlooReporter,
 	)
 	err = s.testInstallation.Actions.Kubectl().ApplyFile(s.ctx, validation.ExampleVS, "-n", s.testInstallation.Metadata.InstallNamespace)
 	s.Assert().NoError(err, "can apply valid virtual service")

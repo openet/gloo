@@ -131,7 +131,7 @@ You can also patch the `default` *Settings* CR with this value and delete the `d
 Optionally, you may choose to enable Envoy's gzip filter through Gloo Gateway. More information on that can be found [here]({{% versioned_link_path fromRoot="/installation/advanced_configuration/gzip/" %}}).
 
 ### Set up an EDS warming timeout
-Set up the endpoints warming timeout to a non-zero value. More details [here](https://docs.solo.io/gloo-edge/latest/operations/upgrading/v1.3/#recommended-settings).
+Set up the endpoints warming timeout to a non-zero value. More details [here]({{% versioned_link_path fromRoot="/operations/upgrading/" %}}).
 
 
 ## Access Logging
@@ -206,14 +206,15 @@ gatewayProxies:
 
 You can also scale up the ExtAuth service. Typically, one to two instances are sufficient.
 
-If you have multiple instances of the ExtAuth server, you might want to use the same JWT signing key in the OIDC policy for each instance. To reuse the JWT signing key, you must update your Helm configuration file with the following global extension.
+If you have multiple instances of the ExtAuth server, you might want to use the same JWT signing key in the OIDC policy for each instance. To reuse the JWT signing key, you must update your Helm configuration file with the following global extension. The example values use the default secret name.
 
 ```yaml
 global:
   extensions:
     extAuth:
       signingKey:
-        key: abcdef
+        name: extauth-signing-key
+        signing-key: <signing-key-value>
 ```
 
 #### Pod Disruption Budgets and Affinity/Anti-Affinity rules
@@ -284,7 +285,7 @@ Also, consider using `retries` on your _routes_. The default value for this attr
 
 ### Proxy latency filter
 
-In the `httpGateway.options` section of your Gateway resource, you can enable the proxy latency filter. This Envoy filter measures the request and response latency incurred by the filter chain in additional histograms and access log parameters. For more information about the `proxyLatency` section, see the [API reference]({{% versioned_link_path fromRoot="/reference/api/github.com/solo-io/gloo/projects/gloo/api/external/envoy/extensions/proxylatency/proxylatency.proto.sk/#proxylatency" %}}).
+In the `httpGateway.options` section of your Gateway resource, you can enable the proxy latency filter. This Envoy filter measures the request and response latency incurred by the filter chain in additional histograms and access log parameters.
 
 ### Grafana dashboards
 
@@ -422,5 +423,6 @@ For example, Gloo Gateway's data plane (the `gateway-proxy` pod) has ReadOnly fi
 ## Other Envoy-specific guidance
 
 * Envoy has a list of edge proxy best-practices in their docs. You may also want to consult that to see what is applicable for your use case. Find those docs [here](https://www.envoyproxy.io/docs/envoy/latest/configuration/best_practices/edge#best-practices-edge).
-    - In particular, you may especially want to set `use_remote_address` to true. More details [here](https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/network/http_connection_manager/v3/http_connection_manager.proto#envoy-v3-api-field-extensions-filters-network-http-connection-manager-v3-httpconnectionmanager-use-remote-address)
+    - In particular, you may especially want to set `use_remote_address` to true. More details [here](https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/network/http_connection_manager/v3/http_connection_manager.proto#envoy-v3-api-field-extensions-filters-network-http-connection-manager-v3-httpconnectionmanager-use-remote-address).
 
+* [Configure TCP keepalive]({{% versioned_link_path fromRoot="/guides/traffic_management/tcp_keepalive/" %}}).

@@ -95,8 +95,8 @@ message LoadBalancerConfig {
         // By tuning the parameter, is possible to achieve polynomial or exponential shape of ramp-up curve.
         //
         // During slow start window, effective weight of an endpoint would be scaled with time factor and aggression:
-        // ``new_weight = weight * max(min_weight_percent, time_factor ^ (1 / aggression))``,
-        // where ``time_factor=(time_since_start_seconds / slow_start_time_seconds)``.
+        // `new_weight = weight * max(min_weight_percent, time_factor ^ (1 / aggression))`,
+        // where `time_factor=(time_since_start_seconds / slow_start_time_seconds)`.
         //
         // As time progresses, more and more traffic would be sent to endpoint, which is in slow start window.
         // Once host exits slow start, time_factor and aggression no longer affect its weight.
@@ -107,4 +107,16 @@ message LoadBalancerConfig {
         // If not specified, the default is 10%.
         google.protobuf.DoubleValue min_weight_percent = 3;
     }
+
+    // If set to true, the load balancer will drain connections when the host set changes.
+    //
+    // Ring Hash or Maglev can be used to ensure that clients with the same key 
+    // are routed to the same upstream host.
+    // Distruptions can cause new connections with the same key as existing connections
+    // to be routed to different hosts.
+    // Enabling this feature will cause the load balancer to drain existing connections
+    // when the host set changes, ensuring that new connections with the same key are
+    // consistently routed to the same host.
+    // Connections are not immediately closed, but are allowed to drain.
+    bool close_connections_on_host_set_change = 10;
 }

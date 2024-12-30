@@ -14,7 +14,8 @@ import "github.com/solo-io/solo-kit/api/v1/ref.proto";
 import "github.com/solo-io/solo-kit/api/v1/solo-kit.proto";
 import "github.com/solo-io/gloo/projects/gloo/api/v1/ssl/ssl.proto";
 import "github.com/solo-io/gloo/projects/gloo/api/v1/proxy.proto";
-import "github.com/solo-io/gloo/projects/gloo/api/v1/options.proto";
+import "github.com/solo-io/gloo/projects/gloo/api/v1/virtual_host_options.proto";
+import "github.com/solo-io/gloo/projects/gloo/api/v1/route_options.proto";
 import "github.com/solo-io/gloo/projects/gloo/api/v1/core/matchers/matchers.proto";
 
 /*
@@ -116,11 +117,8 @@ message VirtualService {
     option (core.solo.io.resource).short_name = "vs";
     option (core.solo.io.resource).plural_name = "virtual_services";
 
-    // The VirtualHost contains the
-    // The list of HTTP routes define routing actions to be taken
-    // for incoming HTTP requests whose host header matches
-    // this virtual host. If the request matches more than one route in the list, the first route matched will be selected.
-    // If the list of routes is empty, the virtual host will be ignored by Gloo.
+    // The VirtualHost contains configuration for serving a list of routes for a set of domains along with options for
+    // configuring traffic
     VirtualHost virtual_host = 1;
 
     // If provided, the Gateway will serve TLS/SSL traffic for this set of routes
@@ -225,7 +223,7 @@ message Route {
         // Delegate routing actions for the given matcher to one or more RouteTables.
         DelegateAction delegate_action = 5;
 
-        // Enterprise-Only: THIS FEATURE IS IN TECH PREVIEW. APIs are versioned as alpha and subject to change.
+        // Deprecated, Enterprise-Only: THIS FEATURE WILL BE REMOVED IN A FUTURE RELEASE. APIs are versioned as alpha and subject to change.
         // A reference to a GraphQLApi CR. Resolution of the client request to upstream(s) will be delegated to
         // the resolution policies defined in the GraphQLApi CR. If configured, the graphql filter will operate
         // instead of the envoy router filter, so configuration (such as retries) that applies to the router filter

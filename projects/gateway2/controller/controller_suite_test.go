@@ -9,13 +9,14 @@ import (
 	"strings"
 	"testing"
 
+	"sigs.k8s.io/controller-runtime/pkg/config"
+
 	"github.com/solo-io/gloo/pkg/schemes"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/solo-io/gloo/projects/gateway2/api/v1alpha1"
 	"github.com/solo-io/gloo/projects/gateway2/controller"
-	"github.com/solo-io/gloo/projects/gateway2/extensions"
 	"github.com/solo-io/gloo/projects/gateway2/wellknown"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	api "sigs.k8s.io/gateway-api/apis/v1"
+	apiv1 "sigs.k8s.io/gateway-api/apis/v1"
 )
 
 var (
@@ -84,7 +86,7 @@ var _ = BeforeSuite(func() {
 	cfg, err = testEnv.Start()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
-	scheme := schemes.DefaultScheme()
+	scheme := schemes.GatewayScheme()
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
@@ -97,6 +99,13 @@ var _ = BeforeSuite(func() {
 			Port:    webhookInstallOptions.LocalServingPort,
 			CertDir: webhookInstallOptions.LocalServingCertDir,
 		}),
+		Controller: config.Controller{
+			// see https://github.com/kubernetes-sigs/controller-runtime/issues/2937
+			// in short, our tests reuse the same name (reasonably so) and the controller-runtime
+			// package does not reset the stack of controller names between tests, so we disable
+			// the name validation here.
+			SkipNameValidation: ptr.To(true),
+		},
 	}
 	mgr, err := ctrl.NewManager(cfg, mgrOpts)
 	Expect(err).ToNot(HaveOccurred())
@@ -104,17 +113,15 @@ var _ = BeforeSuite(func() {
 	kubeconfig = generateKubeConfiguration(cfg)
 	mgr.GetLogger().Info("starting manager", "kubeconfig", kubeconfig)
 
-	exts, err := extensions.NewK8sGatewayExtensions(ctx, extensions.K8sGatewayExtensionsFactoryParameters{
-		Mgr: mgr,
-	})
 	Expect(err).ToNot(HaveOccurred())
+
 	cfg := controller.GatewayConfig{
 		Mgr:            mgr,
 		ControllerName: gatewayControllerName,
-		GWClasses:      gwClasses,
-		AutoProvision:  true,
-		Kick:           func(ctx context.Context) { return },
-		Extensions:     exts,
+		OurGateway: func(gw *apiv1.Gateway) bool {
+			return gwClasses.Has(string(gw.Spec.GatewayClassName))
+		},
+		AutoProvision: true,
 	}
 	err = controller.NewBaseGatewayController(ctx, cfg)
 	Expect(err).ToNot(HaveOccurred())

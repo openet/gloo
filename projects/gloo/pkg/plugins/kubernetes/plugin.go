@@ -4,23 +4,21 @@ import (
 	"fmt"
 	"net/url"
 
-	envoy_config_cluster_v3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
+	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	errors "github.com/rotisserie/eris"
+	"go.uber.org/zap"
+	"istio.io/istio/pkg/kube/krt"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	kubelisters "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/kubernetes"
+	"knative.dev/pkg/network"
 
-	"github.com/solo-io/gloo/projects/gloo/pkg/discovery"
+	"github.com/solo-io/go-utils/contextutils"
+	corecache "github.com/solo-io/solo-kit/pkg/api/v1/clients/kube/cache"
 
 	v1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
 	"github.com/solo-io/gloo/projects/gloo/pkg/plugins"
 	"github.com/solo-io/gloo/projects/gloo/pkg/xds"
-	corecache "github.com/solo-io/solo-kit/pkg/api/v1/clients/kube/cache"
-	"k8s.io/client-go/kubernetes"
-)
-
-var (
-	_ discovery.DiscoveryPlugin = new(plugin)
-	_ plugins.UpstreamPlugin    = new(plugin)
 )
 
 const (
@@ -28,73 +26,79 @@ const (
 )
 
 type plugin struct {
-	kube kubernetes.Interface
+	UpstreamConverter
 
-	UpstreamConverter UpstreamConverter
-
+	kube          kubernetes.Interface
 	kubeCoreCache corecache.KubeCoreCache
-
-	settings *v1.Settings
+	svcCollection krt.Collection[*corev1.Service]
+	settings      *v1.Settings
 }
 
-func NewPlugin(kube kubernetes.Interface, kubeCoreCache corecache.KubeCoreCache) plugins.Plugin {
+func NewPlugin(kube kubernetes.Interface, kubeCoreCache corecache.KubeCoreCache, svcCollection krt.Collection[*corev1.Service]) plugins.Plugin {
 	return &plugin{
 		kube:              kube,
-		UpstreamConverter: DefaultUpstreamConverter(),
 		kubeCoreCache:     kubeCoreCache,
+		svcCollection:     svcCollection,
+		UpstreamConverter: DefaultUpstreamConverter(),
 	}
 }
 
-func (p *plugin) Name() string {
-	return ExtensionName
-}
+func (p *plugin) Name() string { return ExtensionName }
 
 func (p *plugin) Init(params plugins.InitParams) {
 	p.settings = params.Settings
 }
 
+// Resolve returns the URL of the upstream. Where is this used? Remove?
 func (p *plugin) Resolve(u *v1.Upstream) (*url.URL, error) {
 	kubeSpec, ok := u.GetUpstreamType().(*v1.Upstream_Kube)
 	if !ok {
 		return nil, nil
 	}
-
-	return url.Parse(fmt.Sprintf("tcp://%v.%v.svc.cluster.local:%v", kubeSpec.Kube.GetServiceName(), kubeSpec.Kube.GetServiceNamespace(), kubeSpec.Kube.GetServicePort()))
+	return url.Parse(fmt.Sprintf("tcp://%v.%v.svc.%s:%v",
+		kubeSpec.Kube.GetServiceName(),
+		kubeSpec.Kube.GetServiceNamespace(),
+		network.GetClusterDomainName(),
+		kubeSpec.Kube.GetServicePort(),
+	))
 }
 
-func (p *plugin) ProcessUpstream(params plugins.Params, in *v1.Upstream, out *envoy_config_cluster_v3.Cluster) error {
-	// not ours
+var _ plugins.UpstreamPlugin = &plugin{}
+
+func (p *plugin) ProcessUpstream(params plugins.Params, in *v1.Upstream, out *clusterv3.Cluster) error {
 	kube, ok := in.GetUpstreamType().(*v1.Upstream_Kube)
 	if !ok {
+		// don't process any non-kube upstreams.
 		return nil
 	}
 
-	// configure the cluster to use EDS:ADS and call it a day
+	// configure the cluster to use EDS:ADS and call it a day. huh?
 	xds.SetEdsOnCluster(out, p.settings)
 	upstreamRef := in.GetMetadata().Ref()
 
-	// Lister functions obfuscate the typical (val, ok) pair returned values of maps, so we have to do a nil check instead.
-	lister := p.kubeCoreCache.NamespacedServiceLister(kube.Kube.GetServiceNamespace())
-	if lister == nil {
-		return errors.Errorf("Upstream %s references the service \"%s\" which has an invalid ServiceNamespace \"%s\".",
-			upstreamRef.String(), kube.Kube.GetServiceName(), kube.Kube.GetServiceNamespace())
-	}
-
-	var sn kubelisters.ServiceNamespaceLister
-	if sn, ok = lister.(kubelisters.ServiceNamespaceLister); !ok {
-		if sl, ok := lister.(kubelisters.ServiceLister); ok {
-			sn = sl.Services(kube.Kube.GetServiceNamespace())
-		}
-	}
-	// Here sn should not be nil since p.kubeCoreCache.NamespacedServiceLister should return
-	// kubelisters.ServiceNamespaceLister or kubelisters.ServiceLister. But for safe, we keep the old
-	// implementation in case that sn unexpectedly is neither ServiceNamespaceLister nor ServiceLister
-	if sn != nil {
-		if _, err := sn.Get(kube.Kube.GetServiceName()); err == nil {
+	// if we are in ggv2 / krt mode, we won't have the kubeCoreCache set.
+	// instead we will use the krt collection to fetch the service.
+	// in a future PR plugins will have access to krt context, so they can use fetch.
+	if p.svcCollection != nil {
+		// TODO: change this to fetch once we have krt context in plugins in a follow-up
+		if p.svcCollection.GetKey(krt.Key[*corev1.Service](krt.Named{
+			Name:      kube.Kube.GetServiceName(),
+			Namespace: kube.Kube.GetServiceNamespace(),
+		}.ResourceName())) != nil {
 			return nil
 		}
+
 	} else {
-		// we don't expect the old implementation to be used, but that we are keeping it as a fallback just in case
+
+		lister := p.kubeCoreCache.NamespacedServiceLister(kube.Kube.GetServiceNamespace())
+		if lister == nil {
+			return errors.Errorf("Upstream %s references the service '%s' which has an invalid ServiceNamespace '%s'.",
+				upstreamRef.String(),
+				kube.Kube.GetServiceName(),
+				kube.Kube.GetServiceNamespace(),
+			)
+		}
+
 		svcs, err := lister.List(labels.NewSelector())
 		if err != nil {
 			return err
@@ -107,7 +111,12 @@ func (p *plugin) ProcessUpstream(params plugins.Params, in *v1.Upstream, out *en
 		}
 	}
 
-	return errors.Errorf("Upstream %s references the service \"%s\" which does not exist in namespace \"%s\"",
-		upstreamRef.String(), kube.Kube.GetServiceName(), kube.Kube.GetServiceNamespace())
+	logger := contextutils.LoggerFrom(params.Ctx)
+	logger.Debug("service does not exist", zap.String("upstream", upstreamRef.String()), zap.String("service", kube.Kube.GetServiceName()), zap.String("namespace", kube.Kube.GetServiceNamespace()))
 
+	return errors.Errorf("Upstream %s references the service '%s' which does not exist in namespace '%s'",
+		upstreamRef.String(),
+		kube.Kube.GetServiceName(),
+		kube.Kube.GetServiceNamespace(),
+	)
 }

@@ -16,27 +16,26 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
 	"github.com/onsi/gomega/types"
+	values "github.com/solo-io/gloo/install/helm/gloo/generate"
 	"github.com/solo-io/gloo/install/test/securitycontext"
+	"github.com/solo-io/gloo/pkg/utils/kubeutils"
+	"github.com/solo-io/gloo/projects/gateway/pkg/defaults"
+	"github.com/solo-io/gloo/test/gomega/matchers"
 	glootestutils "github.com/solo-io/gloo/test/testutils"
+	"github.com/solo-io/k8s-utils/installutils/kuberesource"
+	. "github.com/solo-io/k8s-utils/manifesttestutils"
+	"github.com/solo-io/solo-kit/pkg/api/v1/resources"
+	skprotoutils "github.com/solo-io/solo-kit/pkg/utils/protoutils"
+	"github.com/solo-io/solo-kit/pkg/utils/statusutils"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/utils/pointer"
-
-	values "github.com/solo-io/gloo/install/helm/gloo/generate"
-	"github.com/solo-io/gloo/projects/gateway/pkg/defaults"
-	"github.com/solo-io/gloo/test/gomega/matchers"
-	"github.com/solo-io/k8s-utils/installutils/kuberesource"
-	. "github.com/solo-io/k8s-utils/manifesttestutils"
-	"github.com/solo-io/solo-kit/pkg/api/v1/resources"
-	skprotoutils "github.com/solo-io/solo-kit/pkg/utils/protoutils"
-	"github.com/solo-io/solo-kit/pkg/utils/statusutils"
 )
 
 func GetPodNamespaceStats() corev1.EnvVar {
@@ -1454,8 +1453,8 @@ spec:
 					svc := rb.GetService()
 					svc.Spec.Selector = selector
 					svc.Spec.Type = corev1.ServiceTypeLoadBalancer
-					svc.Spec.Ports[0].TargetPort = intstr.FromInt(8080)
-					svc.Spec.Ports[1].TargetPort = intstr.FromInt(8443)
+					svc.Spec.Ports[0].TargetPort = intstr.FromInt32(8080)
+					svc.Spec.Ports[1].TargetPort = intstr.FromInt32(8443)
 					svc.Annotations = map[string]string{"test": "test"}
 					testManifest.ExpectService(svc)
 				})
@@ -2776,6 +2775,30 @@ spec:
 						})
 					}
 
+					checkSpiffeCertProviderAddressEqual := func(expected string) {
+						testManifest.SelectResources(func(resource *unstructured.Unstructured) bool {
+							return resource.GetKind() == "Deployment" && resource.GetName() == "gateway-proxy"
+						}).ExpectAll(func(deployment *unstructured.Unstructured) {
+							deploymentObject, err := kuberesource.ConvertUnstructured(deployment)
+							Expect(err).NotTo(HaveOccurred(), "Deployment should be able to convert from unstructured")
+							structuredDeployment, ok := deploymentObject.(*appsv1.Deployment)
+							Expect(ok).To(BeTrue(), "Deployment should be able to cast to a structured deployment")
+							isCAAddrSet := false
+
+							for _, container := range structuredDeployment.Spec.Template.Spec.Containers {
+								for _, env := range container.Env {
+									if env.Name == "CA_ADDR" {
+										isCAAddrSet = true
+										Expect(env.Value).To(Equal(expected), fmt.Sprintf("SPIFFE cert address should be value: %v", expected))
+										break
+									}
+								}
+							}
+
+							Expect(isCAAddrSet).To(BeTrue(), "Istio's CA_ADDR was not set")
+						})
+					}
+
 					BeforeEach(func() {
 						selector = map[string]string{
 							"gloo":             "gateway-proxy",
@@ -2912,7 +2935,11 @@ spec:
 								Expect(ok).To(BeTrue(), fmt.Sprintf("Deployment %+v should be able to cast to a structured deployment", deployment))
 
 								Expect(structuredDeployment.Spec.Template.Spec.Containers).To(HaveLen(1))
-								expectEnvVarExists(structuredDeployment.Spec.Template.Spec.Containers[0], "DISABLE_CORE_DUMPS", "true")
+								expectEnvVarExists(structuredDeployment.Spec.Template.Spec.Containers[0],
+									corev1.EnvVar{
+										Name:  "DISABLE_CORE_DUMPS",
+										Value: "true",
+									})
 							})
 						})
 
@@ -3273,6 +3300,17 @@ spec:
 						testManifest.ExpectDeploymentAppsV1(gatewayProxyDeployment)
 					})
 
+					It("enables priorityClassName", func() {
+						prepareMakefile(namespace, glootestutils.HelmValues{
+							ValuesArgs: []string{
+								"gatewayProxies.gatewayProxy.kind.deployment.priorityClassName=example-priority",
+							},
+						})
+
+						gatewayProxyDeployment.Spec.Template.Spec.PriorityClassName = "example-priority"
+						testManifest.ExpectDeploymentAppsV1(gatewayProxyDeployment)
+					})
+
 					It("supports custom readiness and liveness probe", func() {
 						prepareMakefile(namespace, glootestutils.HelmValues{
 							ValuesArgs: []string{
@@ -3296,7 +3334,7 @@ spec:
 							ProbeHandler: corev1.ProbeHandler{
 								HTTPGet: &corev1.HTTPGetAction{
 									Path:   "/ready",
-									Port:   intstr.FromInt(19000),
+									Port:   intstr.FromInt32(19000),
 									Scheme: "HTTP",
 								},
 							},
@@ -3308,7 +3346,7 @@ spec:
 							ProbeHandler: corev1.ProbeHandler{
 								HTTPGet: &corev1.HTTPGetAction{
 									Path:   "/server_info",
-									Port:   intstr.FromInt(19000),
+									Port:   intstr.FromInt32(19000),
 									Scheme: "HTTP",
 								},
 							},
@@ -3807,6 +3845,21 @@ spec:
 						})
 
 						checkDiscoveryAddressEqual(val)
+						checkSpiffeCertProviderAddressEqual(val)
+					})
+
+					It("can set spiffeCertProviderAddress value in CA_ADDR env var", func() {
+						val := "istiod-1-8-6.istio-system.svc:15012"
+
+						prepareMakefile(namespace, glootestutils.HelmValues{
+							ValuesArgs: []string{
+								"global.glooMtls.enabled=true",
+								"global.istioIntegration.enabled=true",
+								"gatewayProxies.gatewayProxy.istioSpiffeCertProviderAddress=" + val,
+							},
+						})
+
+						checkSpiffeCertProviderAddressEqual(val)
 					})
 
 					It("istio's discoveryAddress default value set", func() {
@@ -3820,6 +3873,19 @@ spec:
 						})
 
 						checkDiscoveryAddressEqual(def)
+					})
+
+					It("istio's spiffeCertProviderAddress default value set", func() {
+						def := "istiod.istio-system.svc:15012"
+
+						prepareMakefile(namespace, glootestutils.HelmValues{
+							ValuesArgs: []string{
+								"global.glooMtls.enabled=true",
+								"global.istioIntegration.enabled=true",
+							},
+						})
+
+						checkSpiffeCertProviderAddressEqual(def)
 					})
 
 					It("can add extra volume mounts to the gateway-proxy container deployment", func() {
@@ -4107,6 +4173,8 @@ spec:
 							ValuesArgs: []string{
 								"gateway.validation.disableTransformationValidation=true",
 								"gateway.validation.warnRouteShortCircuiting=true",
+								"gateway.validation.warnMissingTlsSecret=false",
+								"gateway.validation.fullEnvoyValidation=true",
 							},
 						})
 						testManifest.ExpectUnstructured(settings.GetKind(), settings.GetNamespace(), settings.GetName()).To(BeEquivalentTo(settings))
@@ -4306,9 +4374,11 @@ spec:
     enableGatewayController: true
     isolateVirtualHostsBySslConfig: false
     validation:
+      fullEnvoyValidation: false
       proxyValidationServerAddr: gloo:9988
       alwaysAccept: true
       allowWarnings: true
+      warnMissingTlsSecret: true
       serverEnabled: true
       disableTransformationValidation: false
       warnRouteShortCircuiting: false
@@ -4632,6 +4702,7 @@ metadata:
   labels:
     app: gloo
     gloo: gateway-certgen
+    gloo.solo.io/component: certgen
   name: gateway-certgen
   namespace: ` + namespace + `
   annotations:
@@ -4735,6 +4806,7 @@ metadata:
     labels:
         app: gloo
         gloo: rbac
+        gloo.solo.io/component: certgen
     annotations:
       "helm.sh/hook": "pre-install,pre-upgrade"
       "helm.sh/hook-weight": "5"
@@ -4755,6 +4827,7 @@ metadata:
   labels:
     app: gloo
     gloo: rbac
+    gloo.solo.io/component: certgen
   annotations:
     "helm.sh/hook": "pre-install,pre-upgrade"
     "helm.sh/hook-weight": "5"
@@ -4778,6 +4851,7 @@ metadata:
   labels:
     app: gloo
     gloo: rbac
+    gloo.solo.io/component: certgen
   annotations:
     "helm.sh/hook": "pre-install,pre-upgrade"
     "helm.sh/hook-weight": "5"
@@ -4923,7 +4997,7 @@ metadata:
 						deploy.Spec.Template.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
 							ProbeHandler: corev1.ProbeHandler{
 								TCPSocket: &corev1.TCPSocketAction{
-									Port: intstr.FromInt(9977),
+									Port: intstr.FromInt32(9977),
 								},
 							},
 							InitialDelaySeconds: 3,
@@ -4948,7 +5022,7 @@ metadata:
 						testManifest.ExpectDeploymentAppsV1(glooDeployment)
 					})
 
-					It("has limits", func() {
+					It("can set both requests and limits", func() {
 						prepareMakefile(namespace, glootestutils.HelmValues{
 							ValuesArgs: []string{
 								"gloo.deployment.resources.limits.memory=2Mi",
@@ -4958,8 +5032,10 @@ metadata:
 							},
 						})
 
-						// Add the limits we are testing:
-						glooDeployment.Spec.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+						// make sure the resource requests and limits are set in the pod template
+						deploy := getStructuredDeployment(testManifest, kubeutils.GlooDeploymentName)
+						glooContainer := deploy.Spec.Template.Spec.Containers[0]
+						Expect(glooContainer.Resources).To(Equal(corev1.ResourceRequirements{
 							Limits: corev1.ResourceList{
 								corev1.ResourceMemory: resource.MustParse("2Mi"),
 								corev1.ResourceCPU:    resource.MustParse("3m"),
@@ -4968,8 +5044,48 @@ metadata:
 								corev1.ResourceMemory: resource.MustParse("4Mi"),
 								corev1.ResourceCPU:    resource.MustParse("5m"),
 							},
-						}
-						testManifest.ExpectDeploymentAppsV1(glooDeployment)
+						}))
+
+						// should set GOMEMLIMIT and GOMAXPROCS when resource limits are set
+						expectEnvVarExists(glooContainer, corev1.EnvVar{
+							Name: "GOMEMLIMIT",
+							ValueFrom: &corev1.EnvVarSource{
+								ResourceFieldRef: &corev1.ResourceFieldSelector{
+									Resource: string(corev1.ResourceLimitsMemory),
+									Divisor:  resource.MustParse("1"),
+								},
+							}})
+						expectEnvVarExists(glooContainer, corev1.EnvVar{
+							Name: "GOMAXPROCS",
+							ValueFrom: &corev1.EnvVarSource{
+								ResourceFieldRef: &corev1.ResourceFieldSelector{
+									Resource: string(corev1.ResourceLimitsCPU),
+									Divisor:  resource.MustParse("1"),
+								},
+							}})
+					})
+
+					It("can set requests only", func() {
+						prepareMakefile(namespace, glootestutils.HelmValues{
+							ValuesArgs: []string{
+								"gloo.deployment.resources.requests.memory=6Mi",
+								"gloo.deployment.resources.requests.cpu=7m",
+							},
+						})
+
+						// make sure the resource requests are set in the pod template
+						deploy := getStructuredDeployment(testManifest, kubeutils.GlooDeploymentName)
+						glooContainer := deploy.Spec.Template.Spec.Containers[0]
+						Expect(glooContainer.Resources).To(Equal(corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceMemory: resource.MustParse("6Mi"),
+								corev1.ResourceCPU:    resource.MustParse("7m"),
+							},
+						}))
+
+						// since no resource limits are set, GOMEMLIMIT and GOMAXPROCS should also not be set
+						expectEnvVarDoesNotExist(glooContainer, "GOMEMLIMIT")
+						expectEnvVarDoesNotExist(glooContainer, "GOMAXPROCS")
 					})
 
 					It("can overwrite the container image information", func() {
@@ -5193,7 +5309,7 @@ metadata:
 						testManifest.ExpectDeploymentAppsV1(discoveryDeployment)
 					})
 
-					It("has limits", func() {
+					It("can set both requests and limits", func() {
 						prepareMakefile(namespace, glootestutils.HelmValues{
 							ValuesArgs: []string{
 								"discovery.deployment.resources.limits.memory=2Mi",
@@ -5203,8 +5319,10 @@ metadata:
 							},
 						})
 
-						// Add the limits we are testing:
-						discoveryDeployment.Spec.Template.Spec.Containers[0].Resources = corev1.ResourceRequirements{
+						// make sure the resource requests and limits are set in the pod template
+						deploy := getStructuredDeployment(testManifest, kubeutils.DiscoveryDeploymentName)
+						discoveryContainer := deploy.Spec.Template.Spec.Containers[0]
+						Expect(discoveryContainer.Resources).To(Equal(corev1.ResourceRequirements{
 							Limits: corev1.ResourceList{
 								corev1.ResourceMemory: resource.MustParse("2Mi"),
 								corev1.ResourceCPU:    resource.MustParse("3m"),
@@ -5213,8 +5331,48 @@ metadata:
 								corev1.ResourceMemory: resource.MustParse("4Mi"),
 								corev1.ResourceCPU:    resource.MustParse("5m"),
 							},
-						}
-						testManifest.ExpectDeploymentAppsV1(discoveryDeployment)
+						}))
+
+						// should set GOMEMLIMIT and GOMAXPROCS when resource limits are set
+						expectEnvVarExists(discoveryContainer, corev1.EnvVar{
+							Name: "GOMEMLIMIT",
+							ValueFrom: &corev1.EnvVarSource{
+								ResourceFieldRef: &corev1.ResourceFieldSelector{
+									Resource: string(corev1.ResourceLimitsMemory),
+									Divisor:  resource.MustParse("1"),
+								},
+							}})
+						expectEnvVarExists(discoveryContainer, corev1.EnvVar{
+							Name: "GOMAXPROCS",
+							ValueFrom: &corev1.EnvVarSource{
+								ResourceFieldRef: &corev1.ResourceFieldSelector{
+									Resource: string(corev1.ResourceLimitsCPU),
+									Divisor:  resource.MustParse("1"),
+								},
+							}})
+					})
+
+					It("can set requests only", func() {
+						prepareMakefile(namespace, glootestutils.HelmValues{
+							ValuesArgs: []string{
+								"discovery.deployment.resources.requests.memory=6Mi",
+								"discovery.deployment.resources.requests.cpu=7m",
+							},
+						})
+
+						// make sure the resource requests are set in the pod template
+						deploy := getStructuredDeployment(testManifest, kubeutils.DiscoveryDeploymentName)
+						discoveryContainer := deploy.Spec.Template.Spec.Containers[0]
+						Expect(discoveryContainer.Resources).To(Equal(corev1.ResourceRequirements{
+							Requests: corev1.ResourceList{
+								corev1.ResourceMemory: resource.MustParse("6Mi"),
+								corev1.ResourceCPU:    resource.MustParse("7m"),
+							},
+						}))
+
+						// since no resource limits are set, GOMEMLIMIT and GOMAXPROCS should also not be set
+						expectEnvVarDoesNotExist(discoveryContainer, "GOMEMLIMIT")
+						expectEnvVarDoesNotExist(discoveryContainer, "GOMAXPROCS")
 					})
 
 					It("can overwrite the container image information", func() {
@@ -6514,7 +6672,6 @@ metadata:
 						},
 						Equal(securitycontext.ExpectedContainers),
 					)
-
 				})
 
 				It("global security setings override container-specific values", func() {
@@ -6561,7 +6718,6 @@ metadata:
 					if container.SecurityContext != nil {
 						Expect(container.SecurityContext.RunAsUser).To(BeNil(), "resource: %s, container: %s", resourceName, container.Name)
 					}
-
 				},
 					Entry("14-clusteringress-proxy-deployment.yaml", "clusteringress-proxy", "clusteringress-proxy", "Deployment", securitycontext.ApplyClusterIngressSecurityDefaults, "settings.integrations.knative.version=0.1.0", "settings.integrations.knative.enabled=true"),
 				)
@@ -6596,7 +6752,6 @@ metadata:
 				)
 
 				DescribeTable("applies default restricted container security contexts", func(seccompType string) {
-
 					helmArgs := append(
 						helmRenderEverythingValues(),
 						"global.podSecurityStandards.container.enableRestrictedContainerDefaults=true",
@@ -6632,7 +6787,6 @@ metadata:
 						},
 						Equal(securitycontext.ExpectedContainers),
 					)
-
 				},
 					Entry("null/default", ""),
 					Entry("RuntimeDefault", "RuntimeDefault"),

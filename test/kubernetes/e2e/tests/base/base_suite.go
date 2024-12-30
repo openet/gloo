@@ -2,6 +2,7 @@ package base
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"time"
 
@@ -9,6 +10,8 @@ import (
 	"github.com/solo-io/gloo/test/kubernetes/e2e"
 	"github.com/solo-io/gloo/test/kubernetes/testutils/helper"
 	"github.com/stretchr/testify/suite"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -47,12 +50,29 @@ type BaseTestingSuite struct {
 	Setup            SimpleTestCase
 }
 
+// NewBaseTestingSuite returns a BaseTestingSuite that performs all the pre-requisites of upgrading helm installations,
+// applying manifests and verifying resources exist before a suite and tests and the corresponding post-run cleanup.
+// The pre-requisites for the suite are defined in the setup parameter and for each test in the individual testCase.
+// Currently, tests that require upgrades (eg: to change settings) can not be run in Enterprise. To do so,
+// the test must be written without upgrades and call the `NewBaseTestingSuiteWithoutUpgrades` constructor.
 func NewBaseTestingSuite(ctx context.Context, testInst *e2e.TestInstallation, testHelper *helper.SoloTestHelper, setup SimpleTestCase, testCase map[string]*TestCase) *BaseTestingSuite {
 	namespace = testInst.Metadata.InstallNamespace
 	return &BaseTestingSuite{
 		Ctx:              ctx,
 		TestInstallation: testInst,
 		TestHelper:       testHelper,
+		TestCase:         testCase,
+		Setup:            setup,
+	}
+}
+
+// NewBaseTestingSuiteWithoutUpgrades returns a BaseTestingSuite without allowing upgrades and reverts before the suite and tests.
+// This is useful when creating tests that need to run in Enterprise since the helm values change between OSS and Enterprise installations.
+func NewBaseTestingSuiteWithoutUpgrades(ctx context.Context, testInst *e2e.TestInstallation, setup SimpleTestCase, testCase map[string]*TestCase) *BaseTestingSuite {
+	namespace = testInst.Metadata.InstallNamespace
+	return &BaseTestingSuite{
+		Ctx:              ctx,
+		TestInstallation: testInst,
 		TestCase:         testCase,
 		Setup:            setup,
 	}
@@ -69,9 +89,21 @@ func (s *BaseTestingSuite) SetupSuite() {
 	// Ensure the resources exist
 	if s.Setup.Resources != nil {
 		s.TestInstallation.Assertions.EventuallyObjectsExist(s.Ctx, s.Setup.Resources...)
+
+		for _, resource := range s.Setup.Resources {
+			if pod, ok := resource.(*corev1.Pod); ok {
+				s.TestInstallation.Assertions.EventuallyPodsRunning(s.Ctx, pod.Namespace, metav1.ListOptions{
+					LabelSelector: fmt.Sprintf("app.kubernetes.io/name=%s", pod.Name),
+				})
+			}
+		}
 	}
 
 	if s.Setup.UpgradeValues != "" {
+		if s.TestHelper == nil {
+			panic("The base suite was configured to disable upgrades")
+		}
+
 		// Perform an upgrade to change settings, deployments, etc.
 		var err error
 		s.Setup.Rollback, err = s.TestHelper.UpgradeGloo(s.Ctx, 600*time.Second, helper.WithExtraArgs([]string{
@@ -85,6 +117,10 @@ func (s *BaseTestingSuite) SetupSuite() {
 
 func (s *BaseTestingSuite) TearDownSuite() {
 	if s.Setup.UpgradeValues != "" {
+		if s.TestHelper == nil {
+			panic("The base suite was configured to disable upgrades")
+		}
+
 		// Revet the upgrade applied before this test. This way we are sure that any changes
 		// made are undone and we go back to a clean state
 		err := s.Setup.Rollback()
@@ -120,6 +156,10 @@ func (s *BaseTestingSuite) BeforeTest(suiteName, testName string) {
 	}
 
 	if testCase.UpgradeValues != "" {
+		if s.TestHelper == nil {
+			panic("The base suite was configured to disable upgrades")
+		}
+
 		// Perform an upgrade to change settings, deployments, etc.
 		var err error
 		testCase.Rollback, err = s.TestHelper.UpgradeGloo(s.Ctx, 600*time.Second, helper.WithExtraArgs([]string{
@@ -137,6 +177,15 @@ func (s *BaseTestingSuite) BeforeTest(suiteName, testName string) {
 		}, 10*time.Second, 1*time.Second).Should(gomega.Succeed(), "can apply "+manifest)
 	}
 	s.TestInstallation.Assertions.EventuallyObjectsExist(s.Ctx, testCase.Resources...)
+
+	for _, resource := range testCase.Resources {
+		if pod, ok := resource.(*corev1.Pod); ok {
+			s.TestInstallation.Assertions.EventuallyPodsRunning(s.Ctx, pod.Namespace, metav1.ListOptions{
+				LabelSelector: fmt.Sprintf("app.kubernetes.io/name=%s", pod.Name),
+			})
+		}
+	}
+
 }
 
 func (s *BaseTestingSuite) AfterTest(suiteName, testName string) {
@@ -151,6 +200,10 @@ func (s *BaseTestingSuite) AfterTest(suiteName, testName string) {
 	}
 
 	if testCase.UpgradeValues != "" {
+		if s.TestHelper == nil {
+			panic("The base suite was configured to disable upgrades")
+		}
+
 		// Revet the upgrade applied before this test. This way we are sure that any changes
 		// made are undone and we go back to a clean state
 		err := testCase.Rollback()

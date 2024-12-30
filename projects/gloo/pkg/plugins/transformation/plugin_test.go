@@ -779,10 +779,12 @@ var _ = Describe("Plugin", func() {
 
 		It("sets transformation config for weighted destinations", func() {
 			out := &envoy_config_route_v3.WeightedCluster_ClusterWeight{}
-			err := p.(plugins.WeightedDestinationPlugin).ProcessWeightedDestination(plugins.RouteParams{
-				VirtualHostParams: plugins.VirtualHostParams{
-					Params: plugins.Params{
-						Ctx: ctx,
+			err := p.(plugins.WeightedDestinationPlugin).ProcessWeightedDestination(plugins.RouteActionParams{
+				RouteParams: plugins.RouteParams{
+					VirtualHostParams: plugins.VirtualHostParams{
+						Params: plugins.Params{
+							Ctx: ctx,
+						},
 					},
 				},
 			}, &v1.WeightedDestination{
@@ -961,6 +963,9 @@ var _ = Describe("Plugin", func() {
 										BodyTransformation: &transformation.TransformationTemplate_Body{
 											Body: &transformation.InjaTemplate{Text: "1"},
 										},
+										SpanTransformer: &transformation.TransformationTemplate_SpanTransformer{
+											Name: &transformation.InjaTemplate{Text: "custom_span_name_1"},
+										},
 									},
 								},
 							},
@@ -992,6 +997,9 @@ var _ = Describe("Plugin", func() {
 										BodyTransformation: &transformation.TransformationTemplate_Body{
 											Body: &transformation.InjaTemplate{Text: "11"},
 										},
+										SpanTransformer: &transformation.TransformationTemplate_SpanTransformer{
+											Name: &transformation.InjaTemplate{Text: "custom_span_name_2"},
+										},
 									},
 								},
 							},
@@ -1022,6 +1030,9 @@ var _ = Describe("Plugin", func() {
 										AdvancedTemplates: true,
 										BodyTransformation: &transformation.TransformationTemplate_Body{
 											Body: &transformation.InjaTemplate{Text: "111"},
+										},
+										SpanTransformer: &transformation.TransformationTemplate_SpanTransformer{
+											Name: &transformation.InjaTemplate{Text: "custom_span_name_3"},
 										},
 									},
 								},
@@ -1066,6 +1077,9 @@ var _ = Describe("Plugin", func() {
 											BodyTransformation: &envoytransformation.TransformationTemplate_Body{
 												Body: &envoytransformation.InjaTemplate{Text: "1"},
 											},
+											SpanTransformer: &envoytransformation.TransformationTemplate_SpanTransformer{
+												Name: &envoytransformation.InjaTemplate{Text: "custom_span_name_1"},
+											},
 										},
 									},
 								},
@@ -1104,6 +1118,9 @@ var _ = Describe("Plugin", func() {
 											AdvancedTemplates: true,
 											BodyTransformation: &envoytransformation.TransformationTemplate_Body{
 												Body: &envoytransformation.InjaTemplate{Text: "11"},
+											},
+											SpanTransformer: &envoytransformation.TransformationTemplate_SpanTransformer{
+												Name: &envoytransformation.InjaTemplate{Text: "custom_span_name_2"},
 											},
 										},
 									},
@@ -1144,6 +1161,9 @@ var _ = Describe("Plugin", func() {
 											BodyTransformation: &envoytransformation.TransformationTemplate_Body{
 												Body: &envoytransformation.InjaTemplate{Text: "111"},
 											},
+											SpanTransformer: &envoytransformation.TransformationTemplate_SpanTransformer{
+												Name: &envoytransformation.InjaTemplate{Text: "custom_span_name_3"},
+											},
 										},
 									},
 								},
@@ -1157,6 +1177,34 @@ var _ = Describe("Plugin", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			expected = configStruct
+		})
+		It("fails when SpanTransformer is set on responseTransform objects", func() {
+			vh := &v1.VirtualHost{
+				Options: &v1.VirtualHostOptions{
+					StagedTransformations: &transformation.TransformationStages{
+						Regular: &transformation.RequestResponseTransformations{
+							RequestTransforms: []*transformation.RequestMatch{{
+								ResponseTransformation: &transformation.Transformation{
+									TransformationType: &transformation.Transformation_TransformationTemplate{
+										TransformationTemplate: &transformation.TransformationTemplate{
+											SpanTransformer: &transformation.TransformationTemplate_SpanTransformer{
+												Name: &transformation.InjaTemplate{Text: "response_span_transformer"},
+											},
+										},
+									},
+								},
+							}},
+						},
+					},
+				},
+			}
+			out := &envoy_config_route_v3.VirtualHost{}
+			err := p.(plugins.VirtualHostPlugin).ProcessVirtualHost(plugins.VirtualHostParams{
+				Params: plugins.Params{
+					Ctx: ctx,
+				},
+			}, vh, out)
+			Expect(err).To(HaveOccurred())
 		})
 		It("sets transformation config for vhosts", func() {
 			out := &envoy_config_route_v3.VirtualHost{}
@@ -1190,17 +1238,20 @@ var _ = Describe("Plugin", func() {
 		})
 		It("sets transformation config for weighted dest", func() {
 			out := &envoy_config_route_v3.WeightedCluster_ClusterWeight{}
-			err := p.(plugins.WeightedDestinationPlugin).ProcessWeightedDestination(plugins.RouteParams{
-				VirtualHostParams: plugins.VirtualHostParams{
-					Params: plugins.Params{
-						Ctx: ctx,
+			err := p.(plugins.WeightedDestinationPlugin).ProcessWeightedDestination(
+				plugins.RouteActionParams{
+					RouteParams: plugins.RouteParams{
+						VirtualHostParams: plugins.VirtualHostParams{
+							Params: plugins.Params{
+								Ctx: ctx,
+							},
+						},
 					},
-				},
-			}, &v1.WeightedDestination{
-				Options: &v1.WeightedDestinationOptions{
-					StagedTransformations: inputTransform,
-				},
-			}, out)
+				}, &v1.WeightedDestination{
+					Options: &v1.WeightedDestinationOptions{
+						StagedTransformations: inputTransform,
+					},
+				}, out)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(out.TypedPerFilterConfig).To(HaveKeyWithValue(FilterName, expected))
 		})

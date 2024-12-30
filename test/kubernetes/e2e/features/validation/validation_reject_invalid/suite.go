@@ -94,14 +94,21 @@ func (s *testingSuite) TestVirtualServiceWithSecretDeletion() {
 	s.Assert().NoError(err)
 
 	// Upstream should be accepted
+	// Upstreams no longer report status if they have not been translated at all to avoid conflicting with
+	// other syncers that have translated them, so we can only detect that the objects exist here
 	err = s.testInstallation.Actions.Kubectl().ApplyFile(s.ctx, validation.ExampleUpstream, "-n", s.testInstallation.Metadata.InstallNamespace)
 	s.Assert().NoError(err)
-	s.testInstallation.Assertions.EventuallyResourceStatusMatchesState(
-		func() (resources.InputResource, error) {
+	s.testInstallation.Assertions.EventuallyResourceExists(
+		func() (resources.Resource, error) {
 			return s.testInstallation.ResourceClients.UpstreamClient().Read(s.testInstallation.Metadata.InstallNamespace, validation.ExampleUpstreamName, clients.ReadOpts{Ctx: s.ctx})
 		},
-		core.Status_Accepted,
-		gloo_defaults.GlooReporter,
+	)
+	// we need to make sure Gloo has had a chance to process it
+	s.testInstallation.Assertions.ConsistentlyResourceExists(
+		s.ctx,
+		func() (resources.Resource, error) {
+			return s.testInstallation.ResourceClients.UpstreamClient().Read(s.testInstallation.Metadata.InstallNamespace, "nginx-upstream", clients.ReadOpts{Ctx: s.ctx})
+		},
 	)
 	// Apply VS with secret after Upstream and Secret exist
 	err = s.testInstallation.Actions.Kubectl().Apply(s.ctx, []byte(substitutedSecretVS))
@@ -117,7 +124,7 @@ func (s *testingSuite) TestVirtualServiceWithSecretDeletion() {
 	// failing to delete a secret that is in use
 	output, err := s.testInstallation.Actions.Kubectl().DeleteFileWithOutput(s.ctx, validation.Secret, "-n", s.testInstallation.Metadata.InstallNamespace)
 	s.Assert().Error(err)
-	s.Assert().Contains(output, fmt.Sprintf(`admission webhook "gloo.%s.svc" denied the request`, s.testInstallation.Metadata.InstallNamespace))
+	s.Assert().Contains(output, fmt.Sprintf(`admission webhook "kube.%s.svc" denied the request`, s.testInstallation.Metadata.InstallNamespace))
 	s.Assert().Contains(output, fmt.Sprintf("failed validating the deletion of resource"))
 	s.Assert().Contains(output, fmt.Sprintf("SSL secret not found: list did not find secret %s.tls-secret", s.testInstallation.Metadata.InstallNamespace))
 
@@ -128,6 +135,12 @@ func (s *testingSuite) TestVirtualServiceWithSecretDeletion() {
 
 // TestRejectsInvalidGatewayResources tests behaviors when Gloo rejects invalid Edge Gateway resources
 func (s *testingSuite) TestRejectsInvalidGatewayResources() {
+	s.T().Cleanup(func() {
+		// Can delete resources in correct order
+		err := s.testInstallation.Actions.Kubectl().DeleteFileSafe(s.ctx, validation.InvalidGateway, "-n", s.testInstallation.Metadata.InstallNamespace)
+		s.Assert().NoError(err)
+	})
+
 	output, err := s.testInstallation.Actions.Kubectl().ApplyFileWithOutput(s.ctx, validation.InvalidGateway, "-n", s.testInstallation.Metadata.InstallNamespace)
 	s.Assert().Error(err)
 	s.Assert().Contains(output, fmt.Sprintf(`admission webhook "gloo.%s.svc" denied the request`, s.testInstallation.Metadata.InstallNamespace))
@@ -137,6 +150,14 @@ func (s *testingSuite) TestRejectsInvalidGatewayResources() {
 
 // TestRejectsInvalidRatelimitConfigResources tests behaviors when Gloo rejects invalid RateLimitConfig resources due to missing enterprise features
 func (s *testingSuite) TestRejectsInvalidRatelimitConfigResources() {
+	if s.testInstallation.Metadata.IsEnterprise {
+		s.T().Skip("RateLimitConfig is enterprise-only, skipping test when running enterprise helm chart")
+	}
+
+	s.T().Cleanup(func() {
+		err := s.testInstallation.Actions.Kubectl().DeleteFileSafe(s.ctx, validation.InvalidRLC, "-n", s.testInstallation.Metadata.InstallNamespace)
+		s.Assert().NoError(err)
+	})
 	output, _ := s.testInstallation.Actions.Kubectl().ApplyFileWithOutput(s.ctx, validation.InvalidRLC, "-n", s.testInstallation.Metadata.InstallNamespace)
 	// We don't expect an error exit code here because this is a warning
 	s.Assert().Contains(output, fmt.Sprintf(`admission webhook "gloo.%s.svc" denied the request`, s.testInstallation.Metadata.InstallNamespace))
@@ -146,6 +167,11 @@ func (s *testingSuite) TestRejectsInvalidRatelimitConfigResources() {
 
 // TestRejectsInvalidVSMethodMatcher tests behaviors when Gloo rejects invalid VirtualService resources due to incorrect matchers
 func (s *testingSuite) TestRejectsInvalidVSMethodMatcher() {
+	s.T().Cleanup(func() {
+		err := s.testInstallation.Actions.Kubectl().DeleteFileSafe(s.ctx, validation.InvalidVirtualServiceMatcher, "-n", s.testInstallation.Metadata.InstallNamespace)
+		s.Assert().NoError(err)
+	})
+
 	output, err := s.testInstallation.Actions.Kubectl().ApplyFileWithOutput(s.ctx, validation.InvalidVirtualServiceMatcher, "-n", s.testInstallation.Metadata.InstallNamespace)
 	s.Assert().Error(err)
 	s.Assert().Contains(output, fmt.Sprintf(`admission webhook "gloo.%s.svc" denied the request`, s.testInstallation.Metadata.InstallNamespace))
@@ -155,6 +181,11 @@ func (s *testingSuite) TestRejectsInvalidVSMethodMatcher() {
 
 // TestRejectsInvalidVSTypo tests behaviors when Gloo rejects invalid VirtualService resources due to typos
 func (s *testingSuite) TestRejectsInvalidVSTypo() {
+	s.T().Cleanup(func() {
+		err := s.testInstallation.Actions.Kubectl().DeleteFileSafe(s.ctx, validation.InvalidVirtualServiceTypo, "-n", s.testInstallation.Metadata.InstallNamespace)
+		s.Assert().NoError(err)
+	})
+
 	output, err := s.testInstallation.Actions.Kubectl().ApplyFileWithOutput(s.ctx, validation.InvalidVirtualServiceTypo, "-n", s.testInstallation.Metadata.InstallNamespace)
 	s.Assert().Error(err)
 	println(output)
@@ -174,6 +205,17 @@ func (s *testingSuite) TestRejectsInvalidVSTypo() {
 
 // TestRejectTransformation checks webhook rejects invalid transformation when disableTransformationValidation=false
 func (s *testingSuite) TestRejectTransformation() {
+	s.T().Cleanup(func() {
+		err := s.testInstallation.Actions.Kubectl().DeleteFileSafe(s.ctx, validation.VSTransformationSingleReplace, "-n", s.testInstallation.Metadata.InstallNamespace)
+		s.Assert().NoError(err)
+
+		err = s.testInstallation.Actions.Kubectl().DeleteFileSafe(s.ctx, validation.VSTransformationExtractors, "-n", s.testInstallation.Metadata.InstallNamespace)
+		s.Assert().NoError(err)
+
+		err = s.testInstallation.Actions.Kubectl().DeleteFileSafe(s.ctx, validation.VSTransformationHeaderText, "-n", s.testInstallation.Metadata.InstallNamespace)
+		s.Assert().NoError(err)
+	})
+
 	// reject invalid inja template in transformation
 	// This is only rejected when allowWarnings=false
 	output, err := s.testInstallation.Actions.Kubectl().ApplyFileWithOutput(s.ctx, validation.VSTransformationHeaderText, "-n", s.testInstallation.Metadata.InstallNamespace)
@@ -186,13 +228,13 @@ func (s *testingSuite) TestRejectTransformation() {
 	// this should be rejected
 	output, err = s.testInstallation.Actions.Kubectl().ApplyFileWithOutput(s.ctx, validation.VSTransformationExtractors, "-n", s.testInstallation.Metadata.InstallNamespace)
 	s.Assert().Error(err)
-	s.Assert().Contains(output, "envoy validation mode output: error initializing configuration '': Failed to parse response template: group 1 requested for regex with only 0 sub groups")
+	s.Assert().Contains(output, "Failed to parse response template: group 1 requested for regex with only 0 sub groups")
 
 	// Single replace mode -- rejects invalid subgroup in transformation
 	// note that the regex has no subgroups, but we are trying to extract the first subgroup
 	// this should be rejected
 	output, err = s.testInstallation.Actions.Kubectl().ApplyFileWithOutput(s.ctx, validation.VSTransformationSingleReplace, "-n", s.testInstallation.Metadata.InstallNamespace)
 	s.Assert().Error(err)
-	s.Assert().Contains(output, "envoy validation mode output: error initializing configuration '': Failed to parse response template: group 1 requested for regex with only 0 sub groups")
+	s.Assert().Contains(output, "Failed to parse response template: group 1 requested for regex with only 0 sub groups")
 
 }

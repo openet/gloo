@@ -36,7 +36,7 @@ const (
 	// To make our tests more explicit we define VirtualServices with an explicit set
 	// of domains (which match the `Host` header of a request), and DefaultHost
 	// is the domain we use by default
-	DefaultHost = "test.com"
+	DefaultHost = "jsonplaceholder.typicode.com"
 )
 
 var (
@@ -141,6 +141,9 @@ func (c *TestContext) AfterEach() {
 	ginkgo.By("TestContext.AfterEach: Cancelling test context")
 	// All services connected to the TestContext are tied to the context, so cancelling it will clean those up
 	c.cancel()
+	// This line prevents the process to quit before the envoy docker process is killed when running
+	// Focused Tests
+	Eventually(services.ContainerExistsWithName, "30s", "2s").WithArguments(c.envoyInstance.DockerContainerName).Should(BeEmpty())
 }
 
 func (c *TestContext) JustBeforeEach() {

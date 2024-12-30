@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 # The name of the kind cluster to deploy to
 CLUSTER_NAME="${CLUSTER_NAME:-kind}"
 # The version of the Node Docker image to use for booting the cluster
-CLUSTER_NODE_VERSION="${CLUSTER_NODE_VERSION:-v1.28.0}"
+CLUSTER_NODE_VERSION="${CLUSTER_NODE_VERSION:-v1.31.0}"
 # The version used to tag images
 VERSION="${VERSION:-1.0.0-ci1}"
 # Skip building docker images if we are testing a released version
@@ -17,6 +17,11 @@ JUST_KIND="${JUST_KIND:-false}"
 IMAGE_VARIANT="${IMAGE_VARIANT:-standard}"
 # If true, run extra steps to set up k8s gateway api conformance test environment
 CONFORMANCE="${CONFORMANCE:-false}"
+# The version of the k8s gateway api conformance tests to run. Requires CONFORMANCE=true
+CONFORMANCE_VERSION="${CONFORMANCE_VERSION:-v1.2.0}"
+# The channel of the k8s gateway api conformance tests to run. Requires CONFORMANCE=true
+CONFORMANCE_CHANNEL="${CONFORMANCE_CHANNEL:-"experimental"}"
+# The version of Cilium to install.
 CILIUM_VERSION="${CILIUM_VERSION:-1.15.5}"
 
 function create_kind_cluster_or_skip() {
@@ -58,7 +63,11 @@ function create_kind_cluster_or_skip() {
 create_kind_cluster_or_skip
 
 if [[ $SKIP_DOCKER == 'true' ]]; then
+  # TODO(tim): refactor the Makefile & CI scripts so we're loading local
+  # charts to real helm repos, and then we can remove this block.
   echo "SKIP_DOCKER=true, not building images or chart"
+  helm repo add gloo https://storage.googleapis.com/solo-public-helm
+  helm repo update
 else
   # 2. Make all the docker images and load them to the kind cluster
   VERSION=$VERSION CLUSTER_NAME=$CLUSTER_NAME IMAGE_VARIANT=$IMAGE_VARIANT make kind-build-and-load
@@ -71,43 +80,16 @@ fi
 make -s build-cli-local
 
 # 5. Apply the Kubernetes Gateway API CRDs
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.0.0/standard-install.yaml
+# Note, we're using kustomize to apply the CRDs from the k8s gateway api repo as
+# kustomize supports remote GH URLs and provides more flexibility compared to
+# alternatives like running a series of `kubectl apply -f <url>` commands. This
+# approach is largely necessary since upstream hasn't adopted a helm chart for
+# the CRDs yet, or won't be for the foreseeable future.
+kubectl apply --kustomize "https://github.com/kubernetes-sigs/gateway-api/config/crd/$CONFORMANCE_CHANNEL?ref=$CONFORMANCE_VERSION"
 
 # 6. Conformance test setup
 if [[ $CONFORMANCE == "true" ]]; then
   echo "Running conformance test setup"
 
-  kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.13.7/config/manifests/metallb-native.yaml
-
-  # Wait for MetalLB to become available.
-  kubectl rollout status -n metallb-system deployment/controller --timeout 2m
-  kubectl rollout status -n metallb-system daemonset/speaker --timeout 2m
-  kubectl wait -n metallb-system  pod -l app=metallb --for=condition=Ready --timeout=10s
-
-  SUBNET=$(docker network inspect kind | jq -r '.[].IPAM.Config[].Subnet | select(contains(":") | not)' | cut -d '.' -f1,2)
-  MIN=${SUBNET}.255.0
-  MAX=${SUBNET}.255.231
-
-  # Note: each line below must begin with one tab character; this is to get EOF working within
-  # an if block. The `-` in the `<<-EOF`` strips out the leading tab from each line, see
-  # https://tldp.org/LDP/abs/html/here-docs.html
-	kubectl apply -f - <<-EOF
-	apiVersion: metallb.io/v1beta1
-	kind: IPAddressPool
-	metadata:
-	  name: address-pool
-	  namespace: metallb-system
-	spec:
-	  addresses:
-	    - ${MIN}-${MAX}
-	---
-	apiVersion: metallb.io/v1beta1
-	kind: L2Advertisement
-	metadata:
-	  name: advertisement
-	  namespace: metallb-system
-	spec:
-	  ipAddressPools:
-	    - address-pool
-	EOF
+  . $SCRIPT_DIR/setup-metalllb-on-kind.sh
 fi

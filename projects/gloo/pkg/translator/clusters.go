@@ -1,6 +1,7 @@
 package translator
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -13,8 +14,9 @@ import (
 	_struct "github.com/golang/protobuf/ptypes/struct"
 	"github.com/golang/protobuf/ptypes/wrappers"
 	"github.com/rotisserie/eris"
-	errors "github.com/rotisserie/eris"
 	"github.com/solo-io/gloo/pkg/utils/api_conversion"
+	"github.com/solo-io/gloo/pkg/utils/envutils"
+	"github.com/solo-io/gloo/projects/gloo/constants"
 	v1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
 	v1_options "github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options"
 	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/ssl"
@@ -26,6 +28,7 @@ import (
 	"github.com/solo-io/solo-kit/pkg/api/v2/reporter"
 	"github.com/solo-io/solo-kit/pkg/utils/prototime"
 	"go.opencensus.io/trace"
+	"go.uber.org/zap"
 	_structpb "google.golang.org/protobuf/types/known/structpb"
 )
 
@@ -34,9 +37,7 @@ func (t *translatorInstance) computeClusters(
 	reports reporter.ResourceReports,
 	upstreamRefKeyToEndpoints map[string][]*v1.Endpoint,
 	proxy *v1.Proxy,
-	shouldEnforceNamespaceMatch bool,
 ) ([]*envoy_config_cluster_v3.Cluster, map[*envoy_config_cluster_v3.Cluster]*v1.Upstream) {
-
 	ctx, span := trace.StartSpan(params.Ctx, "gloo.translator.computeClusters")
 	defer span.End()
 	params.Ctx = contextutils.WithLogger(ctx, "compute_clusters")
@@ -49,7 +50,19 @@ func (t *translatorInstance) computeClusters(
 
 	clusterToUpstreamMap := make(map[*envoy_config_cluster_v3.Cluster]*v1.Upstream)
 	for _, upstream := range upstreams {
-		cluster := t.computeCluster(params, upstream, upstreamRefKeyToEndpoints, reports, shouldEnforceNamespaceMatch)
+		eds := false
+		if eps, ok := upstreamRefKeyToEndpoints[upstream.GetMetadata().Ref().Key()]; ok && len(eps) > 0 {
+			eds = true
+		}
+		cluster, errs := t.computeCluster(params, upstream, eds)
+		for _, err := range errs {
+			var warning *Warning
+			if errors.As(err, &warning) {
+				reports.AddWarning(upstream, err.Error())
+			} else {
+				reports.AddError(upstream, err)
+			}
+		}
 		clusterToUpstreamMap[cluster] = upstream
 		clusters = append(clusters, cluster)
 	}
@@ -57,46 +70,74 @@ func (t *translatorInstance) computeClusters(
 	return clusters, clusterToUpstreamMap
 }
 
+// This function is intented to be used when translating a single upstream outside of the context of a full snapshot.
+// This happens in the kube gateway krt implementation.
+func (t *translatorInstance) TranslateCluster(
+	params plugins.Params,
+	upstream *v1.Upstream,
+) (*envoy_config_cluster_v3.Cluster, []error) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+	for _, p := range t.pluginRegistry.GetUpstreamPlugins() {
+		p.Init(plugins.InitParams{Ctx: params.Ctx, Settings: t.settings})
+	}
+	// as we don't know if we have endpoints for this upstream,
+	// we will let the upstream plugins will set the cluster type
+	eds := false
+	c, err := t.computeCluster(params, upstream, eds)
+	if c != nil && c.GetEdsClusterConfig() != nil {
+		endpointClusterName, err2 := GetEndpointClusterName(c.GetName(), upstream)
+		if err2 == nil {
+			c.GetEdsClusterConfig().ServiceName = endpointClusterName
+		}
+	}
+	return c, err
+}
+
 func (t *translatorInstance) computeCluster(
 	params plugins.Params,
 	upstream *v1.Upstream,
-	upstreamRefKeyToEndpoints map[string][]*v1.Endpoint,
-	reports reporter.ResourceReports,
-	shouldEnforceNamespaceMatch bool,
-) *envoy_config_cluster_v3.Cluster {
+	eds bool,
+) (*envoy_config_cluster_v3.Cluster, []error) {
+	logger := contextutils.LoggerFrom(params.Ctx)
 	params.Ctx = contextutils.WithLogger(params.Ctx, upstream.GetMetadata().GetName())
-	out := t.initializeCluster(upstream, upstreamRefKeyToEndpoints, reports, &params.Snapshot.Secrets, shouldEnforceNamespaceMatch)
+	out, errs := t.initializeCluster(upstream, eds, &params.Snapshot.Secrets)
 
 	for _, plugin := range t.pluginRegistry.GetUpstreamPlugins() {
 		if err := plugin.ProcessUpstream(params, upstream, out); err != nil {
-			reports.AddError(upstream, err)
+			logger.Debug("Error processing upstream", zap.String("upstream", upstream.GetMetadata().Ref().String()), zap.Error(err), zap.String("plugin", plugin.Name()))
+			errs = append(errs, err)
 		}
 	}
 	if err := validateCluster(out); err != nil {
-		reports.AddError(upstream, eris.Wrap(err, "cluster was configured improperly by one or more plugins"))
+		logger.Debug("Error validating cluster ", zap.String("upstream", upstream.GetMetadata().Ref().String()), zap.Error(err))
+		errs = append(errs, eris.Wrap(err, "cluster was configured improperly by one or more plugins"))
 	}
-	return out
+	return out, errs
 }
 
 func (t *translatorInstance) initializeCluster(
 	upstream *v1.Upstream,
-	upstreamRefKeyToEndpoints map[string][]*v1.Endpoint,
-	reports reporter.ResourceReports,
+	eds bool,
 	secrets *v1.SecretList,
-	shouldEnforceNamespaceMatch bool,
-) *envoy_config_cluster_v3.Cluster {
-	hcConfig, err := createHealthCheckConfig(upstream, secrets, shouldEnforceNamespaceMatch)
+) (*envoy_config_cluster_v3.Cluster, []error) {
+	var errorList []error
+	hcConfig, err := createHealthCheckConfig(upstream, secrets, t.shouldEnforceNamespaceMatch)
 	if err != nil {
-		reports.AddError(upstream, err)
+		errorList = append(errorList, err)
 	}
 	detectCfg, err := createOutlierDetectionConfig(upstream)
 	if err != nil {
-		reports.AddError(upstream, err)
+		errorList = append(errorList, err)
 	}
 
 	preconnect, err := getPreconnectPolicy(upstream.GetPreconnectPolicy())
 	if err != nil {
-		reports.AddError(upstream, err)
+		errorList = append(errorList, err)
+	}
+	dnsRefreshRate, err := getDnsRefreshRate(upstream)
+	if err != nil {
+		errorList = append(errorList, err)
 	}
 
 	circuitBreakers := t.settings.GetGloo().GetCircuitBreakers()
@@ -107,22 +148,35 @@ func (t *translatorInstance) initializeCluster(
 		LbSubsetConfig:   createLbConfig(upstream),
 		HealthChecks:     hcConfig,
 		OutlierDetection: detectCfg,
-		//defaults to Cluster_USE_CONFIGURED_PROTOCOL
+		// defaults to Cluster_USE_CONFIGURED_PROTOCOL
 		ProtocolSelection: envoy_config_cluster_v3.Cluster_ClusterProtocolSelection(upstream.GetProtocolSelection()),
 		// this field can be overridden by plugins
 		ConnectTimeout:            ptypes.DurationProto(ClusterConnectionTimeout),
 		Http2ProtocolOptions:      getHttp2options(upstream),
 		IgnoreHealthOnHostRemoval: upstream.GetIgnoreHealthOnHostRemoval().GetValue(),
 		RespectDnsTtl:             upstream.GetRespectDnsTtl().GetValue(),
-		DnsRefreshRate:            getDnsRefreshRate(upstream, reports),
+		DnsRefreshRate:            dnsRefreshRate,
 		PreconnectPolicy:          preconnect,
+	}
+	// for kube gateway, use new stats name format
+	if envutils.IsEnvTruthy(constants.GlooGatewayEnableK8sGwControllerEnv) {
+		out.AltStatName = UpstreamToClusterStatsName(upstream)
 	}
 
 	if sslConfig := upstream.GetSslConfig(); sslConfig != nil {
 		applyDefaultsToUpstreamSslConfig(sslConfig, t.settings.GetUpstreamOptions())
 		cfg, err := utils.NewSslConfigTranslator().ResolveUpstreamSslConfig(*secrets, sslConfig)
 		if err != nil {
-			reports.AddError(upstream, err)
+			// if we are configured to warn on missing tls secret and we match that error, add a
+			// warning instead of error to the report.
+			if t.settings.GetGateway().GetValidation().GetWarnMissingTlsSecret().GetValue() &&
+				errors.Is(err, utils.SslSecretNotFoundError) {
+				errorList = append(errorList, &Warning{
+					Message: err.Error(),
+				})
+			} else {
+				errorList = append(errorList, err)
+			}
 		} else {
 			typedConfig, err := utils.MessageToAny(cfg)
 			if err != nil {
@@ -144,17 +198,17 @@ func (t *translatorInstance) initializeCluster(
 
 		tp, err := upstream_proxy_protocol.WrapWithPProtocol(out.GetTransportSocket(), upstream.GetProxyProtocolVersion().GetValue())
 		if err != nil {
-			reports.AddError(upstream, err)
+			errorList = append(errorList, err)
 		} else {
 			out.TransportSocket = tp
 		}
 	}
 
 	// set Type = EDS if we have endpoints for the upstream
-	if eps, ok := upstreamRefKeyToEndpoints[upstream.GetMetadata().Ref().Key()]; ok && len(eps) > 0 {
+	if eds {
 		xds.SetEdsOnCluster(out, t.settings)
 	}
-	return out
+	return out, errorList
 }
 
 var (
@@ -304,7 +358,6 @@ func getCircuitBreakers(cfgs ...*v1.CircuitBreakerConfig) *envoy_config_cluster_
 // it consumes an ordered list of preconnect policies
 // it returns the first non-nil policy
 func getPreconnectPolicy(cfgs ...*v1.PreconnectPolicy) (*envoy_config_cluster_v3.Cluster_PreconnectPolicy, error) {
-
 	// since we dont want strict reliance on envoy's current api
 	// but still able to map as closely as possible
 	// if not nil then convert the gloo configurations to envoy
@@ -330,7 +383,6 @@ func getPreconnectPolicy(cfgs ...*v1.PreconnectPolicy) (*envoy_config_cluster_v3
 			return nil, errors.New("invalid preconnect policy: " + strings.Join(eStrings, "; "))
 		}
 		return &envoy_config_cluster_v3.Cluster_PreconnectPolicy{
-
 			PerUpstreamPreconnectRatio: curConfig.GetPerUpstreamPreconnectRatio(),
 			PredictivePreconnectRatio:  curConfig.GetPredictivePreconnectRatio(),
 		}, nil
@@ -349,18 +401,19 @@ func getHttp2options(us *v1.Upstream) *envoy_config_core_v3.Http2ProtocolOptions
 // - defined and valid: returns the duration
 // - defined and invalid: adds a warning and returns nil
 // - undefined: returns nil
-func getDnsRefreshRate(us *v1.Upstream, reports reporter.ResourceReports) *duration.Duration {
+func getDnsRefreshRate(us *v1.Upstream) (*duration.Duration, error) {
 	refreshRate := us.GetDnsRefreshRate()
 	if refreshRate == nil {
-		return nil
+		return nil, nil
 	}
 
 	if refreshRate.AsDuration() < minimumDnsRefreshRate.AsDuration() {
-		reports.AddWarning(us, fmt.Sprintf("dnsRefreshRate was set below minimum requirement (%s), ignoring configuration", minimumDnsRefreshRate))
-		return nil
+		return nil, &Warning{
+			Message: fmt.Sprintf("dnsRefreshRate was set below minimum requirement (%s), ignoring configuration", minimumDnsRefreshRate),
+		}
 	}
 
-	return refreshRate
+	return refreshRate, nil
 }
 
 // Validates routes that point to the current AWS lambda upstream
@@ -466,7 +519,6 @@ func validateRouteDestinationForValidLambdas(
 			}
 		}
 	}
-
 }
 
 // Apply defaults to UpstreamSslConfig

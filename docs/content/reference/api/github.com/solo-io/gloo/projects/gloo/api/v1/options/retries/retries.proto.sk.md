@@ -1,6 +1,6 @@
 
 ---
-title: "retries.proto"
+title: "Retries"
 weight: 5
 ---
 
@@ -8,7 +8,7 @@ weight: 5
 
 
 ### Package: `retries.options.gloo.solo.io` 
-#### Types:
+**Types:**
 
 
 - [RetryBackOff](#retrybackoff)
@@ -18,7 +18,7 @@ weight: 5
 
 
 
-##### Source File: [github.com/solo-io/gloo/projects/gloo/api/v1/options/retries/retries.proto](https://github.com/solo-io/gloo/blob/main/projects/gloo/api/v1/options/retries/retries.proto)
+**Source File: [github.com/solo-io/gloo/projects/gloo/api/v1/options/retries/retries.proto](https://github.com/solo-io/gloo/blob/main/projects/gloo/api/v1/options/retries/retries.proto)**
 
 
 
@@ -56,6 +56,7 @@ Retry Policy applied at the Route and/or Virtual Hosts levels.
 "perTryTimeout": .google.protobuf.Duration
 "retryBackOff": .retries.options.gloo.solo.io.RetryBackOff
 "previousPriorities": .retries.options.gloo.solo.io.RetryPolicy.PreviousPriorities
+"retriableStatusCodes": []int
 
 ```
 
@@ -66,6 +67,7 @@ Retry Policy applied at the Route and/or Virtual Hosts levels.
 | `perTryTimeout` | [.google.protobuf.Duration](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/duration) | Specifies a non-zero upstream timeout per retry attempt. This parameter is optional. |
 | `retryBackOff` | [.retries.options.gloo.solo.io.RetryBackOff](../retries.proto.sk/#retrybackoff) | Specifies the retry policy interval. |
 | `previousPriorities` | [.retries.options.gloo.solo.io.RetryPolicy.PreviousPriorities](../retries.proto.sk/#previouspriorities) | Specify the previous priorities. For more information about previous priorities, see the [Envoy docs](https://www.envoyproxy.io/docs/envoy/v1.30.1/api-v3/extensions/retry/priority/previous_priorities/v3/previous_priorities_config.proto#envoy-v3-api-file-envoy-extensions-retry-priority-previous-priorities-v3-previous-priorities-config-proto). |
+| `retriableStatusCodes` | `[]int` | Optional: HTTP status codes that should trigger a retry in addition to those specified by retry_on. This can be useful if you want to retry on a status code that is not in the retry_on list. Specifically those in the 4xx range. |
 
 
 

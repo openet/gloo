@@ -14,7 +14,6 @@ import (
 	"github.com/solo-io/gloo/projects/gateway2/api/v1alpha1"
 	"github.com/solo-io/gloo/projects/gateway2/helm"
 	"github.com/solo-io/gloo/projects/gateway2/wellknown"
-	"github.com/solo-io/gloo/projects/gloo/pkg/bootstrap"
 	"golang.org/x/exp/slices"
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
@@ -51,12 +50,24 @@ type Deployer struct {
 	inputs *Inputs
 }
 
+type ControlPlaneInfo struct {
+	XdsHost string
+	XdsPort int32
+}
+
+type AwsInfo struct {
+	EnableServiceAccountCredentials bool
+	StsClusterName                  string
+	StsUri                          string
+}
+
 // Inputs is the set of options used to configure the gateway deployer deployment
 type Inputs struct {
-	ControllerName string
-	Dev            bool
-	IstioValues    bootstrap.IstioValues
-	ControlPlane   bootstrap.ControlPlane
+	ControllerName          string
+	Dev                     bool
+	IstioIntegrationEnabled bool
+	ControlPlane            ControlPlaneInfo
+	Aws                     *AwsInfo
 }
 
 // NewDeployer creates a new gateway deployer
@@ -255,8 +266,8 @@ func (d *Deployer) getValues(gw *api.Gateway, gwParam *v1alpha1.GatewayParameter
 			Xds: &helmXds{
 				// The xds host/port MUST map to the Service definition for the Control Plane
 				// This is the socket address that the Proxy will connect to on startup, to receive xds updates
-				Host: &d.inputs.ControlPlane.Kube.XdsHost,
-				Port: &d.inputs.ControlPlane.Kube.XdsPort,
+				Host: &d.inputs.ControlPlane.XdsHost,
+				Port: &d.inputs.ControlPlane.XdsPort,
 			},
 		},
 	}
@@ -271,7 +282,7 @@ func (d *Deployer) getValues(gw *api.Gateway, gwParam *v1alpha1.GatewayParameter
 	// need to be plumbed through here as well)
 
 	// Apply the floating user ID if it is set
-	if gwParam.Spec.Kube.FloatingUserId != nil && *gwParam.Spec.Kube.FloatingUserId {
+	if gwParam.Spec.Kube.GetFloatingUserId() != nil && *gwParam.Spec.Kube.GetFloatingUserId() {
 		applyFloatingUserId(gwParam.Spec.Kube)
 	}
 
@@ -280,6 +291,7 @@ func (d *Deployer) getValues(gw *api.Gateway, gwParam *v1alpha1.GatewayParameter
 	podConfig := kubeProxyConfig.GetPodTemplate()
 	envoyContainerConfig := kubeProxyConfig.GetEnvoyContainer()
 	svcConfig := kubeProxyConfig.GetService()
+	svcAccountConfig := kubeProxyConfig.GetServiceAccount()
 	istioConfig := kubeProxyConfig.GetIstio()
 
 	sdsContainerConfig := kubeProxyConfig.GetSdsContainer()
@@ -304,6 +316,8 @@ func (d *Deployer) getValues(gw *api.Gateway, gwParam *v1alpha1.GatewayParameter
 
 	// service values
 	gateway.Service = getServiceValues(svcConfig)
+	// serviceaccount values
+	gateway.ServiceAccount = getServiceAccountValues(svcAccountConfig)
 	// pod template values
 	gateway.ExtraPodAnnotations = podConfig.GetExtraAnnotations()
 	gateway.ExtraPodLabels = podConfig.GetExtraLabels()
@@ -312,6 +326,10 @@ func (d *Deployer) getValues(gw *api.Gateway, gwParam *v1alpha1.GatewayParameter
 	gateway.NodeSelector = podConfig.GetNodeSelector()
 	gateway.Affinity = podConfig.GetAffinity()
 	gateway.Tolerations = podConfig.GetTolerations()
+	gateway.ReadinessProbe = podConfig.GetReadinessProbe()
+	gateway.LivenessProbe = podConfig.GetLivenessProbe()
+	gateway.GracefulShutdown = podConfig.GetGracefulShutdown()
+	gateway.TerminationGracePeriodSeconds = podConfig.GetTerminationGracePeriodSeconds()
 
 	// envoy container values
 	logLevel := envoyContainerConfig.GetBootstrap().GetLogLevel()
@@ -328,10 +346,18 @@ func (d *Deployer) getValues(gw *api.Gateway, gwParam *v1alpha1.GatewayParameter
 	gateway.Image = getImageValues(envoyContainerConfig.GetImage())
 
 	// istio values
-	gateway.Istio = getIstioValues(d.inputs.IstioValues, istioConfig)
+	gateway.Istio = getIstioValues(d.inputs.IstioIntegrationEnabled, istioConfig)
 	gateway.SdsContainer = getSdsContainerValues(sdsContainerConfig)
 	gateway.IstioContainer = getIstioContainerValues(istioContainerConfig)
-	gateway.AIExtension = getAIExtensionValues(aiExtensionConfig)
+
+	// aws values
+	gateway.Aws = getAwsValues(d.inputs.Aws)
+
+	// ai values
+	gateway.AIExtension, err = getAIExtensionValues(aiExtensionConfig)
+	if err != nil {
+		return nil, err
+	}
 
 	gateway.Stats = getStatsValues(statsConfig)
 

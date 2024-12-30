@@ -13,9 +13,9 @@ import (
 	"github.com/solo-io/protoc-gen-ext/pkg/clone"
 	"google.golang.org/protobuf/proto"
 
-	github_com_golang_protobuf_ptypes_wrappers "github.com/golang/protobuf/ptypes/wrappers"
-
 	github_com_solo_io_solo_kit_pkg_api_external_envoy_api_v2_core "github.com/solo-io/solo-kit/pkg/api/external/envoy/api/v2/core"
+
+	google_golang_org_protobuf_types_known_wrapperspb "google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 // ensure the imports are used
@@ -85,6 +85,39 @@ func (m *HeaderManipulation) Clone() proto.Message {
 }
 
 // Clone function
+func (m *EarlyHeaderManipulation) Clone() proto.Message {
+	var target *EarlyHeaderManipulation
+	if m == nil {
+		return target
+	}
+	target = &EarlyHeaderManipulation{}
+
+	if m.GetHeadersToAdd() != nil {
+		target.HeadersToAdd = make([]*github_com_solo_io_solo_kit_pkg_api_external_envoy_api_v2_core.HeaderValueOption, len(m.GetHeadersToAdd()))
+		for idx, v := range m.GetHeadersToAdd() {
+
+			if h, ok := interface{}(v).(clone.Cloner); ok {
+				target.HeadersToAdd[idx] = h.Clone().(*github_com_solo_io_solo_kit_pkg_api_external_envoy_api_v2_core.HeaderValueOption)
+			} else {
+				target.HeadersToAdd[idx] = proto.Clone(v).(*github_com_solo_io_solo_kit_pkg_api_external_envoy_api_v2_core.HeaderValueOption)
+			}
+
+		}
+	}
+
+	if m.GetHeadersToRemove() != nil {
+		target.HeadersToRemove = make([]string, len(m.GetHeadersToRemove()))
+		for idx, v := range m.GetHeadersToRemove() {
+
+			target.HeadersToRemove[idx] = v
+
+		}
+	}
+
+	return target
+}
+
+// Clone function
 func (m *HeaderValueOption) Clone() proto.Message {
 	var target *HeaderValueOption
 	if m == nil {
@@ -99,9 +132,9 @@ func (m *HeaderValueOption) Clone() proto.Message {
 	}
 
 	if h, ok := interface{}(m.GetAppend()).(clone.Cloner); ok {
-		target.Append = h.Clone().(*github_com_golang_protobuf_ptypes_wrappers.BoolValue)
+		target.Append = h.Clone().(*google_golang_org_protobuf_types_known_wrapperspb.BoolValue)
 	} else {
-		target.Append = proto.Clone(m.GetAppend()).(*github_com_golang_protobuf_ptypes_wrappers.BoolValue)
+		target.Append = proto.Clone(m.GetAppend()).(*google_golang_org_protobuf_types_known_wrapperspb.BoolValue)
 	}
 
 	return target

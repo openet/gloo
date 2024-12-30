@@ -26,6 +26,10 @@ var (
 )
 
 // Hash function
+//
+// Deprecated: due to hashing implemention only using field values. The omission
+// of the field name in the hash calculation can lead to hash collisions.
+// Prefer the HashUnique function instead.
 func (m *HttpConnectionManagerSettings) Hash(hasher hash.Hash64) (uint64, error) {
 	if m == nil {
 		return 0, nil
@@ -727,6 +731,26 @@ func (m *HttpConnectionManagerSettings) Hash(hasher hash.Hash64) (uint64, error)
 		}
 	}
 
+	if h, ok := interface{}(m.GetEarlyHeaderManipulation()).(safe_hasher.SafeHasher); ok {
+		if _, err = hasher.Write([]byte("EarlyHeaderManipulation")); err != nil {
+			return 0, err
+		}
+		if _, err = h.Hash(hasher); err != nil {
+			return 0, err
+		}
+	} else {
+		if fieldValue, err := hashstructure.Hash(m.GetEarlyHeaderManipulation(), nil); err != nil {
+			return 0, err
+		} else {
+			if _, err = hasher.Write([]byte("EarlyHeaderManipulation")); err != nil {
+				return 0, err
+			}
+			if err := binary.Write(hasher, binary.LittleEndian, fieldValue); err != nil {
+				return 0, err
+			}
+		}
+	}
+
 	switch m.HeaderFormat.(type) {
 
 	case *HttpConnectionManagerSettings_ProperCaseHeaderKeyFormat:
@@ -779,6 +803,10 @@ func (m *HttpConnectionManagerSettings) Hash(hasher hash.Hash64) (uint64, error)
 }
 
 // Hash function
+//
+// Deprecated: due to hashing implemention only using field values. The omission
+// of the field name in the hash calculation can lead to hash collisions.
+// Prefer the HashUnique function instead.
 func (m *HttpConnectionManagerSettings_SetCurrentClientCertDetails) Hash(hasher hash.Hash64) (uint64, error) {
 	if m == nil {
 		return 0, nil
@@ -895,6 +923,10 @@ func (m *HttpConnectionManagerSettings_SetCurrentClientCertDetails) Hash(hasher 
 }
 
 // Hash function
+//
+// Deprecated: due to hashing implemention only using field values. The omission
+// of the field name in the hash calculation can lead to hash collisions.
+// Prefer the HashUnique function instead.
 func (m *HttpConnectionManagerSettings_UuidRequestIdConfigSettings) Hash(hasher hash.Hash64) (uint64, error) {
 	if m == nil {
 		return 0, nil
@@ -951,6 +983,10 @@ func (m *HttpConnectionManagerSettings_UuidRequestIdConfigSettings) Hash(hasher 
 }
 
 // Hash function
+//
+// Deprecated: due to hashing implemention only using field values. The omission
+// of the field name in the hash calculation can lead to hash collisions.
+// Prefer the HashUnique function instead.
 func (m *HttpConnectionManagerSettings_CidrRange) Hash(hasher hash.Hash64) (uint64, error) {
 	if m == nil {
 		return 0, nil
@@ -991,6 +1027,10 @@ func (m *HttpConnectionManagerSettings_CidrRange) Hash(hasher hash.Hash64) (uint
 }
 
 // Hash function
+//
+// Deprecated: due to hashing implemention only using field values. The omission
+// of the field name in the hash calculation can lead to hash collisions.
+// Prefer the HashUnique function instead.
 func (m *HttpConnectionManagerSettings_InternalAddressConfig) Hash(hasher hash.Hash64) (uint64, error) {
 	if m == nil {
 		return 0, nil

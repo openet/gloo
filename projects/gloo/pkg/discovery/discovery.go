@@ -44,7 +44,6 @@ type UpstreamDiscovery struct {
 	discoveryPlugins       []DiscoveryPlugin
 	lock                   sync.Mutex
 	latestDesiredUpstreams map[DiscoveryPlugin]v1.UpstreamList
-	extraSelectorLabels    map[string]string
 }
 
 type EndpointDiscovery struct {
@@ -95,7 +94,7 @@ func NewUpstreamDiscovery(
 // launch a goroutine for all the UDS plugins
 func (d *UpstreamDiscovery) StartUds(opts clients.WatchOpts, discOpts Opts) (chan error, error) {
 	aggregatedErrs := make(chan error)
-	d.extraSelectorLabels = opts.Selector
+
 	for _, uds := range d.discoveryPlugins {
 		upstreams, errs, err := uds.DiscoverUpstreams(d.watchNamespaces, d.writeNamespace, opts, discOpts)
 		if err != nil {
@@ -136,12 +135,14 @@ func (d *UpstreamDiscovery) Resync(ctx context.Context) error {
 	for uds, desiredUpstreams := range d.latestDesiredUpstreams {
 		udsName := strings.Replace(reflect.TypeOf(uds).String(), "*", "", -1)
 		udsName = strings.Replace(udsName, ".", "", -1)
+
+		// selecting on the discovery plugin label will get all Upstreams created by Discovery
+		// there is no need to select on watchLabels as these are not present on Upstream metadata, nor are they
+		// necessary to identify Upstreams that may need to be resynced
 		selector := map[string]string{
 			"discovered_by": udsName,
 		}
-		for k, v := range d.extraSelectorLabels {
-			selector[k] = v
-		}
+
 		logger.Debugw("reconciling upstream details", zap.Any("upstreams", desiredUpstreams))
 		if err := d.upstreamReconciler.Reconcile(d.writeNamespace, desiredUpstreams, uds.UpdateUpstream, clients.ListOpts{
 			Ctx:      ctx,
@@ -169,7 +170,7 @@ func setLabels(udsName string, upstreamList v1.UpstreamList) v1.UpstreamList {
 	return clone
 }
 
-// launch a goroutine for all the UDS plugins with a single cancel to close them all
+// launch a goroutine for all the EDS plugins with a single cancel to close them all
 func (d *EndpointDiscovery) StartEds(upstreamsToTrack v1.UpstreamList, opts clients.WatchOpts) (chan error, error) {
 	aggregatedErrs := make(chan error)
 	logger := contextutils.LoggerFrom(opts.Ctx)
@@ -233,9 +234,9 @@ func (d *EndpointDiscovery) Ready() <-chan struct{} {
 	return d.ready
 }
 
-func aggregateEndpoints(endpointsByUds map[DiscoveryPlugin]v1.EndpointList) v1.EndpointList {
+func aggregateEndpoints(endpointsByEds map[DiscoveryPlugin]v1.EndpointList) v1.EndpointList {
 	var endpoints v1.EndpointList
-	for _, endpointList := range endpointsByUds {
+	for _, endpointList := range endpointsByEds {
 		endpoints = append(endpoints, endpointList...)
 	}
 	sort.SliceStable(endpoints, func(i, j int) bool {

@@ -5,10 +5,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// +kubebuilder:rbac:groups=gateway.gloo.solo.io,resources=gatewayparameters,verbs=get;list;watch
+// +kubebuilder:rbac:groups=gateway.gloo.solo.io,resources=gatewayparameters/status,verbs=get;update;patch
+
 // A GatewayParameters contains configuration that is used to dynamically
 // provision Gloo Gateway's data plane (Envoy proxy instance), based on a
 // Kubernetes Gateway.
 //
+// +genclient
 // +kubebuilder:object:root=true
 // +kubebuilder:metadata:labels={app=gloo-gateway,app.kubernetes.io/name=gloo-gateway}
 // +kubebuilder:resource:categories=gloo-gateway,shortName=gwp
@@ -82,6 +86,11 @@ type KubernetesProxyConfig struct {
 	// +kubebuilder:validation:Optional
 	Service *Service `json:"service,omitempty"`
 
+	// Configuration for the Kubernetes ServiceAccount used by the Envoy pod.
+	//
+	// +kubebuilder:validation:Optional
+	ServiceAccount *ServiceAccount `json:"serviceAccount,omitempty"`
+
 	// Configuration for the Istio integration.
 	//
 	// +kubebuilder:validation:Optional
@@ -134,6 +143,13 @@ func (in *KubernetesProxyConfig) GetService() *Service {
 		return nil
 	}
 	return in.Service
+}
+
+func (in *KubernetesProxyConfig) GetServiceAccount() *ServiceAccount {
+	if in == nil {
+		return nil
+	}
+	return in.ServiceAccount
 }
 
 func (in *KubernetesProxyConfig) GetIstio() *IstioIntegration {
@@ -372,10 +388,11 @@ type IstioIntegration struct {
 	// +kubebuilder:validation:Optional
 	IstioProxyContainer *IstioContainer `json:"istioProxyContainer,omitempty"`
 
+	// do not use slice of pointers: https://github.com/kubernetes/code-generator/issues/166
 	// Override the default Istio sidecar in gateway-proxy with a custom container.
 	//
 	// +kubebuilder:validation:Optional
-	CustomSidecars []*corev1.Container `json:"customSidecars,omitempty"`
+	CustomSidecars []corev1.Container `json:"customSidecars,omitempty"`
 }
 
 func (in *IstioIntegration) GetIstioProxyContainer() *IstioContainer {
@@ -385,7 +402,7 @@ func (in *IstioIntegration) GetIstioProxyContainer() *IstioContainer {
 	return in.IstioProxyContainer
 }
 
-func (in *IstioIntegration) GetCustomSidecars() []*corev1.Container {
+func (in *IstioIntegration) GetCustomSidecars() []corev1.Container {
 	if in == nil {
 		return nil
 	}
@@ -565,15 +582,34 @@ type AiExtension struct {
 	// +kubebuilder:validation:Optional
 	Resources *corev1.ResourceRequirements `json:"resources,omitempty"`
 
+	// do not use slice of pointers: https://github.com/kubernetes/code-generator/issues/166
+
 	// The extension's container environment variables.
 	//
 	// +kubebuilder:validation:Optional
-	Env []*corev1.EnvVar `json:"env,omitempty"`
+	Env []corev1.EnvVar `json:"env,omitempty"`
 
 	// The extensions's container ports.
 	//
 	// +kubebuilder:validation:Optional
-	Ports []*corev1.ContainerPort `json:"ports,omitempty"`
+	Ports []corev1.ContainerPort `json:"ports,omitempty"`
+
+	// Additional stats config for AI Extension.
+	// This config can be useful for adding custom labels to the request metrics.
+	// +optional
+	//
+	// Example:
+	// ```yaml
+	// stats:
+	//   customLabels:
+	//     - name: "subject"
+	//       metadataNamespace: "envoy.filters.http.jwt_authn"
+	//       metadataKey: "principal:sub"
+	//     - name: "issuer"
+	//       metadataNamespace: "envoy.filters.http.jwt_authn"
+	//       metadataKey: "principal:iss"
+	// ```
+	Stats *AiExtensionStats `json:"stats,omitempty"`
 }
 
 func (in *AiExtension) GetEnabled() *bool {
@@ -604,20 +640,95 @@ func (in *AiExtension) GetResources() *corev1.ResourceRequirements {
 	return in.Resources
 }
 
-func (in *AiExtension) GetEnv() []*corev1.EnvVar {
+func (in *AiExtension) GetEnv() []corev1.EnvVar {
 	if in == nil {
 		return nil
 	}
 	return in.Env
 }
 
-func (in *AiExtension) GetPorts() []*corev1.ContainerPort {
+func (in *AiExtension) GetPorts() []corev1.ContainerPort {
 	if in == nil {
 		return nil
 	}
 	return in.Ports
 }
 
-func init() {
-	SchemeBuilder.Register(&GatewayParameters{}, &GatewayParametersList{})
+func (in *AiExtension) GetStats() *AiExtensionStats {
+	if in == nil {
+		return nil
+	}
+	return in.Stats
+}
+
+type AiExtensionStats struct {
+	// Set of custom labels to be added to the request metrics.
+	// These will be added on each request which goes through the AI Extension.
+	// +optional
+	CustomLabels []*CustomLabel `json:"customLabels,omitempty"`
+}
+
+func (in *AiExtensionStats) GetCustomLabels() []*CustomLabel {
+	if in == nil {
+		return nil
+	}
+	return in.CustomLabels
+}
+
+type CustomLabel struct {
+	// Name of the label to use in the prometheus metrics
+	//
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+
+	// The dynamic metadata namespace to get the data from. If not specified, the default namespace will be
+	// the envoy JWT filter namespace.
+	// This can also be used in combination with early_transformations to insert custom data.
+	// +optional
+	//
+	// +kubebuilder:validation:Enum=envoy.filters.http.jwt_authn;io.solo.transformation
+	MetadataNamespace *string `json:"metadataNamespace,omitempty"`
+
+	// The key to use to get the data from the metadata namespace.
+	// If using a JWT data please see the following envoy docs: https://www.envoyproxy.io/docs/envoy/latest/api-v3/extensions/filters/http/jwt_authn/v3/config.proto#envoy-v3-api-field-extensions-filters-http-jwt-authn-v3-jwtprovider-payload-in-metadata
+	// This key follows the same format as the envoy access logging for dynamic metadata.
+	// Examples can be found here: https://www.envoyproxy.io/docs/envoy/latest/configuration/observability/access_log/usage
+	//
+	// +kubebuilder:validation:MinLength=1
+	MetdataKey string `json:"metadataKey"`
+
+	// The key delimiter to use, by default this is set to `:`.
+	// This allows for keys with `.` in them to be used.
+	// For example, if you have keys in your path with `:` in them, (e.g. `key1:key2:value`)
+	// you can instead set this to `~` to be able to split those keys properly.
+	// +optional
+	KeyDelimiter *string `json:"keyDelimiter,omitempty"`
+}
+
+func (in *CustomLabel) GetName() string {
+	if in == nil {
+		return ""
+	}
+	return in.Name
+}
+
+func (in *CustomLabel) GetMetadataNamespace() *string {
+	if in == nil {
+		return nil
+	}
+	return in.MetadataNamespace
+}
+
+func (in *CustomLabel) GetMetdataKey() string {
+	if in == nil {
+		return ""
+	}
+	return in.MetdataKey
+}
+
+func (in *CustomLabel) GetKeyDelimiter() *string {
+	if in == nil {
+		return nil
+	}
+	return in.KeyDelimiter
 }

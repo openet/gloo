@@ -1,6 +1,6 @@
 
 ---
-title: "tap.proto"
+title: "Tap"
 weight: 5
 ---
 
@@ -8,7 +8,7 @@ weight: 5
 
 
 ### Package: `tap.options.gloo.solo.io` 
-#### Types:
+**Types:**
 
 
 - [Tap](#tap)
@@ -19,7 +19,7 @@ weight: 5
 
 
 
-##### Source File: [github.com/solo-io/gloo/projects/gloo/api/v1/enterprise/options/tap/tap.proto](https://github.com/solo-io/gloo/blob/main/projects/gloo/api/v1/enterprise/options/tap/tap.proto)
+**Source File: [github.com/solo-io/gloo/projects/gloo/api/v1/enterprise/options/tap/tap.proto](https://github.com/solo-io/gloo/blob/main/projects/gloo/api/v1/enterprise/options/tap/tap.proto)**
 
 
 
@@ -36,12 +36,20 @@ HTTP or GRPC.
 
 ```yaml
 "sinks": []tap.options.gloo.solo.io.Sink
+"maxBufferedRxBytes": .google.protobuf.UInt32Value
+"maxBufferedTxBytes": .google.protobuf.UInt32Value
+"recordHeadersReceivedTime": .google.protobuf.BoolValue
+"recordDownstreamConnection": .google.protobuf.BoolValue
 
 ```
 
 | Field | Type | Description |
 | ----- | ---- | ----------- | 
 | `sinks` | [[]tap.options.gloo.solo.io.Sink](../tap.proto.sk/#sink) | Sinks to which tap data should be output. Currently, only a single sink is supported. |
+| `maxBufferedRxBytes` | [.google.protobuf.UInt32Value](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/u-int-32-value) | For buffered tapping, the maximum amount of received body that will be buffered prior to truncation. If truncation occurs, the truncated field will be set. If not specified, the default is 1KiB. |
+| `maxBufferedTxBytes` | [.google.protobuf.UInt32Value](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/u-int-32-value) | For buffered tapping, the maximum amount of transmitted body that will be buffered prior to truncation. If truncation occurs, the truncated field will be set. If not specified, the default is 1KiB. |
+| `recordHeadersReceivedTime` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Indicates whether tap filter records the time stamp for request/response headers. Request headers time stamp is stored after receiving request headers. Response headers time stamp is stored after receiving response headers. |
+| `recordDownstreamConnection` | [.google.protobuf.BoolValue](https://developers.google.com/protocol-buffers/docs/reference/csharp/class/google/protobuf/well-known-types/bool-value) | Indicates whether report downstream connection info. |
 
 
 

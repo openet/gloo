@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 
 	envoy_config_cluster_v3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	envoy_config_core_v3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
@@ -123,6 +124,8 @@ var _ = Describe("Translator", func() {
 					//	"Invalid type URL, unknown type: envoy.api.v2.filter.http.RouteTransformations for type Any)"
 					// We do not perform transformation validation as part of our translator tests, so we explicitly disable this
 					DisableTransformationValidation: &wrappers.BoolValue{Value: true},
+					// We set this value as it is defaulted on via helm
+					WarnMissingTlsSecret: &wrappers.BoolValue{Value: true},
 				},
 			},
 		}
@@ -137,7 +140,7 @@ var _ = Describe("Translator", func() {
 				ConsulWatcher: mock_consul.NewMockConsulWatcher(ctrl), // just needed to activate the consul plugin
 			},
 		}
-		registeredPlugins = registry.Plugins(opts)
+		registeredPlugins = registry.Plugins(registry.FromBootstrap(opts))
 
 		upName = &core.Metadata{
 			Name:      "test",
@@ -620,7 +623,7 @@ var _ = Describe("Translator", func() {
 			translate()
 			fooRoute := routeConfiguration.VirtualHosts[0].Routes[0]
 			Expect(fooRoute.Match.GetPrefix()).To(Equal("/foo"))
-			Expect(fooRoute.Match.CaseSensitive.Value).To(BeTrue())
+			Expect(fooRoute.Match.CaseSensitive.GetValue()).To(BeTrue())
 		})
 
 		It("should translate path matcher with case insensitive", func() {
@@ -636,7 +639,7 @@ var _ = Describe("Translator", func() {
 			translate()
 			fooRoute := routeConfiguration.VirtualHosts[0].Routes[0]
 			Expect(fooRoute.Match.GetPrefix()).To(Equal("/foo"))
-			Expect(fooRoute.Match.CaseSensitive).To(Equal(&wrappers.BoolValue{Value: false}))
+			Expect(fooRoute.Match.CaseSensitive.GetValue()).To(BeFalse())
 		})
 
 		It("should translate path matcher with regex rewrite on redirectAction", func() {
@@ -690,7 +693,7 @@ var _ = Describe("Translator", func() {
 			actualRegexRedirect := envoyRoute.Action.(*envoy_config_route_v3.Route_Redirect).Redirect.GetRegexRewrite()
 			Expect(actualRegexRedirect.Pattern.Regex).To(Equal(expectedRedirectAction.Redirect.GetRegexRewrite().Pattern.Regex))
 			Expect(actualRegexRedirect.Substitution).To(Equal(expectedRedirectAction.Redirect.GetRegexRewrite().Substitution))
-			Expect(envoyRoute.Match.CaseSensitive).To(Equal(&wrappers.BoolValue{Value: false}))
+			Expect(envoyRoute.Match.CaseSensitive.GetValue()).To(BeFalse())
 		})
 	})
 
@@ -962,7 +965,7 @@ var _ = Describe("Translator", func() {
 				},
 				Options: options,
 			}
-			directResponseRoute := &v1.Route{
+			directResponse := &v1.Route{
 				Action: &v1.Route_DirectResponseAction{
 					DirectResponseAction: &v1.DirectResponseAction{
 						Status: 400,
@@ -970,7 +973,7 @@ var _ = Describe("Translator", func() {
 				},
 				Options: options,
 			}
-			routes = []*v1.Route{redirectRoute, directResponseRoute}
+			routes = []*v1.Route{redirectRoute, directResponse}
 		})
 
 		It("can process routeOptions properly", func() {
@@ -1394,6 +1397,12 @@ var _ = Describe("Translator", func() {
 				upstream.GetHealthChecks()[0].GetGrpcHealthCheck().InitialMetadata = upstreamHeaders
 				upstream.GetHealthChecks()[0].GetGrpcHealthCheck().InitialMetadata[0].GetHeaderSecretRef().Namespace = secretNamespace
 
+				// changed env var, re-create translator
+				translator = NewTranslatorWithHasher(
+					glooutils.NewSslConfigTranslator(),
+					settings,
+					registry.NewPluginRegistry(registeredPlugins),
+					EnvoyCacheResourcesListToFnvHash)
 				translate(expectError)
 			},
 				Entry("Matching not enforced and namespaces don't match", "false", "bar", false),
@@ -2855,8 +2864,9 @@ var _ = Describe("Translator", func() {
 			}}
 
 			_, errs, _ := translator.Translate(params, proxyClone)
-			Expect(errs.Validate()).To(HaveOccurred())
-			Expect(errs.Validate().Error()).To(ContainSubstring("Listener Error: SSLConfigError. Reason: SSL secret not found: list did not find secret"))
+			resultantErr := errs.ValidateStrict()
+			Expect(resultantErr).To(HaveOccurred())
+			Expect(resultantErr.Error()).To(ContainSubstring("Listener Warning: SSLConfigWarning. Reason: SSL secret not found: list did not find secret"))
 		})
 	})
 
@@ -3008,7 +3018,7 @@ var _ = Describe("Translator", func() {
 							},
 						},
 					}
-					registeredPlugins = registry.Plugins(opts)
+					registeredPlugins = registry.Plugins(registry.FromBootstrap(opts))
 
 					pluginRegistry := registry.NewPluginRegistry(registeredPlugins)
 					translator = NewTranslatorWithHasher(
@@ -3045,7 +3055,7 @@ var _ = Describe("Translator", func() {
 							},
 						},
 					}
-					registeredPlugins = registry.Plugins(opts)
+					registeredPlugins = registry.Plugins(registry.FromBootstrap(opts))
 					pluginRegistry := registry.NewPluginRegistry(registeredPlugins)
 					translator = NewTranslatorWithHasher(
 						glooutils.NewSslConfigTranslator(),
@@ -3079,7 +3089,7 @@ var _ = Describe("Translator", func() {
 							},
 						},
 					}
-					registeredPlugins = registry.Plugins(opts)
+					registeredPlugins = registry.Plugins(registry.FromBootstrap(opts))
 					pluginRegistry := registry.NewPluginRegistry(registeredPlugins)
 					translator = NewTranslatorWithHasher(
 						glooutils.NewSslConfigTranslator(),
@@ -3918,6 +3928,49 @@ var _ = Describe("Translator", func() {
 		})
 	})
 
+	Context("Aggregate Listeners", func() {
+
+		It("should translate empty aggragate listener", func() {
+
+			proxy = &v1.Proxy{
+				Metadata: &core.Metadata{
+					Name:      "test",
+					Namespace: "gloo-system",
+				},
+				Listeners: []*v1.Listener{
+					{
+						BindAddress: "::",
+						BindPort:    8080,
+						Name:        "http",
+						ListenerType: &v1.Listener_AggregateListener{
+							AggregateListener: &v1.AggregateListener{
+								HttpResources: &v1.AggregateListener_HttpResources{},
+								HttpFilterChains: []*v1.AggregateListener_HttpFilterChain{
+									{
+										Matcher: &v1.Matcher{},
+									},
+								},
+							},
+						},
+					},
+				},
+			}
+			snap, errs, report := translator.Translate(params, proxy)
+			Expect(errs.Validate()).NotTo(HaveOccurred())
+			Expect(snap).NotTo(BeNil())
+			Expect(report).To(Equal(validationutils.MakeReport(proxy)))
+
+			Expect(snap.GetResources(types.ListenerTypeV3).Items).To(BeEmpty())
+			// NOTE: the below assertions should be correct, but not:
+			// see: https://github.com/solo-io/solo-projects/issues/7328
+			//			Expect(snap.GetResources(types.ListenerTypeV3).Items).To(HaveKey("http"))
+			//
+			//			lis := snap.GetResources(types.ListenerTypeV3).Items["http"].ResourceProto().(*listenerv3.Listener)
+			//			Expect(lis).NotTo(BeNil())
+
+		})
+
+	})
 	Context("Custom filters", func() {
 		It("http", func() {
 			hybridListener := proxy.Listeners[2]
@@ -3949,7 +4002,7 @@ var _ = Describe("Translator", func() {
 			lis := snapshot.GetResources(types.ListenerTypeV3).Items["hybrid-listener"].ResourceProto().(*listenerv3.Listener)
 			fc := lis.FilterChains[1]
 
-			Expect(fc.Filters).To(ContainElements(MatchPublicFields(&listenerv3.Filter{
+			Expect(fc.Filters).To(ContainMatches(1, MatchPublicFields(&listenerv3.Filter{
 				Name: "my-custom-filter",
 				ConfigType: &listenerv3.Filter_TypedConfig{
 					TypedConfig: &anypb.Any{
@@ -3969,7 +4022,7 @@ var _ = Describe("Translator", func() {
 				}
 			}
 			Expect(found).To(BeTrue(), "HttpConnectionManager to be found")
-			Expect(hcm.GetHttpFilters()).To(ContainElements(MatchPublicFields(&envoyhttp.HttpFilter{
+			Expect(hcm.GetHttpFilters()).To(ContainMatches(1, MatchPublicFields(&envoyhttp.HttpFilter{
 				Name: "my-custom-http-filter",
 				ConfigType: &envoyhttp.HttpFilter_TypedConfig{
 					TypedConfig: &anypb.Any{
@@ -3995,7 +4048,7 @@ var _ = Describe("Translator", func() {
 			}}
 			translate()
 			lis := snapshot.GetResources(types.ListenerTypeV3).Items["hybrid-listener"].ResourceProto().(*listenerv3.Listener)
-			Expect(lis.FilterChains[0].Filters).To(ContainElements(MatchPublicFields(&listenerv3.Filter{
+			Expect(lis.FilterChains[0].Filters).To(ContainMatches(1, MatchPublicFields(&listenerv3.Filter{
 				Name: "my-custom-filter",
 				ConfigType: &listenerv3.Filter_TypedConfig{
 					TypedConfig: &anypb.Any{
@@ -4115,4 +4168,43 @@ func createMultiActionRoute(routeName string, matcher *matchers.Matcher, destina
 
 func asDouble(v float64) *wrappers.DoubleValue {
 	return &wrappers.DoubleValue{Value: v}
+}
+
+// ContainMatches checks if the inner matcher matches exactly count items in a slice.
+// This will fail for arrays and maps, unless support is added below.
+func ContainMatches(count int, inner gomega_types.GomegaMatcher) gomega_types.GomegaMatcher {
+	return &matchContainsCount{count: count, inner: inner}
+}
+
+type matchContainsCount struct {
+	// inputs
+	count int
+	inner gomega_types.GomegaMatcher
+
+	// state
+	matched int
+}
+
+func (m *matchContainsCount) FailureMessage(actual interface{}) (message string) {
+	return fmt.Sprintf("expected %d matches but got %d", m.count, m.matched)
+}
+
+func (m *matchContainsCount) NegatedFailureMessage(actual interface{}) (message string) {
+	return fmt.Sprintf("expected not to have %d matches but got %d", m.count, m.matched)
+}
+
+func (m *matchContainsCount) Match(actual interface{}) (success bool, err error) {
+	if reflect.TypeOf(actual).Kind() != reflect.Slice {
+		return false, fmt.Errorf("expected a slice  but got %T", actual)
+	}
+	matched := 0
+	value := reflect.ValueOf(actual)
+	for i := 0; i < value.Len(); i++ {
+		el := value.Index(i).Interface()
+		if ok, err := m.inner.Match(el); ok && err == nil {
+			matched++
+		}
+	}
+	m.matched = matched
+	return m.matched == m.count, nil
 }

@@ -1,16 +1,20 @@
 package reports
 
 import (
+	"context"
+
+	"github.com/solo-io/go-utils/contextutils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gwv1alpha2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
 type ReportMap struct {
-	gateways map[types.NamespacedName]*GatewayReport
-	routes   map[types.NamespacedName]*RouteReport
+	Gateways   map[types.NamespacedName]*GatewayReport
+	HTTPRoutes map[types.NamespacedName]*RouteReport
+	TCPRoutes  map[types.NamespacedName]*RouteReport
 }
 
 type GatewayReport struct {
@@ -24,7 +28,7 @@ type ListenerReport struct {
 }
 
 type RouteReport struct {
-	parents            map[ParentRefKey]*ParentRefReport
+	Parents            map[ParentRefKey]*ParentRefReport
 	observedGeneration int64
 }
 
@@ -41,11 +45,17 @@ type ParentRefKey struct {
 
 func NewReportMap() ReportMap {
 	gr := make(map[types.NamespacedName]*GatewayReport)
-	rr := make(map[types.NamespacedName]*RouteReport)
+	hr := make(map[types.NamespacedName]*RouteReport)
+	tr := make(map[types.NamespacedName]*RouteReport)
 	return ReportMap{
-		gateways: gr,
-		routes:   rr,
+		Gateways:   gr,
+		HTTPRoutes: hr,
+		TCPRoutes:  tr,
 	}
+}
+
+func key(obj metav1.Object) types.NamespacedName {
+	return types.NamespacedName{Namespace: obj.GetNamespace(), Name: obj.GetName()}
 }
 
 // Returns a GatewayReport for the provided Gateway, nil if there is not a report present.
@@ -54,47 +64,79 @@ func NewReportMap() ReportMap {
 //
 // NOTE: Exported for unit testing, validation_test.go should be refactored to reduce this visibility
 func (r *ReportMap) Gateway(gateway *gwv1.Gateway) *GatewayReport {
-	key := client.ObjectKeyFromObject(gateway)
-	return r.gateways[key]
+	key := key(gateway)
+	return r.Gateways[key]
 }
 
 func (r *ReportMap) newGatewayReport(gateway *gwv1.Gateway) *GatewayReport {
 	gr := &GatewayReport{}
 	gr.observedGeneration = gateway.Generation
-	key := client.ObjectKeyFromObject(gateway)
-	r.gateways[key] = gr
+	key := key(gateway)
+	r.Gateways[key] = gr
 	return gr
 }
 
-// Returns a RouteReport for the provided HTTPRoute, nil if there is not a report present.
+// route returns a RouteReport for the provided route object, nil if a report is not present.
 // This is different than the Reporter.Route() method, as we need to understand when
-// reports are not generated for a HTTPRoute that has been translated.
-func (r *ReportMap) route(route *gwv1.HTTPRoute) *RouteReport {
-	key := client.ObjectKeyFromObject(route)
-	return r.routes[key]
+// reports are not generated for a route that has been translated. Supported object types are:
+//
+// * HTTPRoute
+// * TCPRoute
+func (r *ReportMap) route(obj metav1.Object) *RouteReport {
+	key := key(obj)
+
+	switch obj.(type) {
+	case *gwv1.HTTPRoute:
+		return r.HTTPRoutes[key]
+	case *gwv1alpha2.TCPRoute:
+		return r.TCPRoutes[key]
+	default:
+		contextutils.LoggerFrom(context.TODO()).Warnf("Unsupported route type: %T", obj)
+		return nil
+	}
 }
 
-func (r *ReportMap) newRouteReport(route *gwv1.HTTPRoute) *RouteReport {
-	rr := &RouteReport{}
-	rr.observedGeneration = route.Generation
-	key := client.ObjectKeyFromObject(route)
-	r.routes[key] = rr
+func (r *ReportMap) newRouteReport(obj metav1.Object) *RouteReport {
+	rr := &RouteReport{
+		observedGeneration: obj.GetGeneration(),
+	}
+
+	key := key(obj)
+
+	switch obj.(type) {
+	case *gwv1.HTTPRoute:
+		r.HTTPRoutes[key] = rr
+	case *gwv1alpha2.TCPRoute:
+		r.TCPRoutes[key] = rr
+	default:
+		contextutils.LoggerFrom(context.TODO()).Warnf("Unsupported route type: %T", obj)
+		return nil
+	}
+
 	return rr
 }
 
 func (g *GatewayReport) Listener(listener *gwv1.Listener) ListenerReporter {
-	return g.listener(listener)
+	return g.listener(string(listener.Name))
 }
 
-func (g *GatewayReport) listener(listener *gwv1.Listener) *ListenerReport {
+func (g *GatewayReport) ListenerName(listenerName string) ListenerReporter {
+	return g.listener(listenerName)
+}
+
+func (g *GatewayReport) listener(listenerName string) *ListenerReport {
 	if g.listeners == nil {
 		g.listeners = make(map[string]*ListenerReport)
 	}
-	lr := g.listeners[string(listener.Name)]
-	if lr == nil {
-		lr = NewListenerReport(string(listener.Name))
-		g.listeners[string(listener.Name)] = lr
+
+	// Return the ListenerReport if it already exists
+	if lr, exists := g.listeners[string(listenerName)]; exists {
+		return lr
 	}
+
+	// Create and add the new ListenerReport if it doesn't exist
+	lr := NewListenerReport(string(listenerName))
+	g.listeners[string(listenerName)] = lr
 	return lr
 }
 
@@ -151,10 +193,10 @@ func (r *reporter) Gateway(gateway *gwv1.Gateway) GatewayReporter {
 	return gr
 }
 
-func (r *reporter) Route(route *gwv1.HTTPRoute) HTTPRouteReporter {
-	rr := r.report.route(route)
+func (r *reporter) Route(obj metav1.Object) RouteReporter {
+	rr := r.report.route(obj)
 	if rr == nil {
-		rr = r.report.newRouteReport(route)
+		rr = r.report.newRouteReport(obj)
 	}
 	return rr
 }
@@ -185,14 +227,14 @@ func getParentRefKey(parentRef *gwv1.ParentReference) ParentRefKey {
 
 func (r *RouteReport) parentRef(parentRef *gwv1.ParentReference) *ParentRefReport {
 	key := getParentRefKey(parentRef)
-	if r.parents == nil {
-		r.parents = make(map[ParentRefKey]*ParentRefReport)
+	if r.Parents == nil {
+		r.Parents = make(map[ParentRefKey]*ParentRefReport)
 	}
 	var prr *ParentRefReport
-	prr, ok := r.parents[key]
+	prr, ok := r.Parents[key]
 	if !ok {
 		prr = &ParentRefReport{}
-		r.parents[key] = prr
+		r.Parents[key] = prr
 	}
 	return prr
 }
@@ -202,7 +244,7 @@ func (r *RouteReport) parentRef(parentRef *gwv1.ParentReference) *ParentRefRepor
 // the parentRefs field.
 func (r *RouteReport) parentRefs() []gwv1.ParentReference {
 	var refs []gwv1.ParentReference
-	for key := range r.parents {
+	for key := range r.Parents {
 		parentRef := gwv1.ParentReference{
 			Group:     ptr.To(gwv1.Group(key.Group)),
 			Kind:      ptr.To(gwv1.Kind(key.Kind)),
@@ -218,7 +260,7 @@ func (r *RouteReport) ParentRef(parentRef *gwv1.ParentReference) ParentRefReport
 	return r.parentRef(parentRef)
 }
 
-func (prr *ParentRefReport) SetCondition(rc HTTPRouteCondition) {
+func (prr *ParentRefReport) SetCondition(rc RouteCondition) {
 	condition := metav1.Condition{
 		Type:    string(rc.Type),
 		Status:  rc.Status,
@@ -234,11 +276,12 @@ func NewReporter(reportMap *ReportMap) Reporter {
 
 type Reporter interface {
 	Gateway(gateway *gwv1.Gateway) GatewayReporter
-	Route(route *gwv1.HTTPRoute) HTTPRouteReporter
+	Route(obj metav1.Object) RouteReporter
 }
 
 type GatewayReporter interface {
 	Listener(listener *gwv1.Listener) ListenerReporter
+	ListenerName(listenerName string) ListenerReporter
 	SetCondition(condition GatewayCondition)
 }
 
@@ -248,13 +291,12 @@ type ListenerReporter interface {
 	SetAttachedRoutes(n uint)
 }
 
-type HTTPRouteReporter interface {
+type RouteReporter interface {
 	ParentRef(parentRef *gwv1.ParentReference) ParentRefReporter
 }
 
-// TODO: rename to e.g. RouteParentReporter
 type ParentRefReporter interface {
-	SetCondition(condition HTTPRouteCondition)
+	SetCondition(condition RouteCondition)
 }
 
 type GatewayCondition struct {
@@ -271,7 +313,7 @@ type ListenerCondition struct {
 	Message string
 }
 
-type HTTPRouteCondition struct {
+type RouteCondition struct {
 	Type    gwv1.RouteConditionType
 	Status  metav1.ConditionStatus
 	Reason  gwv1.RouteConditionReason

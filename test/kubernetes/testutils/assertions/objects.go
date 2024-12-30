@@ -35,9 +35,25 @@ func (p *Provider) EventuallyObjectsNotExist(ctx context.Context, objects ...cli
 			innerG.Expect(apierrors.IsNotFound(err)).To(BeTrue(), "object %s %s should not be found in cluster", o.GetObjectKind().GroupVersionKind().String(), client.ObjectKeyFromObject(o).String())
 		}).
 			WithContext(ctx).
-			WithTimeout(time.Second*20).
+			WithTimeout(time.Second*60).
 			WithPolling(time.Millisecond*200).
 			Should(Succeed(), fmt.Sprintf("object %s %s should not be found in cluster", o.GetObjectKind().GroupVersionKind().String(), client.ObjectKeyFromObject(o).String()))
+	}
+}
+
+// EventuallyObjectTypesNotExist asserts that eventually no objects of the specified types exist on the cluster.
+// The `objectLists` holds the object list types to check, e.g. to check that no HTTPRoutes exist on the cluster, pass in HTTPRouteList{}
+func (p *Provider) EventuallyObjectTypesNotExist(ctx context.Context, objectLists ...client.ObjectList) {
+	for _, o := range objectLists {
+		p.Gomega.Eventually(ctx, func(innerG Gomega) {
+			err := p.clusterContext.Client.List(ctx, o)
+			p.Assert.NoError(err, "can list %T", o)
+			innerG.Expect(o).To(HaveField("Items", HaveLen(0)))
+		}).
+			WithContext(ctx).
+			WithTimeout(time.Second*20).
+			WithPolling(time.Millisecond*200).
+			Should(Succeed(), fmt.Sprintf("object type %T should not be found in cluster", o))
 	}
 }
 

@@ -25,6 +25,11 @@ spec:
         prometheus.io/port: "9091"
         prometheus.io/scrape: "true"
       {{- end}}
+      {{- if (($gateway.aiExtension).enabled) }}
+      {{- if $gateway.aiExtension.stats }}
+        solo.io/ai-stats-config-hash: {{ sha256sum $gateway.aiExtension.stats | trunc 64 }}
+      {{- end }}
+      {{- end}}
       labels:
         {{- include "gloo-gateway.gateway.selectorLabels" . | nindent 8 }}
         {{- with $gateway.extraPodLabels }}
@@ -84,15 +89,23 @@ spec:
         - name: http-monitoring
           containerPort: 9091
         {{- end }}
-        exec:
-          command:
-            - wget
-            - -O
-            - /dev/null
-            - 127.0.0.1:19000/ready
-          initialDelaySeconds: 3
-          periodSeconds: 10
-          failureThreshold: 3
+{{- if $gateway.readinessProbe }}
+        readinessProbe:
+{{ toYaml $gateway.readinessProbe | indent 10}}
+{{- end }}{{/*if $gateway.readinessProbe*/}}
+{{- if $gateway.livenessProbe }}
+        livenessProbe:
+{{ toYaml $gateway.livenessProbe | indent 10}}
+{{- end }}{{/*if $gateway.livenessProbe*/}}
+{{- if ($gateway.gracefulShutdown).enabled }}
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - wget --post-data "" -O /dev/null 127.0.0.1:19000/healthcheck/fail; sleep {{ $gateway.gracefulShutdown.sleepTimeSeconds | default "10" }}
+{{- end}}{{/*if ($gateway.gracefulShutdown).enabled */}}
 {{- if $gateway.resources }}
         resources:
           {{- toYaml $gateway.resources | nindent 10 }}
@@ -280,6 +293,9 @@ spec:
         {{- end }}
         terminationMessagePath: /dev/termination-log
         terminationMessagePolicy: File
+        volumeMounts:
+          - mountPath: /var/run/stats
+            name: ai-stats-config
 {{- end }} {{/* if (($gateway.aiExtension).enabled) */}}
       {{- with $gateway.nodeSelector }}
       nodeSelector:
@@ -293,10 +309,18 @@ spec:
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if $gateway.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ $gateway.terminationGracePeriodSeconds }}
+      {{- end }}
       volumes:
       - configMap:
           name: {{ include "gloo-gateway.gateway.fullname" . }}
         name: envoy-config
+{{- if (($gateway.aiExtension).enabled) }}
+      - configMap:
+          name: {{ include "gloo-gateway.gateway.fullname" . }}-ai-stats-config
+        name: ai-stats-config
+{{- end }} {{/* if (($gateway.aiExtension).enabled) */}}
 {{- if $gateway.istio.enabled }}
       - emptyDir:
           medium: Memory
@@ -328,9 +352,16 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: {{ include "gloo-gateway.gateway.fullname" . }}
+  {{- with (($gateway.serviceAccount).extraAnnotations) }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   labels:
     {{- include "gloo-gateway.gateway.constLabels" . | nindent 4 }}
     {{- include "gloo-gateway.gateway.labels" . | nindent 4 }}
+    {{- with (($gateway.serviceAccount).extraLabels) }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 automountServiceAccountToken: false
 ---
 apiVersion: v1
@@ -362,6 +393,20 @@ spec:
   selector:
     {{- include "gloo-gateway.gateway.selectorLabels" . | nindent 4 }}
 ---
+{{- if (($gateway.aiExtension).enabled) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "gloo-gateway.gateway.fullname" . }}-ai-stats-config
+  labels:
+    {{- include "gloo-gateway.gateway.constLabels" . | nindent 4 }}
+    {{- include "gloo-gateway.gateway.labels" . | nindent 4 }}
+{{- if $gateway.aiExtension.stats }}
+data:
+  stats.json: {{ $gateway.aiExtension.stats }}
+{{- end}}
+{{- end}}
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -374,10 +419,17 @@ data:
     admin:
       address:
         socket_address: { address: 127.0.0.1, port_value: 19000 }
+    layered_runtime:
+      layers:
+      - name: static_layer
+        static_layer:
+          envoy.restart_features.use_eds_cache_for_ads: true
+      - name: admin_layer
+        admin_layer: {}
     node:
       cluster: {{ include "gloo-gateway.gateway.fullname" . }}.{{ .Release.Namespace }}
       metadata:
-        role: gloo-kube-gateway-api~{{ $gateway.gatewayNamespace }}~{{ $gateway.gatewayNamespace }}-{{ $gateway.gatewayName | default (include "gloo-gateway.gateway.fullname" .) }}
+        role: gloo-kube-gateway-api~{{ $gateway.gatewayNamespace }}~{{ $gateway.gatewayName | default (include "gloo-gateway.gateway.fullname" .) }}
     static_resources:
       listeners:
       - name: readiness_listener
@@ -405,6 +457,15 @@ data:
                           route:
                             cluster: admin_port_cluster
                 http_filters:
+{{- if $gateway.readinessProbe }}
+                  - name: envoy.filters.http.health_check
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.health_check.v3.HealthCheck
+                      pass_through_mode: false
+                      headers:
+                      - name: ":path"
+                        exact_match: "/envoy-hc"
+{{- end }}{{/*if $gateway.readinessProbe*/}}
                   - name: envoy.filters.http.router
                     typed_config:
                       "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
@@ -508,6 +569,26 @@ data:
                         address: 127.0.0.1
                         port_value: 8234
         {{- end }} {{/* if $gateway.istio.enabled */}}
+        {{- if ($gateway.aws).enableServiceAccountCredentials }} 
+        - name: {{ $gateway.aws.stsClusterName }}
+          connect_timeout: 5.000s
+          type: LOGICAL_DNS
+          lb_policy: ROUND_ROBIN
+          transport_socket:
+            name: envoy.transport_sockets.tls
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+              sni: {{ $gateway.aws.stsUri }}
+          load_assignment:
+            cluster_name: {{ $gateway.aws.stsClusterName }}
+            endpoints:
+            - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      port_value: 443
+                      address: {{ $gateway.aws.stsUri }}
+        {{- end}} {{- /* if ($gateway.aws).enableServiceAccountCredentials */}}
     dynamic_resources:
       ads_config:
         transport_api_version: V3

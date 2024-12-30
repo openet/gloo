@@ -216,6 +216,20 @@ spec:
                 name: {{ .Values.license_secret_name }}
                 key: license-key
 {{- end }}
+{{- if (((.Values.gloo.deployment.resources).limits).memory) }}
+          - name: GOMEMLIMIT
+            valueFrom:
+              resourceFieldRef:
+                divisor: "1"
+                resource: limits.memory
+{{- end -}}
+{{- if (((.Values.gloo.deployment.resources).limits).cpu) }}
+          - name: GOMAXPROCS
+            valueFrom:
+              resourceFieldRef:
+                divisor: "1"
+                resource: limits.cpu
+{{- end -}}
 {{- if .Values.gloo.deployment.customEnv }}
 {{ toYaml .Values.gloo.deployment.customEnv | indent 10 }}
 {{- end }}
@@ -227,6 +241,10 @@ spec:
           - name: GG_K8S_GW_CONTROLLER
             value: "true"
         {{- end }}{{/* if .Values.kubeGateway.enabled */}}
+        {{- if .Values.kubeGateway.portal.enabled }}
+          - name: GG_PORTAL_PLUGIN
+            value: "true"
+        {{- end}}
         {{- if .Values.gloo.splitLogOutput }}
           - name: SPLIT_LOG_OUTPUT
             value: "true"

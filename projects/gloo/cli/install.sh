@@ -28,7 +28,7 @@ if [ ! $python_version ]; then
 fi
 
 if [ -z "${GLOO_VERSION:-}" ]; then
-  GLOO_VERSIONS=$(curl -sH"Accept: application/vnd.github.v3+json" https://api.github.com/repos/solo-io/gloo/releases | $python_version -c "import sys; from distutils.version import StrictVersion, LooseVersion; from json import loads as l; releases = l(sys.stdin.read()); releases = [release['tag_name'] for release in releases];  filtered_releases = list(filter(lambda release_string: len(release_string) > 0 and StrictVersion.version_re.match(release_string[1:]) != None and StrictVersion(release_string[1:]) < StrictVersion('2.0.0') , releases)); filtered_releases.sort(key=LooseVersion, reverse=True); print('\n'.join(filtered_releases))")
+  GLOO_VERSIONS=$(curl -sHL"Accept: application/vnd.github.v3+json" https://api.github.com/repos/solo-io/gloo/releases | $python_version -c "import sys; from distutils.version import StrictVersion, LooseVersion; from json import loads as l; releases = l(sys.stdin.read()); releases = [release['tag_name'] for release in releases];  filtered_releases = list(filter(lambda release_string: len(release_string) > 0 and StrictVersion.version_re.match(release_string[1:]) != None and StrictVersion(release_string[1:]) < StrictVersion('2.0.0') , releases)); filtered_releases.sort(key=LooseVersion, reverse=True); print('\n'.join(filtered_releases))")
 else
   GLOO_VERSIONS="${GLOO_VERSION}"
 fi
@@ -39,8 +39,12 @@ else
   OS=linux
 fi
 
-# TODO (celsosantos): Add ARM64 binaries support
-GOARCH=amd64
+arch=$(uname -m)
+if [ "$arch" = "aarch64" ] || [ "$arch" = "arm64" ]; then
+  GOARCH=arm64
+else
+  GOARCH=amd64
+fi
 
 for gloo_version in $GLOO_VERSIONS; do
 

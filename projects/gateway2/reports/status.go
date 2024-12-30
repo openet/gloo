@@ -2,33 +2,29 @@ package reports
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"slices"
 
 	"github.com/solo-io/go-utils/contextutils"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
+	gwv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
 )
 
-var (
-	missingGatewayReportErr = "building status for Gateway '%s' (namespace: '%s') but no GatewayReport was present"
-	missingRouteReportErr   = "building status for HTTPRoute '%s' (namespace: '%s') but no RouteReport was present"
-)
+// TODO: refactor this struct + methods to better reflect the usage now in proxy_syncer
 
 func (r *ReportMap) BuildGWStatus(ctx context.Context, gw gwv1.Gateway) *gwv1.GatewayStatus {
 	gwReport := r.Gateway(&gw)
 	if gwReport == nil {
-		// If the gwReport for a gateway we translated is missing, something is not correct in the reporting flow.
-		// If we hit this DPanic() we need to understand what has changed in the flow where we are translating Gateways but
-		// not initializing a report for it.
-		contextutils.LoggerFrom(ctx).DPanicf(missingGatewayReportErr, gw.Name, gw.Namespace)
 		return nil
 	}
 
 	finalListeners := make([]gwv1.ListenerStatus, 0, len(gw.Spec.Listeners))
 	for _, lis := range gw.Spec.Listeners {
-		lisReport := gwReport.listener(&lis)
+		lisReport := gwReport.listener(string(lis.Name))
 		addMissingListenerConditions(lisReport)
 
 		finalConditions := make([]metav1.Condition, 0, len(lisReport.Status.Conditions))
@@ -69,49 +65,68 @@ func (r *ReportMap) BuildGWStatus(ctx context.Context, gw gwv1.Gateway) *gwv1.Ga
 	return &finalGwStatus
 }
 
-func (r *ReportMap) BuildRouteStatus(ctx context.Context, route gwv1.HTTPRoute, cName string) *gwv1.HTTPRouteStatus {
-	routeReport := r.route(&route)
+// BuildRouteStatus returns a newly constructed and fully defined RouteStatus for the supplied route object
+// according to the state of the ReportMap. If the ReportMap does not have a RouteReport for the given route,
+// e.g. because it did not encounter the route during translation, or the object is an unsupported route kind,
+// nil is returned. Supported object types are:
+//
+// * HTTPRoute
+// * TCPRoute
+func (r *ReportMap) BuildRouteStatus(ctx context.Context, obj client.Object, cName string) *gwv1.RouteStatus {
+	routeReport := r.route(obj)
 	if routeReport == nil {
-		// a route report may be missing because of the disconnect between when routes are retrieved for translation,
-		// which the query engine performs inside gateway_translator.go/TranslateProxy(), and when the list of routes
-		// for status syncing is retrieved after translation, separately in xds_syncer.go/syncRouteStatus().
-		// Since there may have been additions/deletions in that window, a missing route report will just be treated
-		// as informational and we will return nil, signaling to status syncer to not touch this Routes status.
-		contextutils.LoggerFrom(ctx).Infof(missingRouteReportErr, route.Name, route.Namespace)
+		contextutils.LoggerFrom(ctx).Infof("missing route report for %T %s/%s", obj, obj.GetName(), obj.GetNamespace())
 		return nil
 	}
-	contextutils.LoggerFrom(ctx).Infof("building status for route %s/%s", route.Namespace, route.Name)
 
-	routeStatus := gwv1.RouteStatus{}
+	contextutils.LoggerFrom(ctx).Debugf("building status for %s %s/%s",
+		obj.GetObjectKind().GroupVersionKind().Kind, obj.GetNamespace(),
+		obj.GetName())
 
 	// Default to using spec.ParentRefs when building the parent statuses for a route.
 	// However, for delegatee (child) routes, the parentRefs field is optional and such routes
 	// may not specify it. In this case, we infer the parentRefs form the RouteReport
 	// corresponding to the delegatee (child) route as the route's report is associated to a parentRef.
+	var existingStatus gwv1.RouteStatus
 	var parentRefs []gwv1.ParentReference
-	parentRefs = append(parentRefs, route.Spec.ParentRefs...)
-	if len(parentRefs) == 0 {
-		parentRefs = append(parentRefs, routeReport.parentRefs()...)
+	switch route := obj.(type) {
+	case *gwv1.HTTPRoute:
+		existingStatus = route.Status.RouteStatus
+		parentRefs = append(parentRefs, route.Spec.ParentRefs...)
+		if len(parentRefs) == 0 {
+			parentRefs = append(parentRefs, routeReport.parentRefs()...)
+		}
+	case *gwv1a2.TCPRoute:
+		existingStatus = route.Status.RouteStatus
+		parentRefs = append(parentRefs, route.Spec.ParentRefs...)
+		if len(parentRefs) == 0 {
+			parentRefs = append(parentRefs, routeReport.parentRefs()...)
+		}
+	default:
+		contextutils.LoggerFrom(ctx).Error(fmt.Errorf("unsupported route type %T", obj), "failed to build route status")
+		return nil
 	}
 
+	// Process the parent references to build the RouteParentStatus
+	routeStatus := gwv1.RouteStatus{}
 	for _, parentRef := range parentRefs {
 		parentStatusReport := routeReport.parentRef(&parentRef)
 		addMissingParentRefConditions(parentStatusReport)
 
-		// get status of current parentRef status if it exists
+		// Get the status of the current parentRef conditions if they exist
 		var currentParentRefConditions []metav1.Condition
-		currentParentRefIdx := slices.IndexFunc(route.Status.Parents, func(s gwv1.RouteParentStatus) bool {
+		currentParentRefIdx := slices.IndexFunc(existingStatus.Parents, func(s gwv1.RouteParentStatus) bool {
 			return reflect.DeepEqual(s.ParentRef, parentRef)
 		})
 		if currentParentRefIdx != -1 {
-			currentParentRefConditions = route.Status.Parents[currentParentRefIdx].Conditions
+			currentParentRefConditions = existingStatus.Parents[currentParentRefIdx].Conditions
 		}
 
 		finalConditions := make([]metav1.Condition, 0, len(parentStatusReport.Conditions))
 		for _, pCondition := range parentStatusReport.Conditions {
 			pCondition.ObservedGeneration = routeReport.observedGeneration
 
-			// copy old condition from gw so LastTransitionTime is set correctly below by SetStatusCondition()
+			// Copy old condition to preserve LastTransitionTime, if it exists
 			if cond := meta.FindStatusCondition(currentParentRefConditions, pCondition.Type); cond != nil {
 				finalConditions = append(finalConditions, *cond)
 			}
@@ -126,9 +141,7 @@ func (r *ReportMap) BuildRouteStatus(ctx context.Context, route gwv1.HTTPRoute, 
 		routeStatus.Parents = append(routeStatus.Parents, routeParentStatus)
 	}
 
-	return &gwv1.HTTPRouteStatus{
-		RouteStatus: routeStatus,
-	}
+	return &routeStatus
 }
 
 // Reports will initially only contain negative conditions found during translation,
@@ -191,14 +204,14 @@ func addMissingListenerConditions(lisReport *ListenerReport) {
 // to a given report, i.e. set healthy conditions
 func addMissingParentRefConditions(report *ParentRefReport) {
 	if cond := meta.FindStatusCondition(report.Conditions, string(gwv1.RouteConditionAccepted)); cond == nil {
-		report.SetCondition(HTTPRouteCondition{
+		report.SetCondition(RouteCondition{
 			Type:   gwv1.RouteConditionAccepted,
 			Status: metav1.ConditionTrue,
 			Reason: gwv1.RouteReasonAccepted,
 		})
 	}
 	if cond := meta.FindStatusCondition(report.Conditions, string(gwv1.RouteConditionResolvedRefs)); cond == nil {
-		report.SetCondition(HTTPRouteCondition{
+		report.SetCondition(RouteCondition{
 			Type:   gwv1.RouteConditionResolvedRefs,
 			Status: metav1.ConditionTrue,
 			Reason: gwv1.RouteReasonResolvedRefs,

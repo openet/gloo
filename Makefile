@@ -54,7 +54,7 @@ SOURCES := $(shell find . -name "*.go" | grep -v test.go)
 # for more information, see https://github.com/solo-io/gloo/pull/9633
 # and
 # https://soloio.slab.com/posts/extended-http-methods-design-doc-40j7pjeu
-ENVOY_GLOO_IMAGE ?= quay.io/solo-io/envoy-gloo:1.30.4-patch2
+ENVOY_GLOO_IMAGE ?= quay.io/solo-io/envoy-gloo:1.31.2-patch3
 LDFLAGS := "-X github.com/solo-io/gloo/pkg/version.Version=$(VERSION)"
 GCFLAGS ?=
 
@@ -66,7 +66,6 @@ ifneq ($(IS_ARM_MACHINE), )
 	ifneq ($(GOARCH), amd64)
 		GOARCH := arm64
 	endif
-	PLATFORM := --platform=linux/$(GOARCH)
 else
 	# currently we only support arm64 and amd64 as a GOARCH option.
 	ifneq ($(GOARCH), arm64)
@@ -74,6 +73,17 @@ else
 	endif
 endif
 
+PLATFORM := --platform=linux/$(GOARCH)
+PLATFORM_MULTIARCH := $(PLATFORM)
+LOAD_OR_PUSH := --load
+ifeq ($(MULTIARCH), true)
+	PLATFORM_MULTIARCH := --platform=linux/amd64,linux/arm64
+	LOAD_OR_PUSH :=
+
+	ifeq ($(MULTIARCH_PUSH), true)
+		LOAD_OR_PUSH := --push
+	endif
+endif
 
 GOOS ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')
 
@@ -88,6 +98,13 @@ BUG_REPORT_DIR := $(TEST_ASSET_DIR)/bug_report
 $(BUG_REPORT_DIR):
 	mkdir -p $(BUG_REPORT_DIR)
 
+# This is the location where logs are stored for future processing.
+# This is used to generate summaries of test outcomes and may be used in the future to automate
+# processing of data based on test outcomes.
+TEST_LOG_DIR := $(TEST_ASSET_DIR)/test_log
+$(TEST_LOG_DIR):
+	mkdir -p $(TEST_LOG_DIR)
+
 # Used to install ca-certificates in GLOO_DISTROLESS_BASE_IMAGE
 PACKAGE_DONOR_IMAGE ?= debian:11
 # Harvested for utility binaries (sh, wget, sleep, nc, echo, ls, cat, vi)
@@ -98,7 +115,7 @@ UTILS_DONOR_IMAGE ?= busybox:uclibc
 # https://github.com/solo-io/envoy-gloo-ee/blob/main/ci/Dockerfile#L7 - check /etc/debian_version in the ubuntu version used
 # This is the true base image for GLOO_DISTROLESS_BASE_IMAGE and GLOO_DISTROLESS_BASE_WITH_UTILS_IMAGE
 # Since we only publish amd64 images, we use the amd64 variant. If we decide to change this, we need to update the distroless dockerfiles as well
-DISTROLESS_BASE_IMAGE ?= gcr.io/distroless/base-debian11:latest-amd64
+DISTROLESS_BASE_IMAGE ?= gcr.io/distroless/base-debian11:latest
 # DISTROLESS_BASE_IMAGE + ca-certificates
 GLOO_DISTROLESS_BASE_IMAGE ?= $(IMAGE_REGISTRY)/distroless-base:$(VERSION)
 # GLOO_DISTROLESS_BASE_IMAGE + utility binaries (sh, wget, sleep, nc, echo, ls, cat, vi)
@@ -167,9 +184,12 @@ install-go-tools: mod-download ## Download and install Go dependencies
 	go install github.com/cratonica/2goarray
 	go install github.com/golang/mock/mockgen
 	go install github.com/saiskee/gettercheck
+	go install github.com/onsi/ginkgo/v2/ginkgo@$(GINKGO_VERSION)
 	# This version must stay in sync with the version used in CI: .github/workflows/static-analysis.yaml
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@$(LINTER_VERSION)
 	go install github.com/quasilyte/go-ruleguard/cmd/ruleguard@v0.3.16
+	# Kubebuilder docs generation
+	go install fybrik.io/crdoc@v0.6.3
 
 .PHONY: install-go-test-coverage
 install-go-test-coverage:
@@ -202,7 +222,7 @@ analyze:
 
 GINKGO_VERSION ?= $(shell echo $(shell go list -m github.com/onsi/ginkgo/v2) | cut -d' ' -f2)
 GINKGO_ENV ?= GOLANG_PROTOBUF_REGISTRATION_CONFLICT=ignore ACK_GINKGO_RC=true ACK_GINKGO_DEPRECATIONS=$(GINKGO_VERSION)
-GINKGO_FLAGS ?= -tags=purego --trace -progress -race --fail-fast -fail-on-pending --randomize-all --compilers=5
+GINKGO_FLAGS ?= -tags=purego --trace -progress -race --fail-fast -fail-on-pending --randomize-all --compilers=5 --flake-attempts=3
 GINKGO_REPORT_FLAGS ?= --json-report=test-report.json --junit-report=junit.xml -output-dir=$(OUTPUT_DIR)
 GINKGO_COVERAGE_FLAGS ?= --cover --covermode=atomic --coverprofile=coverage.cov
 TEST_PKG ?= ./... # Default to run all tests
@@ -254,7 +274,7 @@ test-with-coverage: test
 	go tool cover -html $(OUTPUT_DIR)/coverage.cov
 
 .PHONY: run-tests
-run-tests: GINKGO_FLAGS += -skip-package=e2e,gateway2 ## Run all non E2E tests, or only run the test package at {TEST_PKG} if it is specified
+run-tests: GINKGO_FLAGS += -skip-package=e2e,gateway2,test/kubernetes/testutils/helper ## Run all non E2E tests, or only run the test package at {TEST_PKG} if it is specified
 run-tests: GINKGO_FLAGS += --label-filter="!end-to-end && !performance"
 run-tests: test
 
@@ -262,7 +282,7 @@ run-tests: test
 # Performance tests are filtered using a Ginkgo label
 # This means that any tests which do not rely on Ginkgo, will by default be compiled and run
 # Since this is not the desired behavior, we explicitly skip these packages
-run-performance-tests: GINKGO_FLAGS += -skip-package=gateway2,kubernetes/e2e
+run-performance-tests: GINKGO_FLAGS += -skip-package=gateway2,kubernetes/e2e,test/kube2e
 run-performance-tests: GINKGO_FLAGS += --label-filter="performance" ## Run only tests with the Performance label
 run-performance-tests: test
 
@@ -277,9 +297,8 @@ run-hashicorp-e2e-tests: GINKGO_FLAGS += --label-filter="end-to-end && !performa
 run-hashicorp-e2e-tests: test
 
 .PHONY: run-kube-e2e-tests
-run-kube-e2e-tests: TEST_PKG = ./test/kube2e/$(KUBE2E_TESTS) ## Run the Kubernetes E2E Tests in the {KUBE2E_TESTS} package
+run-kube-e2e-tests: TEST_PKG = ./test/kube2e/$(KUBE2E_TESTS) ## Run the legacy Kubernetes E2E Tests in the {KUBE2E_TESTS} package
 run-kube-e2e-tests: test
-
 
 #----------------------------------------------------------------------------------
 # Go Tests
@@ -297,10 +316,13 @@ GO_TEST_USER_ARGS ?=
 
 .PHONY: go-test
 go-test: ## Run all tests, or only run the test package at {TEST_PKG} if it is specified
-go-test: clean-bug-report $(BUG_REPORT_DIR) # Ensure the bug_report dir is reset before each invocation
-	 $(GO_TEST_ENV) go test -ldflags=$(LDFLAGS) \
-	$(GO_TEST_ARGS) $(GO_TEST_USER_ARGS) \
-	$(TEST_PKG)
+go-test: clean-bug-report clean-test-logs $(BUG_REPORT_DIR) $(TEST_LOG_DIR) # Ensure the bug_report dir is reset before each invocation
+	@$(GO_TEST_ENV) go test -ldflags=$(LDFLAGS) \
+    $(GO_TEST_ARGS) $(GO_TEST_USER_ARGS) \
+    $(TEST_PKG) > $(TEST_LOG_DIR)/go-test 2>&1; \
+    RESULT=$$?; \
+    cat $(TEST_LOG_DIR)/go-test; \
+    if [ $$RESULT -ne 0 ]; then exit $$RESULT; fi  # ensure non-zero exit code if tests fail
 
 # https://go.dev/blog/cover#heat-maps
 .PHONY: go-test-with-coverage
@@ -338,6 +360,10 @@ clean-tests:
 .PHONY: clean-bug-report
 clean-bug-report:
 	rm -rf $(BUG_REPORT_DIR)
+
+.PHONY: clean-test-logs
+clean-test-logs:
+	rm -rf $(TEST_LOG_DIR)
 
 .PHONY: clean-vendor-any
 clean-vendor-any:
@@ -377,6 +403,7 @@ generate-all-debug: generate-all
 generated-code: check-go-version clean-solo-kit-gen ## Run all codegen and formatting as required by CI
 generated-code: go-generate-all generate-cli-docs getter-check mod-tidy
 generated-code: verify-enterprise-protos generate-helm-files update-licenses
+generated-code: generate-crd-reference-docs
 generated-code: fmt
 
 .PHONY: go-generate-all
@@ -421,6 +448,23 @@ generated-code-apis: clean-solo-kit-gen go-generate-apis fmt ## Executes the tar
 .PHONY: generated-code-cleanup
 generated-code-cleanup: getter-check mod-tidy update-licenses fmt ## Executes the targets necessary to cleanup and format code
 
+.PHONY: generate-changelog
+generate-changelog: ## Generate a changelog entry
+	@./devel/tools/changelog.sh
+
+
+#----------------------------------------------------------------------------------
+# Generate CRD Reference Documentation
+#
+# See docs/content/crds/README.md for more details.
+#----------------------------------------------------------------------------------
+
+# To run this command correctly, you must have executed `install-go-tools`
+.PHONY: generate-crd-reference-docs
+generate-crd-reference-docs:
+	go run docs/content/crds/generate.go
+
+
 #----------------------------------------------------------------------------------
 # Generate mocks
 #----------------------------------------------------------------------------------
@@ -464,10 +508,9 @@ $(DISTROLESS_OUTPUT_DIR)/Dockerfile: $(DISTROLESS_DIR)/Dockerfile
 
 .PHONY: distroless-docker
 distroless-docker: $(DISTROLESS_OUTPUT_DIR)/Dockerfile
-	docker buildx build --load $(PLATFORM) $(DISTROLESS_OUTPUT_DIR) -f $(DISTROLESS_OUTPUT_DIR)/Dockerfile \
+	docker buildx build $(LOAD_OR_PUSH) $(PLATFORM_MULTIARCH) $(DISTROLESS_OUTPUT_DIR) -f $(DISTROLESS_OUTPUT_DIR)/Dockerfile \
 		--build-arg PACKAGE_DONOR_IMAGE=$(PACKAGE_DONOR_IMAGE) \
 		--build-arg BASE_IMAGE=$(DISTROLESS_BASE_IMAGE) \
-		--build-arg GOARCH=$(GOARCH) \
 		-t $(GLOO_DISTROLESS_BASE_IMAGE) $(QUAY_EXPIRATION_LABEL)
 
 $(DISTROLESS_OUTPUT_DIR)/Dockerfile.utils: $(DISTROLESS_DIR)/Dockerfile.utils
@@ -476,10 +519,9 @@ $(DISTROLESS_OUTPUT_DIR)/Dockerfile.utils: $(DISTROLESS_DIR)/Dockerfile.utils
 
 .PHONY: distroless-with-utils-docker
 distroless-with-utils-docker: distroless-docker $(DISTROLESS_OUTPUT_DIR)/Dockerfile.utils
-	docker buildx build --load $(PLATFORM) $(DISTROLESS_OUTPUT_DIR) -f $(DISTROLESS_OUTPUT_DIR)/Dockerfile.utils \
+	docker buildx build $(LOAD_OR_PUSH) $(PLATFORM_MULTIARCH) $(DISTROLESS_OUTPUT_DIR) -f $(DISTROLESS_OUTPUT_DIR)/Dockerfile.utils \
 		--build-arg UTILS_DONOR_IMAGE=$(UTILS_DONOR_IMAGE) \
 		--build-arg BASE_IMAGE=$(GLOO_DISTROLESS_BASE_IMAGE) \
-		--build-arg GOARCH=$(GOARCH) \
 		-t  $(GLOO_DISTROLESS_BASE_WITH_UTILS_IMAGE) $(QUAY_EXPIRATION_LABEL)
 
 #----------------------------------------------------------------------------------
@@ -768,9 +810,8 @@ $(CERTGEN_OUTPUT_DIR)/Dockerfile.certgen: $(CERTGEN_DIR)/Dockerfile
 
 .PHONY: certgen-docker
 certgen-docker: $(CERTGEN_OUTPUT_DIR)/certgen-linux-$(GOARCH) $(CERTGEN_OUTPUT_DIR)/Dockerfile.certgen
-	docker buildx build --load $(PLATFORM) $(CERTGEN_OUTPUT_DIR) -f $(CERTGEN_OUTPUT_DIR)/Dockerfile.certgen \
+	docker buildx build $(LOAD_OR_PUSH) $(PLATFORM_MULTIARCH) $(CERTGEN_OUTPUT_DIR) -f $(CERTGEN_OUTPUT_DIR)/Dockerfile.certgen \
 		--build-arg BASE_IMAGE=$(ALPINE_BASE_IMAGE) \
-		--build-arg GOARCH=$(GOARCH) \
 		-t $(IMAGE_REGISTRY)/certgen:$(VERSION) $(QUAY_EXPIRATION_LABEL)
 
 $(CERTGEN_OUTPUT_DIR)/Dockerfile.certgen.distroless: $(CERTGEN_DIR)/Dockerfile.distroless
@@ -778,9 +819,8 @@ $(CERTGEN_OUTPUT_DIR)/Dockerfile.certgen.distroless: $(CERTGEN_DIR)/Dockerfile.d
 
 .PHONY: certgen-distroless-docker
 certgen-distroless-docker: $(CERTGEN_OUTPUT_DIR)/certgen-linux-$(GOARCH) $(CERTGEN_OUTPUT_DIR)/Dockerfile.certgen.distroless distroless-docker
-	docker buildx build --load $(PLATFORM) $(CERTGEN_OUTPUT_DIR) -f $(CERTGEN_OUTPUT_DIR)/Dockerfile.certgen.distroless \
+	docker buildx build $(LOAD_OR_PUSH) $(PLATFORM_MULTIARCH) $(CERTGEN_OUTPUT_DIR) -f $(CERTGEN_OUTPUT_DIR)/Dockerfile.certgen.distroless \
 		--build-arg BASE_IMAGE=$(GLOO_DISTROLESS_BASE_IMAGE) \
-		--build-arg GOARCH=$(GOARCH) \
 		-t $(IMAGE_REGISTRY)/certgen:$(VERSION)-distroless $(QUAY_EXPIRATION_LABEL)
 
 #----------------------------------------------------------------------------------
@@ -796,9 +836,8 @@ $(KUBECTL_OUTPUT_DIR)/Dockerfile.kubectl: $(KUBECTL_DIR)/Dockerfile
 
 .PHONY: kubectl-docker
 kubectl-docker: $(KUBECTL_OUTPUT_DIR)/Dockerfile.kubectl
-	docker buildx build --load $(PLATFORM) $(KUBECTL_OUTPUT_DIR) -f $(KUBECTL_OUTPUT_DIR)/Dockerfile.kubectl \
+	docker buildx build $(LOAD_OR_PUSH) $(PLATFORM_MULTIARCH) $(KUBECTL_OUTPUT_DIR) -f $(KUBECTL_OUTPUT_DIR)/Dockerfile.kubectl \
 		--build-arg BASE_IMAGE=$(ALPINE_BASE_IMAGE) \
-		--build-arg GOARCH=$(GOARCH) \
 		-t $(IMAGE_REGISTRY)/kubectl:$(VERSION) $(QUAY_EXPIRATION_LABEL)
 
 $(KUBECTL_OUTPUT_DIR)/Dockerfile.kubectl.distroless: $(KUBECTL_DIR)/Dockerfile.distroless
@@ -807,9 +846,8 @@ $(KUBECTL_OUTPUT_DIR)/Dockerfile.kubectl.distroless: $(KUBECTL_DIR)/Dockerfile.d
 
 .PHONY: kubectl-distroless-docker
 kubectl-distroless-docker: $(KUBECTL_OUTPUT_DIR)/Dockerfile.kubectl.distroless distroless-with-utils-docker
-	docker buildx build --load $(PLATFORM) $(KUBECTL_OUTPUT_DIR) -f $(KUBECTL_OUTPUT_DIR)/Dockerfile.kubectl.distroless \
+	docker buildx build $(LOAD_OR_PUSH) $(PLATFORM_MULTIARCH) $(KUBECTL_OUTPUT_DIR) -f $(KUBECTL_OUTPUT_DIR)/Dockerfile.kubectl.distroless \
 		--build-arg BASE_IMAGE=$(GLOO_DISTROLESS_BASE_WITH_UTILS_IMAGE) \
-		--build-arg GOARCH=$(GOARCH) \
 		-t $(IMAGE_REGISTRY)/kubectl:$(VERSION)-distroless $(QUAY_EXPIRATION_LABEL)
 
 #----------------------------------------------------------------------------------
@@ -877,6 +915,10 @@ PUBLISH_CONTEXT ?= NONE
 HELM_BUCKET ?= gs://solo-public-tagged-helm
 # modifier to docker builds which can auto-delete docker images after a set time
 QUAY_EXPIRATION_LABEL ?= --label quay.expires-after=3w
+
+ifeq (,$(findstring quay,$(IMAGE_REGISTRY)))
+	QUAY_EXPIRATION_LABEL :=
+endif
 
 # define empty publish targets so calls won't fail
 .PHONY: publish-docker
@@ -977,20 +1019,28 @@ docker-standard-push: docker-push-gloo
 docker-standard-push: docker-push-discovery
 docker-standard-push: docker-push-gloo-envoy-wrapper
 docker-standard-push: docker-push-sds
+ifeq ($(MULTIARCH), )
 docker-standard-push: docker-push-certgen
+endif
 docker-standard-push: docker-push-ingress
 docker-standard-push: docker-push-access-logger
+ifeq ($(MULTIARCH), )
 docker-standard-push: docker-push-kubectl
+endif
 
 .PHONY: docker-distroless-push
 docker-distroless-push: docker-push-gloo-distroless
 docker-distroless-push: docker-push-discovery-distroless
 docker-distroless-push: docker-push-gloo-envoy-wrapper-distroless
 docker-distroless-push: docker-push-sds-distroless
+ifeq ($(MULTIARCH), )
 docker-distroless-push: docker-push-certgen-distroless
+endif
 docker-distroless-push: docker-push-ingress-distroless
 docker-distroless-push: docker-push-access-logger-distroless
+ifeq ($(MULTIARCH), )
 docker-distroless-push: docker-push-kubectl-distroless
+endif
 
 # Push docker images to the defined IMAGE_REGISTRY
 .PHONY: docker-push
@@ -1044,6 +1094,9 @@ endif # distroless images
 
 CLUSTER_NAME ?= kind
 INSTALL_NAMESPACE ?= gloo-system
+
+kind-setup:
+	VERSION=${VERSION} CLUSTER_NAME=${CLUSTER_NAME} ./ci/kind/setup-kind.sh
 
 kind-load-%-distroless:
 	kind load docker-image $(IMAGE_REGISTRY)/$*:$(VERSION)-distroless --name $(CLUSTER_NAME)
@@ -1189,17 +1242,19 @@ $(TEST_ASSET_DIR)/conformance/conformance_test.go:
 	cat $(shell go list -json -m sigs.k8s.io/gateway-api | jq -r '.Dir')/conformance/conformance_test.go >> $@
 	go fmt $@
 
-CONFORMANCE_ARGS:=-gateway-class=gloo-gateway -supported-features=Gateway,ReferenceGrant,HTTPRoute,HTTPRouteQueryParamMatching,HTTPRouteMethodMatching,HTTPRouteResponseHeaderModification,HTTPRoutePortRedirect,HTTPRouteHostRewrite,HTTPRouteSchemeRedirect,HTTPRoutePathRedirect,HTTPRouteHostRewrite,HTTPRoutePathRewrite,HTTPRouteRequestMirror
+CONFORMANCE_SUPPORTED_FEATURES ?= -supported-features=Gateway,ReferenceGrant,HTTPRoute,HTTPRouteQueryParamMatching,HTTPRouteMethodMatching,HTTPRouteResponseHeaderModification,HTTPRoutePortRedirect,HTTPRouteHostRewrite,HTTPRouteSchemeRedirect,HTTPRoutePathRedirect,HTTPRouteHostRewrite,HTTPRoutePathRewrite,HTTPRouteRequestMirror
+CONFORMANCE_SUPPORTED_PROFILES ?= -conformance-profiles=GATEWAY-HTTP
+CONFORMANCE_REPORT_ARGS ?= -report-output=$(TEST_ASSET_DIR)/conformance/$(VERSION)-report.yaml -organization=solo.io -project=gloo-gateway -version=$(VERSION) -url=github.com/solo-io/gloo -contact=github.com/solo-io/gloo/issues/new/choose
+CONFORMANCE_ARGS := -gateway-class=gloo-gateway $(CONFORMANCE_SUPPORTED_FEATURES) $(CONFORMANCE_SUPPORTED_PROFILES) $(CONFORMANCE_REPORT_ARGS)
 
-# Run the conformance test suite
-.PHONY: conformance
+.PHONY: conformance ## Run the conformance test suite
 conformance: $(TEST_ASSET_DIR)/conformance/conformance_test.go
-	go test -ldflags=$(LDFLAGS) -tags conformance -test.v $(TEST_ASSET_DIR)/conformance/... -args $(CONFORMANCE_ARGS)
+	go test -mod=mod -ldflags=$(LDFLAGS) -tags conformance -test.v $(TEST_ASSET_DIR)/conformance/... -args $(CONFORMANCE_ARGS)
 
 # Run only the specified conformance test. The name must correspond to the ShortName of one of the k8s gateway api
 # conformance tests.
 conformance-%: $(TEST_ASSET_DIR)/conformance/conformance_test.go
-	go test -ldflags=$(LDFLAGS) -tags conformance -test.v $(TEST_ASSET_DIR)/conformance/... -args $(CONFORMANCE_ARGS) \
+	go test -mod=mod -ldflags=$(LDFLAGS) -tags conformance -test.v $(TEST_ASSET_DIR)/conformance/... -args $(CONFORMANCE_ARGS) \
 	-run-test=$*
 
 #----------------------------------------------------------------------------------
@@ -1211,7 +1266,7 @@ SCAN_DIR ?= $(OUTPUT_DIR)/scans
 SCAN_BUCKET ?= solo-gloo-security-scans
 # The minimum version to scan with trivy
 # ON_LTS_UPDATE - bump version
-MIN_SCANNED_VERSION ?= v1.14.0
+MIN_SCANNED_VERSION ?= v1.15.0
 
 .PHONY: run-security-scans
 run-security-scan:

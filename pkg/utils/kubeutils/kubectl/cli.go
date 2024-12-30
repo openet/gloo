@@ -313,8 +313,57 @@ func (c *Cli) Scale(ctx context.Context, namespace string, resource string, repl
 	return c.RunCommand(ctx, "wait", "-n", namespace, "--for=condition=available", resource, "--timeout=300s")
 }
 
+// RestartDeployment restarts a deployment. It does not wait for the deployment to be ready.
+func (c *Cli) RestartDeployment(ctx context.Context, name string, extraArgs ...string) error {
+	args := append([]string{
+		"rollout",
+		"restart",
+		fmt.Sprintf("deployment/%s", name),
+	}, extraArgs...)
+	return c.RunCommand(ctx, args...)
+}
+
+// RestartDeploymentAndWait restarts a deployment and waits for it to become healthy.
+func (c *Cli) RestartDeploymentAndWait(ctx context.Context, name string, extraArgs ...string) error {
+	if err := c.RestartDeployment(ctx, name, extraArgs...); err != nil {
+		return err
+	}
+	return c.DeploymentRolloutStatus(ctx, name, extraArgs...)
+}
+
+// Describe the container status (equivalent of running `kubectl describe`)
+func (c *Cli) Describe(ctx context.Context, namespace string, name string) (string, error) {
+	stdout, stderr, err := c.Execute(ctx, "-n", namespace, "describe", name)
+	return stdout + stderr, err
+}
+
 // GetContainerLogs retrieves the logs for the specified container
 func (c *Cli) GetContainerLogs(ctx context.Context, namespace string, name string) (string, error) {
 	stdout, stderr, err := c.Execute(ctx, "-n", namespace, "logs", name)
 	return stdout + stderr, err
+}
+
+// GetPodsInNsWithLabel returns the pods in the specified namespace with the specified label
+func (c *Cli) GetPodsInNsWithLabel(ctx context.Context, namespace string, label string) ([]string, error) {
+	podStdOut := bytes.NewBuffer(nil)
+	podStdErr := bytes.NewBuffer(nil)
+
+	// Fetch the name of the Gloo Gateway controller pod
+	getGlooPodNamesCmd := c.Command(ctx, "get", "pod", "-n", namespace,
+		"--selector", label, "--output", "jsonpath='{.items[*].metadata.name}'")
+	err := getGlooPodNamesCmd.WithStdout(podStdOut).WithStderr(podStdErr).Run().Cause()
+	if err != nil {
+		fmt.Printf("error running get gloo pod name command: %v\n", err)
+	}
+
+	// Clean up and check the output
+	glooPodNamesString := strings.Trim(podStdOut.String(), "'")
+	if glooPodNamesString == "" {
+		fmt.Printf("no %s pods found in namespace %s\n", label, namespace)
+		return []string{}, nil
+	}
+
+	// Split the string on whitespace to get the pod names
+	glooPodNames := strings.Fields(glooPodNamesString)
+	return glooPodNames, nil
 }

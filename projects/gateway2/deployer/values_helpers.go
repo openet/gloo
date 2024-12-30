@@ -1,6 +1,7 @@
 package deployer
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -8,7 +9,6 @@ import (
 	"github.com/rotisserie/eris"
 	"github.com/solo-io/gloo/projects/gateway2/api/v1alpha1"
 	"github.com/solo-io/gloo/projects/gateway2/ports"
-	"github.com/solo-io/gloo/projects/gloo/pkg/bootstrap"
 	"golang.org/x/exp/slices"
 	"k8s.io/utils/ptr"
 	api "sigs.k8s.io/gateway-api/apis/v1"
@@ -85,6 +85,14 @@ func getServiceValues(svcConfig *v1alpha1.Service) *helmService {
 	}
 }
 
+// Convert service account values from GatewayParameters into helm values to be used by the deployer.
+func getServiceAccountValues(svcAccountConfig *v1alpha1.ServiceAccount) *helmServiceAccount {
+	return &helmServiceAccount{
+		ExtraAnnotations: svcAccountConfig.GetExtraAnnotations(),
+		ExtraLabels:      svcAccountConfig.GetExtraLabels(),
+	}
+}
+
 // Convert sds values from GatewayParameters into helm values to be used by the deployer.
 func getSdsContainerValues(sdsContainerConfig *v1alpha1.SdsContainer) *helmSdsContainer {
 	if sdsContainerConfig == nil {
@@ -124,17 +132,29 @@ func getIstioContainerValues(config *v1alpha1.IstioContainer) *helmIstioContaine
 }
 
 // Convert istio values from GatewayParameters into helm values to be used by the deployer.
-func getIstioValues(istioValues bootstrap.IstioValues, istioConfig *v1alpha1.IstioIntegration) *helmIstio {
+func getIstioValues(istioIntegrationEnabled bool, istioConfig *v1alpha1.IstioIntegration) *helmIstio {
 	// if istioConfig is nil, istio sds is disabled and values can be ignored
 	if istioConfig == nil {
 		return &helmIstio{
-			Enabled: ptr.To(istioValues.IntegrationEnabled),
+			Enabled: ptr.To(istioIntegrationEnabled),
 		}
 	}
 
 	return &helmIstio{
-		Enabled: ptr.To(istioValues.IntegrationEnabled),
+		Enabled: ptr.To(istioIntegrationEnabled),
 	}
+}
+
+// Converts AwsInfo (which come from Settings values) into aws helm values
+func getAwsValues(awsInfo *AwsInfo) *helmAws {
+	if awsInfo != nil {
+		return &helmAws{
+			EnableServiceAccountCredentials: &awsInfo.EnableServiceAccountCredentials,
+			StsClusterName:                  &awsInfo.StsClusterName,
+			StsUri:                          &awsInfo.StsUri,
+		}
+	}
+	return nil
 }
 
 // Get the image values for the envoy container in the proxy deployment.
@@ -190,9 +210,20 @@ func ComponentLogLevelsToString(vals map[string]string) (string, error) {
 	return strings.Join(parts, ","), nil
 }
 
-func getAIExtensionValues(config *v1alpha1.AiExtension) *helmAIExtension {
+func getAIExtensionValues(config *v1alpha1.AiExtension) (*helmAIExtension, error) {
 	if config == nil {
-		return nil
+		return nil, nil
+	}
+
+	// If we don't do this check, a byte array containing the characters "null" will be rendered
+	// This will not be marshallable by the component so instead we render nothing.
+	var byt []byte
+	if config.GetStats() != nil {
+		var err error
+		byt, err = json.Marshal(config.GetStats())
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &helmAIExtension{
@@ -202,5 +233,6 @@ func getAIExtensionValues(config *v1alpha1.AiExtension) *helmAIExtension {
 		Resources:       config.GetResources(),
 		Env:             config.GetEnv(),
 		Ports:           config.GetPorts(),
-	}
+		Stats:           byt,
+	}, nil
 }

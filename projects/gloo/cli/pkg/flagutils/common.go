@@ -8,6 +8,7 @@ import (
 	"github.com/solo-io/gloo/projects/gloo/cli/pkg/cmd/options/contextoptions"
 	"github.com/solo-io/gloo/projects/gloo/cli/pkg/printers"
 	"github.com/solo-io/gloo/projects/gloo/pkg/bootstrap/clients"
+	"github.com/solo-io/gloo/projects/gloo/pkg/bootstrap/clients/vault"
 	"github.com/spf13/pflag"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -64,7 +65,7 @@ func AddConsulConfigFlags(set *pflag.FlagSet, consul *contextoptions.Consul) {
 	config := api.DefaultConfig()
 	set.BoolVar(&consul.UseConsul, "use-consul", false, "use Consul Key-Value storage as the "+
 		"backend for reading and writing config (VirtualServices, Upstreams, and Proxies)")
-	set.StringVar(&consul.RootKey, "consul-root-key", clients.DefaultRootKey, "key prefix for for Consul key-value storage.")
+	set.StringVar(&consul.RootKey, "consul-root-key", clients.DefaultRootKey, "key prefix for the Consul key-value storage.")
 	set.StringVar(&config.Address, "consul-address", config.Address, "address of the Consul server. "+
 		"Use with --use-consul")
 	set.StringVar(&config.Scheme, "consul-scheme", config.Scheme, "URI scheme for the Consul server. "+
@@ -80,15 +81,15 @@ func AddConsulConfigFlags(set *pflag.FlagSet, consul *contextoptions.Consul) {
 	}
 }
 
-func AddVaultSecretFlags(set *pflag.FlagSet, vault *options.Vault) {
+func AddVaultSecretFlags(set *pflag.FlagSet, vaultOpts *options.Vault) {
 	config := vaultapi.DefaultConfig()
 	tlsCfg := &vaultapi.TLSConfig{}
 	token := ""
 
-	set.BoolVar(&vault.UseVault, "use-vault", false, "use Vault Key-Value storage as the "+
+	set.BoolVar(&vaultOpts.UseVault, "use-vault", false, "use Vault Key-Value storage as the "+
 		"backend for reading and writing secrets")
-	set.StringVar(&vault.PathPrefix, "vault-path-prefix", clients.DefaultPathPrefix, "The Secrets Engine to which Vault should route traffic.")
-	set.StringVar(&vault.RootKey, "vault-root-key", clients.DefaultRootKey, "key prefix for Vault key-value storage inside a storage engine.")
+	set.StringVar(&vaultOpts.PathPrefix, "vault-path-prefix", vault.DefaultPathPrefix, "The Secrets Engine to which Vault should route traffic.")
+	set.StringVar(&vaultOpts.RootKey, "vault-root-key", clients.DefaultRootKey, "key prefix for Vault key-value storage inside a storage engine.")
 
 	set.StringVar(&config.Address, "vault-address", config.Address, "address of the Vault server. This should be a complete URL such as \"http://vault.example.com\". "+
 		"Use with --use-vault")
@@ -108,7 +109,7 @@ func AddVaultSecretFlags(set *pflag.FlagSet, vault *options.Vault) {
 	set.BoolVar(&tlsCfg.Insecure, "vault-tls-insecure", false, "Insecure enables or disables SSL verification."+
 		"Use with --use-vault")
 
-	vault.Client = func() (client *vaultapi.Client, e error) {
+	vaultOpts.Client = func() (client *vaultapi.Client, e error) {
 		if tlsCfg.CACert != "" ||
 			tlsCfg.CAPath != "" ||
 			tlsCfg.ClientCert != "" ||

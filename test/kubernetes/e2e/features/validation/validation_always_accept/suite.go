@@ -42,6 +42,11 @@ func NewTestingSuite(ctx context.Context, testInst *e2e.TestInstallation) suite.
 }
 
 func (s *testingSuite) TestRejectsInvalidVSMethodMatcher() {
+	s.T().Cleanup(func() {
+		err := s.testInstallation.Actions.Kubectl().DeleteFileSafe(s.ctx, validation.InvalidVirtualServiceMatcher, "-n", s.testInstallation.Metadata.InstallNamespace)
+		s.Assert().NoError(err)
+	})
+
 	err := s.testInstallation.Actions.Kubectl().ApplyFile(s.ctx, validation.InvalidVirtualServiceMatcher, "-n", s.testInstallation.Metadata.InstallNamespace)
 	s.Assert().NoError(err)
 	s.testInstallation.Assertions.EventuallyResourceStatusMatchesState(
@@ -64,6 +69,12 @@ func (s *testingSuite) TestAcceptInvalidRatelimitConfigResources() {
 	if s.testInstallation.Metadata.IsEnterprise {
 		s.T().Skip("RateLimitConfig is enterprise-only, skipping test when running enterprise helm chart")
 	}
+
+	s.T().Cleanup(func() {
+		err := s.testInstallation.Actions.Kubectl().DeleteFileSafe(s.ctx, validation.InvalidRLC, "-n", s.testInstallation.Metadata.InstallNamespace)
+		s.Assert().NoError(err)
+	})
+
 	err := s.testInstallation.Actions.Kubectl().ApplyFile(s.ctx, validation.InvalidRLC, "-n", s.testInstallation.Metadata.InstallNamespace)
 	s.Assert().NoError(err)
 	// We don't expect an error exit code here because alwaysAccept=true
@@ -80,6 +91,11 @@ func (s *testingSuite) TestAcceptInvalidRatelimitConfigResources() {
 }
 
 func (s *testingSuite) TestAcceptsInvalidGatewayResources() {
+	s.T().Cleanup(func() {
+		err := s.testInstallation.Actions.Kubectl().DeleteFileSafe(s.ctx, validation.InvalidGateway, "-n", s.testInstallation.Metadata.InstallNamespace)
+		s.Assert().NoError(err)
+	})
+
 	err := s.testInstallation.Actions.Kubectl().ApplyFile(s.ctx, validation.InvalidGateway, "-n", s.testInstallation.Metadata.InstallNamespace)
 	s.Assert().NoError(err)
 
@@ -145,15 +161,14 @@ func (s *testingSuite) TestVirtualServiceWithSecretDeletion() {
 	err = s.testInstallation.Actions.Kubectl().ApplyFile(s.ctx, validation.UnusedSecret, "-n", s.testInstallation.Metadata.InstallNamespace)
 	s.Assert().NoError(err)
 
-	// Upstream should be accepted
+	// Upstreams no longer report status if they have not been translated at all to avoid conflicting with
+	// other syncers that have translated them, so we can only detect that the objects exist here
 	err = s.testInstallation.Actions.Kubectl().ApplyFile(s.ctx, validation.ExampleUpstream, "-n", s.testInstallation.Metadata.InstallNamespace)
 	s.Assert().NoError(err)
-	s.testInstallation.Assertions.EventuallyResourceStatusMatchesState(
-		func() (resources.InputResource, error) {
+	s.testInstallation.Assertions.EventuallyResourceExists(
+		func() (resources.Resource, error) {
 			return s.testInstallation.ResourceClients.UpstreamClient().Read(s.testInstallation.Metadata.InstallNamespace, validation.ExampleUpstreamName, clients.ReadOpts{Ctx: s.ctx})
 		},
-		core.Status_Accepted,
-		gloo_defaults.GlooReporter,
 	)
 	// Apply VS with secret after Upstream and Secret exist
 	err = s.testInstallation.Actions.Kubectl().Apply(s.ctx, []byte(substitutedSecretVS))
@@ -202,6 +217,9 @@ func (s *testingSuite) TestPersistInvalidVirtualService() {
 		err = s.testInstallation.Actions.Kubectl().DeleteFile(s.ctx, validation.ValidVS, "-n", s.testInstallation.Metadata.InstallNamespace)
 		s.NoError(err, "can delete "+validation.ValidVS)
 
+		err = s.testInstallation.Actions.Kubectl().DeleteFileSafe(s.ctx, validation.InvalidVS, "-n", s.testInstallation.Metadata.InstallNamespace)
+		s.Assert().NoError(err, "can delete "+validation.InvalidVS)
+
 		err = s.testInstallation.Actions.Kubectl().DeleteFile(s.ctx, testdefaults.NginxPodManifest)
 		s.Assert().NoError(err)
 
@@ -227,12 +245,10 @@ func (s *testingSuite) TestPersistInvalidVirtualService() {
 	// First apply Upstream
 	err = s.testInstallation.Actions.Kubectl().ApplyFile(s.ctx, validation.ExampleUpstream, "-n", s.testInstallation.Metadata.InstallNamespace)
 	s.Assert().NoError(err, "can apply "+validation.ExampleUpstream)
-	s.testInstallation.Assertions.EventuallyResourceStatusMatchesState(
-		func() (resources.InputResource, error) {
+	s.testInstallation.Assertions.EventuallyResourceExists(
+		func() (resources.Resource, error) {
 			return s.testInstallation.ResourceClients.UpstreamClient().Read(s.testInstallation.Metadata.InstallNamespace, validation.ExampleUpstreamName, clients.ReadOpts{Ctx: s.ctx})
 		},
-		core.Status_Accepted,
-		gloo_defaults.GlooReporter,
 	)
 
 	// Then apply VirtualService
