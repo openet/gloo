@@ -1,3 +1,5 @@
+//go:build ignore
+
 package deployer
 
 import (
@@ -17,20 +19,20 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
 
-	"github.com/solo-io/gloo/pkg/utils/envoyutils/admincli"
-	"github.com/solo-io/gloo/pkg/utils/kubeutils"
-	"github.com/solo-io/gloo/projects/gateway2/api/v1alpha1"
-	"github.com/solo-io/gloo/projects/gateway2/wellknown"
-	"github.com/solo-io/gloo/projects/gloo/pkg/syncer/setup"
-	"github.com/solo-io/gloo/projects/gloo/pkg/utils"
-	"github.com/solo-io/gloo/test/kubernetes/e2e"
-	testdefaults "github.com/solo-io/gloo/test/kubernetes/e2e/defaults"
+	"github.com/kgateway-dev/kgateway/v2/api/v1alpha1"
+	"github.com/kgateway-dev/kgateway/v2/internal/gloo/pkg/syncer/setup"
+	"github.com/kgateway-dev/kgateway/v2/internal/gloo/pkg/utils"
+	"github.com/kgateway-dev/kgateway/v2/internal/kgateway/wellknown"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/envoyutils/admincli"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/kubeutils"
+	"github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e"
+	testdefaults "github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e/defaults"
 )
 
 var _ e2e.NewSuiteFunc = NewTestingSuite
 
 // testingSuite is the entire Suite of tests for the "deployer" feature
-// The "deployer" code can be found here: /projects/gateway2/deployer
+// The "deployer" code can be found here: /internal/kgateway/deployer
 type testingSuite struct {
 	suite.Suite
 
@@ -113,11 +115,11 @@ func (s *testingSuite) AfterTest(suiteName, testName string) {
 }
 
 func (s *testingSuite) TestProvisionDeploymentAndService() {
-	s.testInstallation.Assertions.EventuallyRunningReplicas(s.ctx, proxyDeployment.ObjectMeta, gomega.Equal(1))
+	s.testInstallation.Assertions.EventuallyReadyReplicas(s.ctx, proxyDeployment.ObjectMeta, gomega.Equal(1))
 }
 
 func (s *testingSuite) TestConfigureProxiesFromGatewayParameters() {
-	s.testInstallation.Assertions.EventuallyRunningReplicas(s.ctx, proxyDeployment.ObjectMeta, gomega.Equal(1))
+	s.testInstallation.Assertions.EventuallyReadyReplicas(s.ctx, proxyDeployment.ObjectMeta, gomega.Equal(1))
 
 	// check that the labels and annotations got passed through from GatewayParameters to the ServiceAccount
 	sa := &corev1.ServiceAccount{}
@@ -150,7 +152,7 @@ func (s *testingSuite) TestConfigureProxiesFromGatewayParameters() {
 	})
 
 	// Assert that the expected custom configuration exists.
-	s.testInstallation.Assertions.EventuallyRunningReplicas(s.ctx, proxyDeployment.ObjectMeta, gomega.Equal(2))
+	s.testInstallation.Assertions.EventuallyReadyReplicas(s.ctx, proxyDeployment.ObjectMeta, gomega.Equal(2))
 
 	s.testInstallation.Assertions.AssertEnvoyAdminApi(
 		s.ctx,
@@ -161,7 +163,7 @@ func (s *testingSuite) TestConfigureProxiesFromGatewayParameters() {
 }
 
 func (s *testingSuite) TestConfigureAwsLambda() {
-	s.testInstallation.Assertions.EventuallyRunningReplicas(s.ctx, proxyDeployment.ObjectMeta, gomega.Equal(1))
+	s.testInstallation.Assertions.EventuallyReadyReplicas(s.ctx, proxyDeployment.ObjectMeta, gomega.Equal(1))
 
 	s.testInstallation.Assertions.AssertEnvoyAdminApi(
 		s.ctx,
@@ -171,7 +173,7 @@ func (s *testingSuite) TestConfigureAwsLambda() {
 }
 
 func (s *testingSuite) TestProvisionResourcesUpdatedWithValidParameters() {
-	s.testInstallation.Assertions.EventuallyRunningReplicas(s.ctx, proxyDeployment.ObjectMeta, gomega.Equal(1))
+	s.testInstallation.Assertions.EventuallyReadyReplicas(s.ctx, proxyDeployment.ObjectMeta, gomega.Equal(1))
 
 	// modify the number of replicas in the GatewayParameters
 	s.patchGatewayParameters(gwParamsDefault.ObjectMeta, func(parameters *v1alpha1.GatewayParameters) {
@@ -180,11 +182,11 @@ func (s *testingSuite) TestProvisionResourcesUpdatedWithValidParameters() {
 
 	// the GatewayParameters modification should cause the deployer to re-run and update the
 	// deployment to have 2 replicas
-	s.testInstallation.Assertions.EventuallyRunningReplicas(s.ctx, proxyDeployment.ObjectMeta, gomega.Equal(2))
+	s.testInstallation.Assertions.EventuallyReadyReplicas(s.ctx, proxyDeployment.ObjectMeta, gomega.Equal(2))
 }
 
 func (s *testingSuite) TestProvisionResourcesNotUpdatedWithInvalidParameters() {
-	s.testInstallation.Assertions.EventuallyRunningReplicas(s.ctx, proxyDeployment.ObjectMeta, gomega.Equal(1))
+	s.testInstallation.Assertions.EventuallyReadyReplicas(s.ctx, proxyDeployment.ObjectMeta, gomega.Equal(1))
 
 	var (
 		// initially, allowPrivilegeEscalation should be true and privileged should not be set

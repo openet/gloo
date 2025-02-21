@@ -1,3 +1,5 @@
+//go:build ignore
+
 package assertions
 
 import (
@@ -9,12 +11,13 @@ import (
 	"github.com/onsi/gomega"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
-	"github.com/solo-io/gloo/pkg/utils/glooadminutils/admincli"
-	"github.com/solo-io/gloo/pkg/utils/kubeutils/portforward"
-	"github.com/solo-io/gloo/pkg/utils/requestutils/curl"
-	"github.com/solo-io/gloo/projects/gloo/pkg/servers/admin"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	"github.com/kgateway-dev/kgateway/v2/internal/kgateway/admin"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/controllerutils/admincli"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/kubeutils/portforward"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/requestutils/curl"
 )
 
 func (p *Provider) AssertGlooAdminApi(
@@ -23,7 +26,7 @@ func (p *Provider) AssertGlooAdminApi(
 	adminAssertions ...func(ctx context.Context, adminClient *admincli.Client),
 ) {
 	// Before opening a port-forward, we assert that there is at least one Pod that is ready
-	p.EventuallyRunningReplicas(ctx, glooDeployment, BeNumerically(">=", 1))
+	p.EventuallyReadyReplicas(ctx, glooDeployment, BeNumerically(">=", 1))
 
 	portForwarder, err := p.clusterContext.Cli.StartPortForward(ctx,
 		portforward.WithDeployment(glooDeployment.GetName(), glooDeployment.GetNamespace()),
@@ -35,7 +38,7 @@ func (p *Provider) AssertGlooAdminApi(
 		portForwarder.WaitForStop()
 	}()
 
-	// the port-forward returns before it completely starts up (https://github.com/solo-io/gloo/issues/9353),
+	// the port-forward returns before it completely starts up (https://github.com/kgateway-dev/kgateway/issues/9353),
 	// so as a workaround we try to keep dialing the address until it succeeds
 	p.Gomega.Eventually(func(g Gomega) {
 		_, err = net.Dial("tcp", portForwarder.Address())

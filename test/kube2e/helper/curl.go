@@ -1,3 +1,5 @@
+//go:build ignore
+
 package helper
 
 import (
@@ -9,19 +11,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/solo-io/gloo/pkg/utils/kubeutils/kubectl"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/kubeutils/kubectl"
 
-	"github.com/solo-io/gloo/pkg/utils/requestutils/curl"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/requestutils/curl"
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega/types"
 
 	. "github.com/onsi/gomega"
 	"github.com/pkg/errors"
-	"github.com/solo-io/gloo/test/gomega/matchers"
-	"github.com/solo-io/gloo/test/gomega/transforms"
-	"github.com/solo-io/gloo/test/helpers"
 	"github.com/solo-io/go-utils/log"
+
+	"github.com/kgateway-dev/kgateway/v2/test/gomega/matchers"
+	"github.com/kgateway-dev/kgateway/v2/test/gomega/transforms"
 )
 
 const (
@@ -76,21 +78,6 @@ var (
 	DefaultCurlTimeout        = time.Second * 20 // DefaultCurlTimeout is the default timeout for "Eventually" curl assertions
 	DefaultCurlPollingTimeout = time.Second * 2  // DefaultCurlPollingTimeout is the default pollinginterval for "Eventually" curl assertions
 )
-
-var getTimeoutsAsInterfaces = helpers.GetDefaultTimingsTransform(DefaultCurlTimeout, DefaultCurlPollingTimeout)
-
-func GetTimeouts(timeout ...time.Duration) (currentTimeout, pollingInterval time.Duration) {
-	// Convert the timeouts to interface{}s
-	interfaceTimeouts := make([]interface{}, len(timeout))
-	for i, t := range timeout {
-		interfaceTimeouts[i] = t
-	}
-
-	timeoutAny, pollingIntervalAny := getTimeoutsAsInterfaces(interfaceTimeouts...)
-	currentTimeout = timeoutAny.(time.Duration)
-	pollingInterval = pollingIntervalAny.(time.Duration)
-	return currentTimeout, pollingInterval
-}
 
 func (t *testContainer) CurlEventuallyShouldOutput(opts CurlOpts, expectedOutput interface{}, ginkgoOffset int, timeout ...time.Duration) {
 	t.CurlEventuallyShouldRespond(opts, expectedOutput, ginkgoOffset, timeout...)

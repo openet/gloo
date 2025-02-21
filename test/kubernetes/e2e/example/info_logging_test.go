@@ -1,3 +1,5 @@
+//go:build ignore
+
 package example
 
 // This file is an example for developers.
@@ -9,15 +11,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/solo-io/gloo/pkg/utils/envutils"
-	"github.com/solo-io/gloo/test/testutils"
-
-	"github.com/solo-io/skv2/codegen/util"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/solo-io/gloo/test/kubernetes/e2e"
-	"github.com/solo-io/gloo/test/kubernetes/e2e/features/example"
-	"github.com/solo-io/gloo/test/kubernetes/testutils/gloogateway"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/envutils"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/fsutils"
+	"github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e"
+	"github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e/features/example"
+	"github.com/kgateway-dev/kgateway/v2/test/kubernetes/testutils/install"
+	"github.com/kgateway-dev/kgateway/v2/test/testutils"
 )
 
 // TestInstallationWithInfoLogLevel is the function which executes a series of tests against a given installation
@@ -26,10 +27,10 @@ func TestInstallationWithInfoLogLevel(t *testing.T) {
 	installNs, nsEnvPredefined := envutils.LookupOrDefault(testutils.InstallNamespace, "info-log-test")
 	testInstallation := e2e.CreateTestInstallation(
 		t,
-		&gloogateway.Context{
+		&install.Context{
 			InstallNamespace:          installNs,
-			ProfileValuesManifestFile: filepath.Join(util.MustGetThisDir(), "manifests", "example-profile.yaml"),
-			ValuesManifestFile:        filepath.Join(util.MustGetThisDir(), "manifests", "info-example.yaml"),
+			ProfileValuesManifestFile: filepath.Join(fsutils.MustGetThisDir(), "manifests", "example-profile.yaml"),
+			ValuesManifestFile:        filepath.Join(fsutils.MustGetThisDir(), "manifests", "info-example.yaml"),
 		},
 	)
 

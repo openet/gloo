@@ -1,16 +1,14 @@
 global:
-  # Set up gloo with istio integration enabled (through `enableIstioSidecarOnGateway`)
+  # Set up gloo with istio integration enabled
   istioIntegration:
     enabled: true
-    enableIstioSidecarOnGateway: true
-    disableAutoinjection: true # We do not want Gloo components to be included in the mesh
-  glooMtls:
-    istioProxy:
-      image:
-        repository: proxyv2
-        registry: docker.io/istio
-        tag: 1.22.0 # This tag has to match the version of Istio being used in the test
+    enableAutoMtls: false # Automtls is disabled in this test setup
 
-gatewayProxies:
-  gatewayProxy:
-    istioDiscoveryAddress: istiod-1-22-1.istio-system.svc:15012 # this needs to be set for Istio integration to work with revisions
+kubeGateway:
+  # This is the field that enables the K8s Gateway Integration in Gloo Gateway
+  enabled: true
+  gatewayParameters:
+    glooGateway:
+      istio:
+        istioProxyContainer:
+          istioDiscoveryAddress: istiod-1-22-1.istio-system.svc:15012 # this needs to be set for Istio integration to work with revisions

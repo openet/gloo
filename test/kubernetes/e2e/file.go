@@ -3,16 +3,10 @@ package e2e
 import (
 	"path/filepath"
 
-	"github.com/solo-io/skv2/codegen/util"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/fsutils"
 )
 
 var (
-	EdgeGatewayProfilePath = ProfilePath("edge-gateway.yaml")
-
-	KubernetesGatewayProfilePath = ProfilePath("kubernetes-gateway.yaml")
-
-	FullGatewayProfilePath = ProfilePath("full-gateway.yaml")
-
 	CommonRecommendationManifest = ManifestPath("common-recommendations.yaml")
 
 	// EmptyValuesManifestPath returns the path to a manifest with no values
@@ -25,15 +19,9 @@ var (
 // These are all stored in the tests/manifests directory
 func ManifestPath(pathParts ...string) string {
 	manifestPathParts := append([]string{
-		util.MustGetThisDir(),
+		fsutils.MustGetThisDir(),
 		"tests",
 		"manifests",
 	}, pathParts...)
 	return filepath.Join(manifestPathParts...)
-}
-
-// ProfilePath returns the absolute path to a profile file.
-// These are all stored in the tests/manifests/profiles directory
-func ProfilePath(path string) string {
-	return ManifestPath("profiles", path)
 }

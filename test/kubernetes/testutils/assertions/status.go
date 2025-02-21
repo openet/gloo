@@ -1,3 +1,5 @@
+//go:build ignore
+
 package assertions
 
 import (
@@ -9,24 +11,24 @@ import (
 	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/gstruct"
 	errors "github.com/rotisserie/eris"
-	"github.com/solo-io/gloo/test/gomega/matchers"
-	"github.com/solo-io/gloo/test/helpers"
-	"github.com/solo-io/gloo/test/kube2e/helper"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	gwv1 "sigs.k8s.io/gateway-api/apis/v1"
 	gwv1a2 "sigs.k8s.io/gateway-api/apis/v1alpha2"
+
+	"github.com/kgateway-dev/kgateway/v2/test/gomega/matchers"
+	"github.com/kgateway-dev/kgateway/v2/test/helpers"
 )
 
 // Checks GetNamespacedStatuses status for gloo installation namespace
 func (p *Provider) EventuallyResourceStatusMatchesWarningReasons(getter helpers.InputResourceGetter, desiredStatusReasons []string, desiredReporter string, timeout ...time.Duration) {
 	ginkgo.GinkgoHelper()
 
-	currentTimeout, pollingInterval := helper.GetTimeouts(timeout...)
+	currentTimeout, pollingInterval := helpers.GetTimeouts(timeout...)
 	gomega.Eventually(func(g gomega.Gomega) {
 		statusWarningsMatcher := matchers.MatchStatusInNamespace(
-			p.glooGatewayContext.InstallNamespace,
+			p.installContext.InstallNamespace,
 			gomega.And(matchers.HaveWarningStateWithReasonSubstrings(desiredStatusReasons...), matchers.HaveReportedBy(desiredReporter)),
 		)
 
@@ -40,10 +42,10 @@ func (p *Provider) EventuallyResourceStatusMatchesWarningReasons(getter helpers.
 func (p *Provider) EventuallyResourceStatusMatchesRejectedReasons(getter helpers.InputResourceGetter, desiredStatusReasons []string, desiredReporter string, timeout ...time.Duration) {
 	ginkgo.GinkgoHelper()
 
-	currentTimeout, pollingInterval := helper.GetTimeouts(timeout...)
+	currentTimeout, pollingInterval := helpers.GetTimeouts(timeout...)
 	gomega.Eventually(func(g gomega.Gomega) {
 		statusRejectionsMatcher := matchers.MatchStatusInNamespace(
-			p.glooGatewayContext.InstallNamespace,
+			p.installContext.InstallNamespace,
 			gomega.And(matchers.HaveRejectedStateWithReasonSubstrings(desiredStatusReasons...), matchers.HaveReportedBy(desiredReporter)),
 		)
 
@@ -60,10 +62,10 @@ func (p *Provider) EventuallyResourceStatusMatchesState(
 	desiredReporter string,
 	timeout ...time.Duration,
 ) {
-	currentTimeout, pollingInterval := helper.GetTimeouts(timeout...)
+	currentTimeout, pollingInterval := helpers.GetTimeouts(timeout...)
 	p.Gomega.Eventually(func(g gomega.Gomega) {
 		statusStateMatcher := matchers.MatchStatusInNamespace(
-			p.glooGatewayContext.InstallNamespace,
+			p.installContext.InstallNamespace,
 			gomega.And(matchers.HaveState(desiredState), matchers.HaveReportedBy(desiredReporter)),
 		)
 		status, err := getResourceNamespacedStatus(getter)
@@ -79,7 +81,7 @@ func (p *Provider) EventuallyResourceStatusMatchesSubResource(
 	desiredSubresource matchers.SoloKitSubresourceStatus,
 	timeout ...time.Duration,
 ) {
-	currentTimeout, pollingInterval := helper.GetTimeouts(timeout...)
+	currentTimeout, pollingInterval := helpers.GetTimeouts(timeout...)
 	p.Gomega.Eventually(func(g gomega.Gomega) {
 		subResourceStatusMatcher := matchers.HaveSubResourceStatusState(desiredSubresourceName, desiredSubresource)
 		status, err := getResourceNamespacedStatus(getter)
@@ -114,7 +116,7 @@ func (p *Provider) EventuallyHTTPRouteStatusContainsMessage(
 	routeNamespace string,
 	message string,
 	timeout ...time.Duration) {
-	currentTimeout, pollingInterval := helper.GetTimeouts(timeout...)
+	currentTimeout, pollingInterval := helpers.GetTimeouts(timeout...)
 	p.Gomega.Eventually(func(g gomega.Gomega) {
 		matcher := matchers.HaveKubeGatewayRouteStatus(&matchers.KubeGatewayRouteStatus{
 			Custom: gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
@@ -141,7 +143,7 @@ func (p *Provider) EventuallyHTTPRouteStatusContainsReason(
 	routeNamespace string,
 	reason string,
 	timeout ...time.Duration) {
-	currentTimeout, pollingInterval := helper.GetTimeouts(timeout...)
+	currentTimeout, pollingInterval := helpers.GetTimeouts(timeout...)
 	p.Gomega.Eventually(func(g gomega.Gomega) {
 		matcher := matchers.HaveKubeGatewayRouteStatus(&matchers.KubeGatewayRouteStatus{
 			Custom: gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
@@ -175,7 +177,7 @@ func (p *Provider) EventuallyGatewayCondition(
 	timeout ...time.Duration,
 ) {
 	ginkgo.GinkgoHelper()
-	currentTimeout, pollingInterval := helper.GetTimeouts(timeout...)
+	currentTimeout, pollingInterval := helpers.GetTimeouts(timeout...)
 	p.Gomega.Eventually(func(g gomega.Gomega) {
 		gateway := &gwv1.Gateway{}
 		err := p.clusterContext.Client.Get(ctx, types.NamespacedName{Name: gatewayName, Namespace: gatewayNamespace}, gateway)
@@ -198,7 +200,7 @@ func (p *Provider) EventuallyGatewayListenerAttachedRoutes(
 	timeout ...time.Duration,
 ) {
 	ginkgo.GinkgoHelper()
-	currentTimeout, pollingInterval := helper.GetTimeouts(timeout...)
+	currentTimeout, pollingInterval := helpers.GetTimeouts(timeout...)
 	p.Gomega.Eventually(func(g gomega.Gomega) {
 		gateway := &gwv1.Gateway{}
 		err := p.clusterContext.Client.Get(ctx, types.NamespacedName{Name: gatewayName, Namespace: gatewayNamespace}, gateway)
@@ -226,7 +228,7 @@ func (p *Provider) EventuallyTCPRouteCondition(
 	timeout ...time.Duration,
 ) {
 	ginkgo.GinkgoHelper()
-	currentTimeout, pollingInterval := helper.GetTimeouts(timeout...)
+	currentTimeout, pollingInterval := helpers.GetTimeouts(timeout...)
 	p.Gomega.Eventually(func(g gomega.Gomega) {
 		route := &gwv1a2.TCPRoute{}
 		err := p.clusterContext.Client.Get(ctx, types.NamespacedName{Name: routeName, Namespace: routeNamespace}, route)

@@ -1,3 +1,5 @@
+//go:build ignore
+
 package listener_options
 
 import (
@@ -7,12 +9,13 @@ import (
 	"github.com/onsi/gomega"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/solo-io/gloo/pkg/utils/envoyutils/admincli"
-	"github.com/solo-io/gloo/pkg/utils/kubeutils"
-	"github.com/solo-io/gloo/pkg/utils/requestutils/curl"
-	"github.com/solo-io/gloo/test/kubernetes/e2e"
-	testdefaults "github.com/solo-io/gloo/test/kubernetes/e2e/defaults"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/envoyutils/admincli"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/kubeutils"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/requestutils/curl"
+	"github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e"
+	testdefaults "github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e/defaults"
 )
 
 var _ e2e.NewSuiteFunc = NewTestingSuite
@@ -51,7 +54,7 @@ func (s *testingSuite) SetupSuite() {
 		LabelSelector: "app.kubernetes.io/name=curl",
 	})
 	s.testInstallation.Assertions.EventuallyPodsRunning(s.ctx, proxyDeployment.ObjectMeta.GetNamespace(), metav1.ListOptions{
-		LabelSelector: "app.kubernetes.io/name=gloo-proxy-gw",
+		LabelSelector: "app.kubernetes.io/name=gw",
 	})
 
 	s.manifests = map[string][]string{

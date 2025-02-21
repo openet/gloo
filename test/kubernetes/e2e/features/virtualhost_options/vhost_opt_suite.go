@@ -1,3 +1,5 @@
+//go:build ignore
+
 package virtualhost_options
 
 import (
@@ -8,17 +10,18 @@ import (
 	"github.com/onsi/gomega/gstruct"
 	"github.com/stretchr/testify/suite"
 
-	"github.com/solo-io/gloo/pkg/utils/kubeutils"
-	"github.com/solo-io/gloo/pkg/utils/requestutils/curl"
-	"github.com/solo-io/gloo/projects/gloo/pkg/defaults"
-	"github.com/solo-io/gloo/test/gomega/matchers"
-	"github.com/solo-io/gloo/test/helpers"
-	"github.com/solo-io/gloo/test/kubernetes/e2e"
-	testdefaults "github.com/solo-io/gloo/test/kubernetes/e2e/defaults"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/kgateway-dev/kgateway/v2/internal/gloo/pkg/defaults"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/kubeutils"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/requestutils/curl"
+	"github.com/kgateway-dev/kgateway/v2/test/gomega/matchers"
+	"github.com/kgateway-dev/kgateway/v2/test/helpers"
+	"github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e"
+	testdefaults "github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e/defaults"
 )
 
 var _ e2e.NewSuiteFunc = NewTestingSuite
@@ -58,7 +61,7 @@ func (s *testingSuite) SetupSuite() {
 		})
 	s.testInstallation.Assertions.EventuallyPodsRunning(s.ctx, proxyDeployment.ObjectMeta.GetNamespace(),
 		metav1.ListOptions{
-			LabelSelector: "app.kubernetes.io/name=gloo-proxy-gw",
+			LabelSelector: "app.kubernetes.io/name=gw",
 		})
 	s.testInstallation.Assertions.EventuallyPodsRunning(s.ctx, testdefaults.CurlPod.GetNamespace(),
 		metav1.ListOptions{
@@ -155,20 +158,12 @@ func (s *testingSuite) TestConfigureInvalidVirtualHostOptions() {
 	s.testInstallation.Assertions.ExpectObjectAdmitted(manifestVhoWebhookReject, err, output,
 		"Validating *v1.VirtualHostOption failed")
 
-	if !s.testInstallation.Metadata.ValidationAlwaysAccept {
-		s.testInstallation.Assertions.ExpectGlooObjectNotExist(
-			s.ctx,
-			s.getterForMeta(&vhoWebhookReject),
-			&vhoWebhookReject,
-		)
-	} else {
-		// Check status is rejected on bad VirtualHostOption
-		s.testInstallation.Assertions.EventuallyResourceStatusMatchesState(
-			s.getterForMeta(&vhoWebhookReject),
-			core.Status_Rejected,
-			defaults.KubeGatewayReporter,
-		)
-	}
+	// Check status is rejected on bad VirtualHostOption
+	s.testInstallation.Assertions.EventuallyResourceStatusMatchesState(
+		s.getterForMeta(&vhoWebhookReject),
+		core.Status_Rejected,
+		defaults.KubeGatewayReporter,
+	)
 
 	// Check healthy response with no x-bar header
 	s.testInstallation.Assertions.AssertEventualCurlResponse(

@@ -8,7 +8,6 @@ import (
 
 	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/gstruct"
-
 	"github.com/onsi/gomega/matchers"
 	"github.com/onsi/gomega/types"
 )

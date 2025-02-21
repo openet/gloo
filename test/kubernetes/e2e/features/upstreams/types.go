@@ -1,3 +1,5 @@
+//go:build ignore
+
 package upstreams
 
 import (
@@ -5,23 +7,24 @@ import (
 	"path/filepath"
 
 	"github.com/onsi/gomega"
-	"github.com/solo-io/skv2/codegen/util"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/solo-io/gloo/pkg/utils/kubeutils/kubectl"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/fsutils"
 
-	testmatchers "github.com/solo-io/gloo/test/gomega/matchers"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/kubeutils/kubectl"
+
+	testmatchers "github.com/kgateway-dev/kgateway/v2/test/gomega/matchers"
 )
 
 var (
-	routeWithUpstreamManifest = filepath.Join(util.MustGetThisDir(), "inputs/route-with-upstream.yaml")
-	upstreamManifest          = filepath.Join(util.MustGetThisDir(), "inputs/upstream-for-route.yaml")
+	routeWithUpstreamManifest = filepath.Join(fsutils.MustGetThisDir(), "inputs/route-with-upstream.yaml")
+	upstreamManifest          = filepath.Join(fsutils.MustGetThisDir(), "inputs/upstream-for-route.yaml")
 
 	// Proxy resource to be translated
 	glooProxyObjectMeta = metav1.ObjectMeta{
-		Name:      "gloo-proxy-gw",
+		Name:      "gw",
 		Namespace: "default",
 	}
 	proxyDeployment = &appsv1.Deployment{ObjectMeta: glooProxyObjectMeta}

@@ -10,14 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/types"
-
-	"github.com/solo-io/gloo/pkg/utils/cmdutils"
-	"github.com/solo-io/gloo/pkg/utils/requestutils/curl"
-	"github.com/solo-io/k8s-utils/testutils/kube"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/cmdutils"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/requestutils/curl"
 
 	"github.com/avast/retry-go/v4"
-	"github.com/solo-io/gloo/pkg/utils/kubeutils/portforward"
+
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/kubeutils/portforward"
 )
 
 // Cli is a utility for executing `kubectl` commands
@@ -82,6 +80,13 @@ func (c *Cli) Command(ctx context.Context, args ...string) cmdutils.Cmd {
 // RunCommand creates a Cmd and then runs it
 func (c *Cli) RunCommand(ctx context.Context, args ...string) error {
 	return c.Command(ctx, args...).Run().Cause()
+}
+
+// RunCommandWithOutput creates a Cmd and then runs it.
+// If an error occurred, it will be returned along with the output of the command
+func (c *Cli) RunCommandWithOutput(ctx context.Context, args ...string) (string, error) {
+	runErr := c.Command(ctx, args...).Run()
+	return runErr.OutputString(), runErr.Cause()
 }
 
 // Namespaces returns a sorted list of namespaces or an error if one occurred
@@ -218,28 +223,6 @@ func (c *Cli) StartPortForward(ctx context.Context, options ...portforward.Optio
 		retry.Attempts(5),
 	)
 	return portForwarder, err
-}
-
-// CurlFromEphemeralPod executes a Curl from a pod, using an ephemeral container to execute the Curl command
-func (c *Cli) CurlFromEphemeralPod(ctx context.Context, podMeta types.NamespacedName, options ...curl.Option) string {
-	appendOption := func(option curl.Option) {
-		options = append(options, option)
-	}
-
-	// The e2e test assertions rely on the transforms.WithCurlHttpResponse to validate the response is what
-	// we would expect
-	// For this transform to behave appropriately, we must execute the request with verbose=true
-	appendOption(curl.VerboseOutput())
-
-	curlArgs := curl.BuildArgs(options...)
-
-	return kube.CurlWithEphemeralPodStable(
-		ctx,
-		c.receiver,
-		c.kubeContext,
-		podMeta.Namespace,
-		podMeta.Name,
-		curlArgs...)
 }
 
 // CurlFromPod executes a Curl request from the given pod for the given options.

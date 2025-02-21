@@ -1,3 +1,5 @@
+//go:build ignore
+
 package metrics
 
 import (
@@ -9,17 +11,18 @@ import (
 
 	adminv3 "github.com/envoyproxy/go-control-plane/envoy/admin/v3"
 	"github.com/onsi/gomega"
-	"github.com/solo-io/gloo/pkg/utils/envoyutils/admincli"
-	"github.com/solo-io/gloo/pkg/utils/kubeutils"
-	"github.com/solo-io/gloo/pkg/utils/requestutils/curl"
-	gloov1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
-	"github.com/solo-io/gloo/projects/gloo/pkg/translator"
-	"github.com/solo-io/gloo/projects/gloo/pkg/upstreams/kubernetes"
-	testmatchers "github.com/solo-io/gloo/test/gomega/matchers"
-	"github.com/solo-io/gloo/test/kubernetes/e2e"
-	"github.com/solo-io/gloo/test/kubernetes/e2e/defaults"
-	"github.com/solo-io/gloo/test/kubernetes/e2e/tests/base"
 	"github.com/stretchr/testify/suite"
+
+	gloov1 "github.com/kgateway-dev/kgateway/v2/internal/gloo/pkg/api/v1"
+	"github.com/kgateway-dev/kgateway/v2/internal/gloo/pkg/translator"
+	"github.com/kgateway-dev/kgateway/v2/internal/gloo/pkg/upstreams/kubernetes"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/envoyutils/admincli"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/kubeutils"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/requestutils/curl"
+	testmatchers "github.com/kgateway-dev/kgateway/v2/test/gomega/matchers"
+	"github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e"
+	"github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e/defaults"
+	"github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e/tests/base"
 )
 
 var _ e2e.NewSuiteFunc = NewTestingSuite
@@ -37,7 +40,7 @@ func NewTestingSuite(ctx context.Context, testInst *e2e.TestInstallation) suite.
 // TestKubeServiceSuccessStats sends a number of requests to a kube Service and checks that the cluster metrics
 // show the expected number of successful requests
 func (s *testingSuite) TestKubeServiceSuccessStats() {
-	s.TestInstallation.Assertions.EventuallyRunningReplicas(s.Ctx, proxyDeployment.ObjectMeta, gomega.Equal(1))
+	s.TestInstallation.Assertions.EventuallyReadyReplicas(s.Ctx, proxyDeployment.ObjectMeta, gomega.Equal(1))
 
 	kubeSvcUpstream := kubernetes.ServiceToUpstream(s.Ctx, exampleSvc, exampleSvc.Spec.Ports[0])
 	s.sendAndAssertNumSuccessfulRequests(3, kubeSvcUpstream)
@@ -46,7 +49,7 @@ func (s *testingSuite) TestKubeServiceSuccessStats() {
 // TestKubeUpstreamSuccessStats sends a number of requests to a kube Upstream and checks that the cluster metrics
 // show the expected number of successful requests
 func (s *testingSuite) TestKubeUpstreamSuccessStats() {
-	s.TestInstallation.Assertions.EventuallyRunningReplicas(s.Ctx, proxyDeployment.ObjectMeta, gomega.Equal(1))
+	s.TestInstallation.Assertions.EventuallyReadyReplicas(s.Ctx, proxyDeployment.ObjectMeta, gomega.Equal(1))
 
 	s.sendAndAssertNumSuccessfulRequests(2, kubeUpstream)
 }

@@ -1,3 +1,5 @@
+//go:build ignore
+
 package tests_test
 
 import (
@@ -7,10 +9,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/solo-io/gloo/test/kubernetes/e2e"
-	. "github.com/solo-io/gloo/test/kubernetes/e2e/tests"
-	"github.com/solo-io/gloo/test/kubernetes/testutils/gloogateway"
-	"github.com/solo-io/gloo/test/kubernetes/testutils/helper"
+	"github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e"
+	. "github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e/tests"
+	"github.com/kgateway-dev/kgateway/v2/test/kubernetes/testutils/helper"
+	"github.com/kgateway-dev/kgateway/v2/test/kubernetes/testutils/install"
 )
 
 // The upgrade tests delegate the installs, upgrades and deletions to each individual test within the suite
@@ -24,11 +26,10 @@ func TestUpgradeFromLastPatchPreviousMinor(t *testing.T) {
 
 	testInstallation := e2e.CreateTestInstallation(
 		t,
-		&gloogateway.Context{
+		&install.Context{
 			InstallNamespace:          "upgrade-from-last-patch-previous-minor",
-			ProfileValuesManifestFile: e2e.FullGatewayProfilePath,
+			ProfileValuesManifestFile: e2e.CommonRecommendationManifest,
 			ValuesManifestFile:        e2e.EmptyValuesManifestPath,
-			ValidationAlwaysAccept:    false,
 			ReleasedVersion:           lastPatchPreviousMinorVersion.String(),
 		},
 	)
@@ -51,11 +52,10 @@ func TestUpgradeFromCurrentPatchLatestMinor(t *testing.T) {
 
 	testInstallation := e2e.CreateTestInstallation(
 		t,
-		&gloogateway.Context{
+		&install.Context{
 			InstallNamespace:          "upgrade-from-current-patch-latest-minor",
-			ProfileValuesManifestFile: e2e.FullGatewayProfilePath,
+			ProfileValuesManifestFile: e2e.CommonRecommendationManifest,
 			ValuesManifestFile:        e2e.EmptyValuesManifestPath,
-			ValidationAlwaysAccept:    false,
 			ReleasedVersion:           currentPatchMostRecentMinorVersion.String(),
 		},
 	)

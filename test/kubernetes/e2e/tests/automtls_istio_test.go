@@ -1,3 +1,5 @@
+//go:build ignore
+
 package tests_test
 
 import (
@@ -6,22 +8,22 @@ import (
 	"testing"
 	"time"
 
-	"github.com/solo-io/gloo/pkg/utils/envutils"
-	"github.com/solo-io/gloo/test/kubernetes/e2e"
-	. "github.com/solo-io/gloo/test/kubernetes/e2e/tests"
-	"github.com/solo-io/gloo/test/kubernetes/testutils/gloogateway"
-	"github.com/solo-io/gloo/test/testutils"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/envutils"
+	"github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e"
+	. "github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e/tests"
+	"github.com/kgateway-dev/kgateway/v2/test/kubernetes/testutils/install"
+	"github.com/kgateway-dev/kgateway/v2/test/testutils"
 )
 
-// TestK8sGatewayIstioAutoMtls is the function which executes a series of tests against a given installation
-func TestK8sGatewayIstioAutoMtls(t *testing.T) {
+// TestKgatewayIstioAutoMtls is the function which executes a series of tests against a given installation
+func TestKgatewayIstioAutoMtls(t *testing.T) {
 	ctx := context.Background()
-	installNs, nsEnvPredefined := envutils.LookupOrDefault(testutils.InstallNamespace, "automtls-istio-k8s-gw-test")
+	installNs, nsEnvPredefined := envutils.LookupOrDefault(testutils.InstallNamespace, "automtls-istio-test")
 	testInstallation := e2e.CreateTestInstallation(
 		t,
-		&gloogateway.Context{
+		&install.Context{
 			InstallNamespace:          installNs,
-			ProfileValuesManifestFile: e2e.KubernetesGatewayProfilePath,
+			ProfileValuesManifestFile: e2e.CommonRecommendationManifest,
 			ValuesManifestFile:        e2e.ManifestPath("istio-automtls-enabled-helm.yaml"),
 		},
 	)

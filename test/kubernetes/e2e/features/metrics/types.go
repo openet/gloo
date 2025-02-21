@@ -1,30 +1,33 @@
+//go:build ignore
+
 package metrics
 
 import (
 	"path/filepath"
 
-	gloov1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
-	"github.com/solo-io/gloo/projects/gloo/pkg/api/v1/options/kubernetes"
-	testdefaults "github.com/solo-io/gloo/test/kubernetes/e2e/defaults"
-	"github.com/solo-io/gloo/test/kubernetes/e2e/tests/base"
-	"github.com/solo-io/skv2/codegen/util"
 	"github.com/solo-io/solo-kit/pkg/api/v1/resources/core"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	gloov1 "github.com/kgateway-dev/kgateway/v2/internal/gloo/pkg/api/v1"
+	"github.com/kgateway-dev/kgateway/v2/internal/gloo/pkg/api/v1/options/kubernetes"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/fsutils"
+	testdefaults "github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e/defaults"
+	"github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e/tests/base"
 )
 
 var (
 	// manifests
-	exampleServiceManifest            = filepath.Join(util.MustGetThisDir(), "testdata", "service.yaml")
-	gatewayAndRouteToServiceManifest  = filepath.Join(util.MustGetThisDir(), "testdata", "gateway-and-route-to-service.yaml")
-	gatewayAndRouteToUpstreamManifest = filepath.Join(util.MustGetThisDir(), "testdata", "gateway-and-route-to-upstream.yaml")
+	exampleServiceManifest            = filepath.Join(fsutils.MustGetThisDir(), "testdata", "service.yaml")
+	gatewayAndRouteToServiceManifest  = filepath.Join(fsutils.MustGetThisDir(), "testdata", "gateway-and-route-to-service.yaml")
+	gatewayAndRouteToUpstreamManifest = filepath.Join(fsutils.MustGetThisDir(), "testdata", "gateway-and-route-to-upstream.yaml")
 
 	// objects
 	glooProxyObjectMeta = metav1.ObjectMeta{
-		Name:      "gloo-proxy-gw",
+		Name:      "gw",
 		Namespace: "default",
 	}
 	proxyDeployment = &appsv1.Deployment{ObjectMeta: glooProxyObjectMeta}

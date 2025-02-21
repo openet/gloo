@@ -1,3 +1,5 @@
+//go:build ignore
+
 package tests_test
 
 import (
@@ -7,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/solo-io/gloo/pkg/utils/envutils"
-	"github.com/solo-io/gloo/test/kubernetes/e2e"
-	. "github.com/solo-io/gloo/test/kubernetes/e2e/tests"
-	"github.com/solo-io/gloo/test/kubernetes/testutils/gloogateway"
-	"github.com/solo-io/gloo/test/testutils"
-	"github.com/solo-io/skv2/codegen/util"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/envutils"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/fsutils"
+	"github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e"
+	. "github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e/tests"
+	"github.com/kgateway-dev/kgateway/v2/test/kubernetes/testutils/install"
+	"github.com/kgateway-dev/kgateway/v2/test/testutils"
 )
 
 // TestDiscoveryWatchlabels is the function which executes a series of tests against a given installation where
@@ -22,10 +24,10 @@ func TestDiscoveryWatchlabels(t *testing.T) {
 	installNs, nsEnvPredefined := envutils.LookupOrDefault(testutils.InstallNamespace, "discovery-watchlabels-test")
 	testInstallation := e2e.CreateTestInstallation(
 		t,
-		&gloogateway.Context{
+		&install.Context{
 			InstallNamespace:          installNs,
-			ProfileValuesManifestFile: e2e.KubernetesGatewayProfilePath,
-			ValuesManifestFile:        filepath.Join(util.MustGetThisDir(), "manifests", "discovery-watchlabels-test-helm.yaml"),
+			ProfileValuesManifestFile: e2e.CommonRecommendationManifest,
+			ValuesManifestFile:        filepath.Join(fsutils.MustGetThisDir(), "manifests", "discovery-watchlabels-test-helm.yaml"),
 		},
 	)
 

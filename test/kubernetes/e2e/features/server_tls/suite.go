@@ -1,21 +1,24 @@
+//go:build ignore
+
 package server_tls
 
 import (
 	"context"
 	"time"
 
-	gatewayv1 "github.com/solo-io/gloo/projects/gateway/pkg/api/v1"
-	"github.com/solo-io/gloo/projects/gateway/pkg/defaults"
-	"github.com/solo-io/gloo/test/gomega/matchers"
-	"github.com/solo-io/gloo/test/kube2e/helper"
-	testdefaults "github.com/solo-io/gloo/test/kubernetes/e2e/defaults"
 	"github.com/stretchr/testify/suite"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/solo-io/gloo/pkg/utils/kubeutils"
-	"github.com/solo-io/gloo/pkg/utils/requestutils/curl"
-	"github.com/solo-io/gloo/test/kubernetes/e2e"
+	gatewayv1 "github.com/kgateway-dev/kgateway/v2/internal/gateway/pkg/api/v1"
+	"github.com/kgateway-dev/kgateway/v2/internal/gateway/pkg/defaults"
+	"github.com/kgateway-dev/kgateway/v2/test/gomega/matchers"
+	"github.com/kgateway-dev/kgateway/v2/test/helpers"
+	testdefaults "github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e/defaults"
+
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/kubeutils"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/requestutils/curl"
+	"github.com/kgateway-dev/kgateway/v2/test/kubernetes/e2e"
 )
 
 var _ e2e.NewSuiteFunc = NewTestingSuite
@@ -196,7 +199,7 @@ func (s *serverTlsTestingSuite) TestTwoVirtualServicesOneMissingTlsSecret() {
 	err = s.testInstallation.Actions.Kubectl().RestartDeploymentAndWait(s.ctx, "gloo", "-n", s.ns)
 	s.NoError(err, "can restart gloo deployment")
 
-	timeout, polling := helper.GetTimeouts(time.Second*10, time.Second)
+	timeout, polling := helpers.GetTimeouts(time.Second*10, time.Second)
 
 	// Assert that we have traffic working on VS 1 but failed traffic on VS 2.
 	s.assertEventuallyConsistentResponse(vs1.GetName(), expectedHealthyResponse1, timeout, polling)

@@ -7,13 +7,14 @@ import (
 
 	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/types"
-	"github.com/solo-io/gloo/test/gomega/matchers"
-	"github.com/solo-io/gloo/test/kube2e/helper"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/kgateway-dev/kgateway/v2/test/gomega/matchers"
+	"github.com/kgateway-dev/kgateway/v2/test/helpers"
 )
 
-// EventuallyPodsRunning asserts that the pod(s) are in the ready state
+// EventuallyPodsRunning asserts that eventually all pods matching the given ListOptions are in the PodRunning state
 func (p *Provider) EventuallyPodsRunning(
 	ctx context.Context,
 	podNamespace string,
@@ -31,7 +32,7 @@ func (p *Provider) EventuallyPodsMatches(
 	matcher types.GomegaMatcher,
 	timeout ...time.Duration,
 ) {
-	currentTimeout, pollingInterval := helper.GetTimeouts(timeout...)
+	currentTimeout, pollingInterval := helpers.GetTimeouts(timeout...)
 
 	p.Gomega.Eventually(func(g gomega.Gomega) {
 		pods, err := p.clusterContext.Clientset.CoreV1().Pods(podNamespace).List(ctx, listOpt)
@@ -44,4 +45,24 @@ func (p *Provider) EventuallyPodsMatches(
 		WithTimeout(currentTimeout).
 		WithPolling(pollingInterval).
 		Should(gomega.Succeed(), fmt.Sprintf("Failed to match pod in namespace %s", podNamespace))
+}
+
+// EventuallyPodsNotExist asserts that eventually no pods matching the given selector exist on the cluster.
+func (p *Provider) EventuallyPodsNotExist(
+	ctx context.Context,
+	podNamespace string,
+	listOpt metav1.ListOptions,
+	timeout ...time.Duration,
+) {
+	currentTimeout, pollingInterval := helpers.GetTimeouts(timeout...)
+
+	p.Gomega.Eventually(func(g gomega.Gomega) {
+		pods, err := p.clusterContext.Clientset.CoreV1().Pods(podNamespace).List(ctx, listOpt)
+		g.Expect(err).NotTo(gomega.HaveOccurred(), "Failed to list pods")
+		g.Expect(pods.Items).To(gomega.BeEmpty(), "No pods should be found")
+	}).
+		WithTimeout(currentTimeout).
+		WithPolling(pollingInterval).
+		Should(gomega.Succeed(), fmt.Sprintf("pods matching %v in namespace %s should not be found in cluster",
+			listOpt, podNamespace))
 }

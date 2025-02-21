@@ -1,3 +1,5 @@
+//go:build ignore
+
 package gloo_test
 
 import (
@@ -6,31 +8,33 @@ import (
 	"sync"
 	"time"
 
-	"github.com/solo-io/gloo/pkg/utils/kubeutils"
-	"github.com/solo-io/gloo/pkg/utils/kubeutils/portforward"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/kubeutils"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/kubeutils/portforward"
 
-	"github.com/solo-io/gloo/pkg/utils/settingsutil"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/settingsutil"
 
-	"github.com/solo-io/gloo/pkg/bootstrap/leaderelector"
-	"github.com/solo-io/gloo/pkg/bootstrap/leaderelector/singlereplica"
-	"github.com/solo-io/gloo/pkg/utils/setuputils"
-	"github.com/solo-io/gloo/projects/gloo/pkg/bootstrap"
-	"github.com/solo-io/gloo/projects/gloo/pkg/syncer/setup"
-	"github.com/solo-io/gloo/projects/gloo/pkg/xds"
+	"github.com/kgateway-dev/kgateway/v2/internal/gloo/pkg/bootstrap"
+	"github.com/kgateway-dev/kgateway/v2/internal/gloo/pkg/syncer/setup"
+	"github.com/kgateway-dev/kgateway/v2/internal/gloo/pkg/xds"
+	"github.com/kgateway-dev/kgateway/v2/pkg/bootstrap/leaderelector"
+	"github.com/kgateway-dev/kgateway/v2/pkg/bootstrap/leaderelector/singlereplica"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/setuputils"
 
-	"github.com/solo-io/gloo/projects/gloo/pkg/defaults"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients"
+
+	"github.com/kgateway-dev/kgateway/v2/internal/gloo/pkg/defaults"
 
 	"github.com/golang/protobuf/ptypes/wrappers"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/solo-io/gloo/projects/gloo/pkg/api/grpc/validation"
-	v1 "github.com/solo-io/gloo/projects/gloo/pkg/api/v1"
-	"github.com/solo-io/gloo/test/kube2e"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/kube"
 	"github.com/solo-io/solo-kit/pkg/api/v1/clients/memory"
 	"github.com/solo-io/solo-kit/pkg/utils/prototime"
 	"google.golang.org/grpc"
+
+	"github.com/kgateway-dev/kgateway/v2/internal/gloo/pkg/api/grpc/validation"
+	v1 "github.com/kgateway-dev/kgateway/v2/internal/gloo/pkg/api/v1"
+	"github.com/kgateway-dev/kgateway/v2/test/kube2e"
 )
 
 var _ = Describe("Setup Syncer", func() {

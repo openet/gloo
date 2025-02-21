@@ -1,3 +1,5 @@
+//go:build ignore
+
 package gloo_test
 
 import (
@@ -7,25 +9,27 @@ import (
 	"testing"
 	"time"
 
-	"github.com/solo-io/gloo/test/kubernetes/testutils/cluster"
 	"github.com/solo-io/skv2/codegen/util"
 
-	"github.com/solo-io/gloo/pkg/utils/kubeutils/kubectl"
+	"github.com/kgateway-dev/kgateway/v2/test/kubernetes/testutils/cluster"
+
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/kubeutils/kubectl"
 
 	"github.com/avast/retry-go"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"github.com/solo-io/gloo/test/services/envoy"
+	"github.com/kgateway-dev/kgateway/v2/test/services/envoy"
 
-	"github.com/solo-io/gloo/test/services"
+	"github.com/kgateway-dev/kgateway/v2/test/services"
 
-	"github.com/solo-io/gloo/projects/gloo/pkg/defaults"
-	"github.com/solo-io/gloo/test/helpers"
-	"github.com/solo-io/gloo/test/kube2e"
-	"github.com/solo-io/gloo/test/kube2e/helper"
-	testruntime "github.com/solo-io/gloo/test/kubernetes/testutils/runtime"
-	glootestutils "github.com/solo-io/gloo/test/testutils"
 	"github.com/solo-io/go-utils/testutils"
+
+	"github.com/kgateway-dev/kgateway/v2/internal/gloo/pkg/defaults"
+	"github.com/kgateway-dev/kgateway/v2/test/helpers"
+	"github.com/kgateway-dev/kgateway/v2/test/kube2e"
+	"github.com/kgateway-dev/kgateway/v2/test/kube2e/helper"
+	testruntime "github.com/kgateway-dev/kgateway/v2/test/kubernetes/testutils/runtime"
+	glootestutils "github.com/kgateway-dev/kgateway/v2/test/testutils"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -69,7 +73,7 @@ var _ = BeforeSuite(func() {
 
 	outDir := filepath.Join(util.GetModuleRoot(), "_output", "kube2e-artifacts")
 	namespaces := []string{testHelper.InstallNamespace}
-	skhelpers.RegisterPreFailHandler(helpers.StandardGlooDumpOnFail(GinkgoWriter, outDir, namespaces))
+	skhelpers.RegisterPreFailHandler(helpers.StandardKgatewayDumpOnFail(GinkgoWriter, outDir, namespaces))
 
 	// Allow skipping of install step for running multiple times
 	if !glootestutils.ShouldSkipInstall() {

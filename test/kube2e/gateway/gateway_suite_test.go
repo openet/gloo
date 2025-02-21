@@ -1,3 +1,5 @@
+//go:build ignore
+
 package gateway_test
 
 import (
@@ -7,24 +9,26 @@ import (
 	"testing"
 	"time"
 
-	"github.com/solo-io/gloo/test/kubernetes/testutils/cluster"
 	"github.com/solo-io/skv2/codegen/util"
 
-	kubetestclients "github.com/solo-io/gloo/test/kubernetes/testutils/clients"
+	"github.com/kgateway-dev/kgateway/v2/test/kubernetes/testutils/cluster"
 
-	"github.com/solo-io/gloo/pkg/utils/kubeutils/kubectl"
+	kubetestclients "github.com/kgateway-dev/kgateway/v2/test/kubernetes/testutils/clients"
 
-	kubeutils2 "github.com/solo-io/gloo/test/testutils"
+	"github.com/kgateway-dev/kgateway/v2/pkg/utils/kubeutils/kubectl"
 
-	gatewaydefaults "github.com/solo-io/gloo/projects/gateway/pkg/defaults"
+	kubeutils2 "github.com/kgateway-dev/kgateway/v2/test/testutils"
 
-	gloodefaults "github.com/solo-io/gloo/projects/gloo/pkg/defaults"
+	gatewaydefaults "github.com/kgateway-dev/kgateway/v2/internal/gateway/pkg/defaults"
 
-	"github.com/solo-io/gloo/test/helpers"
-	"github.com/solo-io/gloo/test/kube2e"
-	"github.com/solo-io/gloo/test/kube2e/helper"
-	testruntime "github.com/solo-io/gloo/test/kubernetes/testutils/runtime"
+	gloodefaults "github.com/kgateway-dev/kgateway/v2/internal/gloo/pkg/defaults"
+
 	skhelpers "github.com/solo-io/solo-kit/test/helpers"
+
+	"github.com/kgateway-dev/kgateway/v2/test/helpers"
+	"github.com/kgateway-dev/kgateway/v2/test/kube2e"
+	"github.com/kgateway-dev/kgateway/v2/test/kube2e/helper"
+	testruntime "github.com/kgateway-dev/kgateway/v2/test/kubernetes/testutils/runtime"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -68,7 +72,7 @@ func StartTestHelper() {
 
 	outDir := filepath.Join(util.GetModuleRoot(), "_output", "kube2e-artifacts")
 	namespaces := []string{testHelper.InstallNamespace}
-	skhelpers.RegisterPreFailHandler(helpers.StandardGlooDumpOnFail(GinkgoWriter, outDir, namespaces))
+	skhelpers.RegisterPreFailHandler(helpers.StandardKgatewayDumpOnFail(GinkgoWriter, outDir, namespaces))
 
 	kubeCli = kubectl.NewCli().WithReceiver(GinkgoWriter)
 
